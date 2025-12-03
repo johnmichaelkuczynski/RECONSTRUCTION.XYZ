@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, TrendingUp, Calculator, DollarSign, FileSpreadsheet } from "lucide-react";
+import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, TrendingUp, Calculator, DollarSign, FileSpreadsheet, PiggyBank } from "lucide-react";
 import { analyzeDocument, compareDocuments, checkForAI } from "@/lib/analysis";
 import { AnalysisMode, DocumentInput as DocumentInputType, AIDetectionResult, DocumentAnalysis, DocumentComparison } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
@@ -631,10 +631,35 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           title: "LBO Analysis Complete",
           description: `Returns calculated for ${result.assumptions?.companyName || 'target company'}`,
         });
+      } else if (modelType === "ma") {
+        setFinanceLoadingPhase(`Parsing M&A with ${providerNames[financeLLMProvider]}...`);
+        
+        const response = await fetch('/api/finance/parse-ma', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description: financeInputText,
+            customInstructions: financeCustomInstructions,
+            llmProvider: financeLLMProvider,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'M&A parsing failed');
+        }
+
+        const result = await response.json();
+        setFinanceResult(result);
+        
+        toast({
+          title: "M&A Analysis Complete",
+          description: `Accretion/dilution analysis for ${result.assumptions?.acquirerName || 'acquirer'} acquiring ${result.assumptions?.targetName || 'target'}`,
+        });
       } else {
         toast({
           title: "Coming Soon",
-          description: `${modelType.toUpperCase()} model is not yet available. DCF and LBO are fully functional.`,
+          description: `${modelType.toUpperCase()} model is not yet available. DCF, LBO, and M&A are fully functional.`,
           variant: "destructive"
         });
       }
@@ -666,8 +691,15 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
 
     try {
       // Choose the appropriate endpoint based on model type
-      const endpoint = financeModelType === "lbo" ? '/api/finance/download-lbo' : '/api/finance/download-dcf';
-      const modelLabel = financeModelType === "lbo" ? "LBO" : "DCF";
+      let endpoint = '/api/finance/download-dcf';
+      let modelLabel = 'DCF';
+      if (financeModelType === "lbo") {
+        endpoint = '/api/finance/download-lbo';
+        modelLabel = 'LBO';
+      } else if (financeModelType === "ma") {
+        endpoint = '/api/finance/download-ma';
+        modelLabel = 'M&A';
+      }
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -3161,6 +3193,233 @@ Generated on: ${new Date().toLocaleString()}`;
                       {financeResult.projections?.freeCashFlow?.map((val: number, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-bold text-purple-700 dark:text-purple-300">
                           ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* M&A Results Display */}
+          {financeResult && financeResult.success && financeModelType === "ma" && financeResult.accretionDilution && (
+            <div className="mb-6 space-y-6">
+              {/* Header with company names and download button */}
+              <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-purple-200 dark:border-purple-700">
+                <div>
+                  <h3 className="text-xl font-bold text-purple-900 dark:text-purple-100">
+                    {financeResult.assumptions?.acquirerName} Acquiring {financeResult.assumptions?.targetName}
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    M&A Analysis by {financeResult.providerUsed}
+                  </p>
+                </div>
+                <Button
+                  onClick={handleFinanceDownloadExcel}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  disabled={financeDownloadLoading}
+                  data-testid="button-download-ma-excel"
+                >
+                  {financeDownloadLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Download M&A Excel Model
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Transaction Summary and Accretion/Dilution */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Transaction Metrics */}
+                <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border-2 border-purple-400 dark:border-purple-500">
+                  <h4 className="text-lg font-semibold text-purple-800 dark:text-purple-200 mb-3 flex items-center gap-2">
+                    <DollarSign className="w-5 h-5" />
+                    Transaction Metrics
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Purchase Price:</span>
+                      <span className="font-semibold text-purple-700 dark:text-purple-300">
+                        ${financeResult.transactionMetrics?.purchasePrice?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Enterprise Value:</span>
+                      <span className="font-semibold text-purple-700 dark:text-purple-300">
+                        ${financeResult.transactionMetrics?.enterpriseValue?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">EV/EBITDA Multiple:</span>
+                      <span className="font-semibold text-purple-700 dark:text-purple-300">
+                        {financeResult.transactionMetrics?.evEbitdaMultiple?.toFixed(1)}x
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Premium Paid:</span>
+                      <span className="font-semibold text-purple-700 dark:text-purple-300">
+                        {((financeResult.assumptions?.premium || 0) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-purple-200 dark:border-purple-600 pt-2 mt-2">
+                      <span className="text-gray-600 dark:text-gray-400">Goodwill Created:</span>
+                      <span className="font-bold text-purple-800 dark:text-purple-200">
+                        ${financeResult.transactionMetrics?.goodwill?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Accretion/Dilution Analysis */}
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border-2 border-blue-400 dark:border-blue-500">
+                  <h4 className="text-lg font-semibold text-blue-800 dark:text-blue-200 mb-3 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    Accretion / Dilution
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Year 1:</span>
+                      <span className={`font-semibold ${financeResult.accretionDilution?.isAccretiveY1 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {((financeResult.accretionDilution?.percentImpact?.[1] || 0) * 100).toFixed(1)}% 
+                        ({financeResult.accretionDilution?.isAccretiveY1 ? 'Accretive' : 'Dilutive'})
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Year 2:</span>
+                      <span className={`font-semibold ${financeResult.accretionDilution?.isAccretiveY2 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {((financeResult.accretionDilution?.percentImpact?.[2] || 0) * 100).toFixed(1)}% 
+                        ({financeResult.accretionDilution?.isAccretiveY2 ? 'Accretive' : 'Dilutive'})
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Year 3:</span>
+                      <span className={`font-semibold ${financeResult.accretionDilution?.isAccretiveY3 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {((financeResult.accretionDilution?.percentImpact?.[3] || 0) * 100).toFixed(1)}% 
+                        ({financeResult.accretionDilution?.isAccretiveY3 ? 'Accretive' : 'Dilutive'})
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-blue-200 dark:border-blue-600 pt-2 mt-2">
+                      <span className="text-gray-600 dark:text-gray-400">Year 5:</span>
+                      <span className={`font-bold ${(financeResult.accretionDilution?.percentImpact?.[5] || 0) > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {((financeResult.accretionDilution?.percentImpact?.[5] || 0) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Consideration Mix and Synergies */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Consideration Mix */}
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700">
+                  <h4 className="font-semibold text-green-800 dark:text-green-200 mb-3 flex items-center gap-2">
+                    <PiggyBank className="w-5 h-5" />
+                    Consideration Mix
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Cash:</span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        ${financeResult.transactionMetrics?.cashConsideration?.toLocaleString(undefined, {maximumFractionDigits: 0})}M 
+                        ({((financeResult.assumptions?.cashPercent || 0) * 100).toFixed(0)}%)
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Stock:</span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        ${financeResult.transactionMetrics?.stockConsideration?.toLocaleString(undefined, {maximumFractionDigits: 0})}M 
+                        ({((financeResult.assumptions?.stockPercent || 0) * 100).toFixed(0)}%)
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-green-200 dark:border-green-600 pt-2 mt-2">
+                      <span className="text-gray-600 dark:text-gray-400">New Shares Issued:</span>
+                      <span className="font-bold text-green-700 dark:text-green-300">
+                        {financeResult.transactionMetrics?.newSharesIssued?.toFixed(1)}M
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Synergies */}
+                <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-700">
+                  <h4 className="font-semibold text-amber-800 dark:text-amber-200 mb-3 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    Synergies (Run-Rate)
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Revenue Synergies:</span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        ${financeResult.synergies?.revenueSynergies?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Cost Synergies:</span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        ${financeResult.synergies?.costSynergies?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-amber-200 dark:border-amber-600 pt-2 mt-2">
+                      <span className="text-gray-600 dark:text-gray-400">Total Synergies:</span>
+                      <span className="font-bold text-amber-700 dark:text-amber-300">
+                        ${financeResult.synergies?.totalSynergies?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pro Forma Projections Table */}
+              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-purple-200 dark:border-purple-700 overflow-x-auto">
+                <h4 className="text-lg font-semibold text-purple-800 dark:text-purple-200 mb-4">
+                  Pro Forma Combined 5-Year Projections
+                </h4>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-600">
+                      <th className="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Metric</th>
+                      {financeResult.proFormaProjections?.years?.slice(1).map((year: number) => (
+                        <th key={year} className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Year {year}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Combined Revenue ($M)</td>
+                      {financeResult.proFormaProjections?.revenue?.slice(1).map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Combined EBITDA ($M)</td>
+                      {financeResult.proFormaProjections?.ebitda?.slice(1).map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Net Income ($M)</td>
+                      {financeResult.proFormaProjections?.netIncome?.slice(1).map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Pro Forma EPS</td>
+                      {financeResult.proFormaProjections?.eps?.slice(1).map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-bold text-purple-700 dark:text-purple-300">
+                          ${val?.toFixed(2)}
                         </td>
                       ))}
                     </tr>

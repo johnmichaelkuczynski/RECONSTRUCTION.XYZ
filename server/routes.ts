@@ -15,6 +15,7 @@ import { sendSimpleEmail } from "./api/simpleEmailService";
 import { upload as speechUpload, processSpeechToText } from "./api/simpleSpeechToText";
 import { parseFinancialDescription, generateDCFExcel } from "./services/dcfModelService";
 import { parseLBODescription, calculateLBOReturns, generateLBOExcel } from "./services/lboModelService";
+import { parseMADescription, calculateMAMetrics, generateMAExcel } from "./services/maModelService";
 
 
 // Configure multer for file uploads
@@ -3378,6 +3379,84 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
 
     } catch (error: any) {
       console.error("LBO Excel download error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to generate Excel file"
+      });
+    }
+  });
+
+  // Finance Panel - Parse M&A description and return results for preview
+  app.post("/api/finance/parse-ma", async (req: Request, res: Response) => {
+    try {
+      const { description, customInstructions, llmProvider = "zhi5" } = req.body;
+
+      if (!description) {
+        return res.status(400).json({
+          success: false,
+          message: "Description is required"
+        });
+      }
+
+      console.log(`Parsing M&A description with ${llmProvider}...`);
+      const { assumptions, providerUsed } = await parseMADescription(
+        description,
+        llmProvider as "zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5",
+        customInstructions
+      );
+
+      console.log("Calculating M&A metrics...");
+      const results = calculateMAMetrics(assumptions);
+
+      res.json({
+        success: true,
+        assumptions: results.assumptions,
+        acquirerProjections: results.acquirerProjections,
+        targetProjections: results.targetProjections,
+        transactionMetrics: results.transactionMetrics,
+        synergies: results.synergies,
+        sourcesAndUses: results.sourcesAndUses,
+        proFormaProjections: results.proFormaProjections,
+        accretionDilution: results.accretionDilution,
+        providerUsed
+      });
+
+    } catch (error: any) {
+      console.error("M&A parsing error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to parse M&A description"
+      });
+    }
+  });
+
+  // Finance Panel - Download M&A Excel from pre-parsed assumptions
+  app.post("/api/finance/download-ma", async (req: Request, res: Response) => {
+    try {
+      const { assumptions } = req.body;
+
+      if (!assumptions) {
+        return res.status(400).json({
+          success: false,
+          message: "Assumptions are required"
+        });
+      }
+
+      console.log("Generating M&A Excel from parsed assumptions...");
+      const excelBuffer = await generateMAExcel(assumptions);
+
+      const acquirerSlug = assumptions.acquirerName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20);
+      const targetSlug = assumptions.targetName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20);
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `${acquirerSlug}_${targetSlug}_MA_Model_${dateStr}.xlsx`;
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', excelBuffer.length);
+      res.send(excelBuffer);
+
+    } catch (error: any) {
+      console.error("M&A Excel download error:", error);
       res.status(500).json({
         success: false,
         message: error.message || "Failed to generate Excel file"
