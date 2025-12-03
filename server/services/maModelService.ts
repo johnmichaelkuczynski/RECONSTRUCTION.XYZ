@@ -31,18 +31,28 @@ export interface MAAssumptions {
   cashPercent: number;
   stockPercent: number;
   premium: number;
+  transactionFeePercent: number;
   
   // Financing
   cashFromBalance: number;
   newDebtAmount: number;
   newDebtRate: number;
   
-  // Synergies
+  // Synergies - Revenue (typically slower realization)
   revenueSynergies: number;
+  revenueSynergyRealizationY1: number;
+  revenueSynergyRealizationY2: number;
+  revenueSynergyRealizationY3: number;
+  revenueSynergyRealizationY4: number;
+  revenueSynergyRealizationY5: number;
+  
+  // Synergies - Cost (typically faster realization)
   costSynergies: number;
-  synergyRealizationY1: number;
-  synergyRealizationY2: number;
-  synergyRealizationY3: number;
+  costSynergyRealizationY1: number;
+  costSynergyRealizationY2: number;
+  costSynergyRealizationY3: number;
+  costSynergyRealizationY4: number;
+  costSynergyRealizationY5: number;
   
   // Integration Costs
   integrationCostsY1: number;
@@ -55,6 +65,8 @@ export interface MAAssumptions {
 }
 
 const MA_PARSING_PROMPT = `You are a financial analyst expert in M&A transactions. Parse the following natural language description of a merger or acquisition and extract all relevant parameters.
+
+CRITICAL: Revenue synergies and cost synergies often have DIFFERENT phase-in schedules. Cost synergies typically realize FASTER than revenue synergies. Extract separate schedules for each.
 
 Return a JSON object with the following structure:
 {
@@ -83,16 +95,25 @@ Return a JSON object with the following structure:
   "cashPercent": number (as decimal, e.g., 0.5 for 50% cash),
   "stockPercent": number (as decimal, e.g., 0.5 for 50% stock),
   "premium": number (as decimal, e.g., 0.30 for 30% premium),
+  "transactionFeePercent": number (as decimal, e.g., 0.01 for 1% of EV),
   
   "cashFromBalance": number (in millions),
   "newDebtAmount": number (in millions),
   "newDebtRate": number (as decimal),
   
   "revenueSynergies": number (annual run-rate in millions),
+  "revenueSynergyRealizationY1": number (as decimal, SLOWER realization typical),
+  "revenueSynergyRealizationY2": number (as decimal),
+  "revenueSynergyRealizationY3": number (as decimal),
+  "revenueSynergyRealizationY4": number (as decimal),
+  "revenueSynergyRealizationY5": number (as decimal, typically 1.0),
+  
   "costSynergies": number (annual EBITDA improvement in millions),
-  "synergyRealizationY1": number (as decimal, e.g., 0.25 for 25%),
-  "synergyRealizationY2": number (as decimal),
-  "synergyRealizationY3": number (as decimal),
+  "costSynergyRealizationY1": number (as decimal, FASTER realization typical),
+  "costSynergyRealizationY2": number (as decimal),
+  "costSynergyRealizationY3": number (as decimal),
+  "costSynergyRealizationY4": number (as decimal),
+  "costSynergyRealizationY5": number (as decimal, typically 1.0),
   
   "integrationCostsY1": number (in millions),
   "integrationCostsY2": number (in millions),
@@ -102,17 +123,20 @@ Return a JSON object with the following structure:
   "intangibleAmortYears": number
 }
 
-If any value is not explicitly stated, use reasonable M&A industry defaults:
+DEFAULTS (use if not explicitly stated):
 - Revenue growth: 3-8% annually
 - EBITDA margins: 15-25%
 - D&A: 3-5% of revenue
 - Tax rate: 25%
 - Cash/stock mix: 50/50 if not specified
 - Premium: 20-40% for public targets
-- Synergy realization: 25% Y1, 50% Y2, 100% Y3+
-- Cost synergies: 3-5% of combined revenue
+- Transaction fees: 1-2% of EV (use 0.02 if not specified)
+- REVENUE synergy phase-in (SLOWER): 20% Y1, 40% Y2, 70% Y3, 90% Y4, 100% Y5
+- COST synergy phase-in (FASTER): 50% Y1, 80% Y2, 100% Y3, 100% Y4, 100% Y5
 - Integration costs: 2-3x annual synergies spread over 3 years
 - Intangible amortization: 10-15 years
+
+Look for keywords like "faster", "quicker", "accelerated" for cost synergies vs "gradual", "slower" for revenue synergies. If percentages are explicitly given for each synergy type, use those exact values.
 
 IMPORTANT: Return ONLY the JSON object, no markdown, no explanation.`;
 
@@ -225,13 +249,21 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
     purchasePrice,
     cashPercent,
     stockPercent,
+    transactionFeePercent,
     newDebtAmount,
     newDebtRate,
     revenueSynergies,
+    revenueSynergyRealizationY1,
+    revenueSynergyRealizationY2,
+    revenueSynergyRealizationY3,
+    revenueSynergyRealizationY4,
+    revenueSynergyRealizationY5,
     costSynergies,
-    synergyRealizationY1,
-    synergyRealizationY2,
-    synergyRealizationY3,
+    costSynergyRealizationY1,
+    costSynergyRealizationY2,
+    costSynergyRealizationY3,
+    costSynergyRealizationY4,
+    costSynergyRealizationY5,
     integrationCostsY1,
     integrationCostsY2,
     integrationCostsY3,
@@ -298,10 +330,25 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
   const goodwill = Math.max(0, excessPurchasePrice - intangibleAssets);
   const annualIntangibleAmort = intangibleAssets / intangibleAmortYears;
 
-  // Synergies by year
-  const synergyRealization = [0, synergyRealizationY1, synergyRealizationY2, synergyRealizationY3, 1, 1];
-  const revSynergiesByYear = synergyRealization.map(r => revenueSynergies * r);
-  const costSynergiesByYear = synergyRealization.map(r => costSynergies * r);
+  // Synergies by year - SEPARATE schedules for revenue vs cost synergies
+  const revenueSynergyRealization = [
+    0, 
+    revenueSynergyRealizationY1 || 0.20, 
+    revenueSynergyRealizationY2 || 0.40, 
+    revenueSynergyRealizationY3 || 0.70, 
+    revenueSynergyRealizationY4 || 0.90, 
+    revenueSynergyRealizationY5 || 1.0
+  ];
+  const costSynergyRealization = [
+    0, 
+    costSynergyRealizationY1 || 0.50, 
+    costSynergyRealizationY2 || 0.80, 
+    costSynergyRealizationY3 || 1.0, 
+    costSynergyRealizationY4 || 1.0, 
+    costSynergyRealizationY5 || 1.0
+  ];
+  const revSynergiesByYear = revenueSynergyRealization.map(r => revenueSynergies * r);
+  const costSynergiesByYear = costSynergyRealization.map(r => costSynergies * r);
   const integrationCosts = [0, integrationCostsY1, integrationCostsY2, integrationCostsY3, 0, 0];
 
   // Pro Forma Combined Projections
@@ -352,6 +399,9 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
   }
 
   // Sources and Uses
+  const feePercent = transactionFeePercent || 0.02;
+  const transactionFees = enterpriseValue * feePercent;
+  
   const sources = {
     cashFromBalance: assumptions.cashFromBalance,
     newDebt: newDebtAmount,
@@ -362,8 +412,8 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
   const uses = {
     equityValue: purchasePrice,
     netDebtAssumed: targetNetDebt,
-    transactionFees: purchasePrice * 0.02,
-    total: purchasePrice + targetNetDebt + (purchasePrice * 0.02),
+    transactionFees,
+    total: purchasePrice + targetNetDebt + transactionFees,
   };
 
   return {
@@ -398,6 +448,8 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
       totalSynergies: revenueSynergies + costSynergies,
       revSynergiesByYear,
       costSynergiesByYear,
+      revenueSynergyRealization,
+      costSynergyRealization,
       integrationCosts,
     },
     sourcesAndUses: {
