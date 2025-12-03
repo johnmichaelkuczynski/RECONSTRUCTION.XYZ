@@ -184,6 +184,141 @@ IMPORTANT: Return ONLY valid JSON, no markdown, no explanations.`;
   }
 }
 
+export interface DCFValuationResult {
+  assumptions: DCFAssumptions;
+  projections: {
+    years: number[];
+    revenue: number[];
+    ebitda: number[];
+    ebitdaMargin: number[];
+    fcf: number[];
+  };
+  valuation: {
+    base: {
+      enterpriseValue: number;
+      netDebt: number;
+      equityValue: number;
+      sharePrice: number;
+    };
+    bull: {
+      enterpriseValue: number;
+      netDebt: number;
+      equityValue: number;
+      sharePrice: number;
+    };
+    bear: {
+      enterpriseValue: number;
+      netDebt: number;
+      equityValue: number;
+      sharePrice: number;
+    };
+  };
+  providerUsed: string;
+}
+
+export function calculateDCFValuation(assumptions: DCFAssumptions, providerUsed: string): DCFValuationResult {
+  const {
+    companyName,
+    baseYearRevenue,
+    revenueGrowthRates,
+    terminalGrowthRate,
+    baseEBITDAMargin,
+    targetEBITDAMargin,
+    marginExpansionYears,
+    daPercent,
+    taxRate,
+    capexPercent,
+    nwcPercent,
+    wacc,
+    projectionYears,
+    totalDebt,
+    cashAndEquivalents,
+    sharesOutstanding
+  } = assumptions;
+
+  // Calculate projections
+  const years: number[] = [];
+  const revenue: number[] = [];
+  const ebitda: number[] = [];
+  const ebitdaMargin: number[] = [];
+  const fcf: number[] = [];
+
+  let currentRevenue = baseYearRevenue;
+  
+  for (let i = 0; i < projectionYears; i++) {
+    years.push(i + 1);
+    
+    // Revenue
+    const growthRate = revenueGrowthRates[i] || revenueGrowthRates[revenueGrowthRates.length - 1];
+    currentRevenue = i === 0 ? baseYearRevenue * (1 + growthRate) : revenue[i - 1] * (1 + growthRate);
+    revenue.push(currentRevenue);
+    
+    // EBITDA Margin (linear expansion)
+    const marginStep = (targetEBITDAMargin - baseEBITDAMargin) / marginExpansionYears;
+    const margin = Math.min(baseEBITDAMargin + marginStep * (i + 1), targetEBITDAMargin);
+    ebitdaMargin.push(margin);
+    
+    // EBITDA
+    const ebitdaValue = currentRevenue * margin;
+    ebitda.push(ebitdaValue);
+    
+    // FCF = EBITDA - D&A + D&A*(1-tax) - CapEx - Change in NWC
+    // Simplified: FCF = EBITDA * (1 - tax) + D&A * tax - CapEx - delta NWC
+    const da = currentRevenue * daPercent;
+    const ebit = ebitdaValue - da;
+    const nopat = ebit * (1 - taxRate);
+    const capex = currentRevenue * capexPercent;
+    const nwcChange = i === 0 
+      ? currentRevenue * nwcPercent - baseYearRevenue * nwcPercent 
+      : currentRevenue * nwcPercent - revenue[i - 1] * nwcPercent;
+    const fcfValue = nopat + da - capex - nwcChange;
+    fcf.push(fcfValue);
+  }
+
+  // Calculate DCF valuation for base case
+  const calculateValuation = (waccRate: number, termGrowth: number) => {
+    // PV of FCFs
+    let pvFCF = 0;
+    for (let i = 0; i < fcf.length; i++) {
+      pvFCF += fcf[i] / Math.pow(1 + waccRate, i + 1);
+    }
+    
+    // Terminal Value (Gordon Growth)
+    const terminalFCF = fcf[fcf.length - 1] * (1 + termGrowth);
+    const terminalValue = terminalFCF / (waccRate - termGrowth);
+    const pvTerminal = terminalValue / Math.pow(1 + waccRate, projectionYears);
+    
+    const enterpriseValue = pvFCF + pvTerminal;
+    const netDebt = totalDebt - cashAndEquivalents;
+    const equityValue = enterpriseValue - netDebt;
+    const sharePrice = equityValue / sharesOutstanding;
+    
+    return { enterpriseValue, netDebt, equityValue, sharePrice };
+  };
+
+  // Base case
+  const base = calculateValuation(wacc, terminalGrowthRate);
+  
+  // Bull case: lower WACC (-1%), higher terminal growth (+0.5%)
+  const bull = calculateValuation(wacc - 0.01, terminalGrowthRate + 0.005);
+  
+  // Bear case: higher WACC (+1%), lower terminal growth (-0.5%)
+  const bear = calculateValuation(wacc + 0.01, terminalGrowthRate - 0.005);
+
+  return {
+    assumptions,
+    projections: {
+      years,
+      revenue,
+      ebitda,
+      ebitdaMargin,
+      fcf
+    },
+    valuation: { base, bull, bear },
+    providerUsed
+  };
+}
+
 export async function generateDCFExcel(assumptions: DCFAssumptions): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Finance Panel';
@@ -208,6 +343,47 @@ export async function generateDCFExcel(assumptions: DCFAssumptions): Promise<Buf
     sharesOutstanding
   } = assumptions;
 
+  // Pre-calculate all values so Excel shows actual numbers
+  const revenue: number[] = [baseYearRevenue];
+  const ebitdaMargins: number[] = [];
+  const ebitda: number[] = [];
+  const fcf: number[] = [];
+  
+  for (let i = 0; i < 5; i++) {
+    const growthRate = revenueGrowthRates[i] || 0.10;
+    const newRevenue = revenue[i] * (1 + growthRate);
+    revenue.push(newRevenue);
+    
+    const marginStep = (targetEBITDAMargin - baseEBITDAMargin) / marginExpansionYears;
+    const margin = Math.min(baseEBITDAMargin + marginStep * (i + 1), targetEBITDAMargin);
+    ebitdaMargins.push(margin);
+    
+    const ebitdaVal = newRevenue * margin;
+    ebitda.push(ebitdaVal);
+    
+    const da = newRevenue * daPercent;
+    const ebit = ebitdaVal - da;
+    const nopat = ebit * (1 - taxRate);
+    const capex = newRevenue * capexPercent;
+    const prevRev = i === 0 ? baseYearRevenue : revenue[i];
+    const nwcChange = newRevenue * nwcPercent - prevRev * nwcPercent;
+    const fcfVal = nopat + da - capex - nwcChange;
+    fcf.push(fcfVal);
+  }
+
+  // Calculate DCF valuation
+  let pvFCF = 0;
+  for (let i = 0; i < fcf.length; i++) {
+    pvFCF += fcf[i] / Math.pow(1 + wacc, i + 1);
+  }
+  const terminalFCF = fcf[fcf.length - 1] * (1 + terminalGrowthRate);
+  const terminalValue = terminalFCF / (wacc - terminalGrowthRate);
+  const pvTerminal = terminalValue / Math.pow(1 + wacc, 5);
+  const enterpriseValue = pvFCF + pvTerminal;
+  const netDebt = totalDebt - cashAndEquivalents;
+  const equityValue = enterpriseValue - netDebt;
+  const sharePrice = equityValue / sharesOutstanding;
+
   const blueFont: Partial<ExcelJS.Font> = { color: { argb: 'FF0000FF' }, bold: true };
   const headerStyle: Partial<ExcelJS.Style> = {
     font: { bold: true, size: 12 },
@@ -218,6 +394,7 @@ export async function generateDCFExcel(assumptions: DCFAssumptions): Promise<Buf
   const percentFormat = '0.0%';
   const perShareFormat = '"$"#,##0.00';
 
+  // ============ EXECUTIVE SUMMARY ============
   const summarySheet = workbook.addWorksheet('Executive Summary');
   summarySheet.columns = [
     { header: '', key: 'label', width: 35 },
@@ -232,24 +409,24 @@ export async function generateDCFExcel(assumptions: DCFAssumptions): Promise<Buf
   summarySheet.getCell('A4').font = { bold: true, size: 14 };
   
   summarySheet.getCell('A5').value = 'Enterprise Value:';
-  summarySheet.getCell('B5').value = { formula: '=DCF_Valuation!B20' };
+  summarySheet.getCell('B5').value = enterpriseValue;
   summarySheet.getCell('B5').numFmt = currencyFormat;
   
   summarySheet.getCell('A6').value = 'Less: Net Debt:';
-  summarySheet.getCell('B6').value = { formula: '=Assumptions!B32-Assumptions!B33' };
+  summarySheet.getCell('B6').value = netDebt;
   summarySheet.getCell('B6').numFmt = currencyFormat;
   
   summarySheet.getCell('A7').value = 'Equity Value:';
-  summarySheet.getCell('B7').value = { formula: '=DCF_Valuation!B24' };
+  summarySheet.getCell('B7').value = equityValue;
   summarySheet.getCell('B7').numFmt = currencyFormat;
   summarySheet.getCell('B7').font = { bold: true };
   
-  summarySheet.getCell('A8').value = 'Shares Outstanding:';
-  summarySheet.getCell('B8').value = { formula: '=Assumptions!B34' };
-  summarySheet.getCell('B8').numFmt = '#,##0';
+  summarySheet.getCell('A8').value = 'Shares Outstanding (M):';
+  summarySheet.getCell('B8').value = sharesOutstanding;
+  summarySheet.getCell('B8').numFmt = '#,##0.0';
   
   summarySheet.getCell('A9').value = 'Value per Share:';
-  summarySheet.getCell('B9').value = { formula: '=DCF_Valuation!B26' };
+  summarySheet.getCell('B9').value = sharePrice;
   summarySheet.getCell('B9').numFmt = perShareFormat;
   summarySheet.getCell('B9').font = { bold: true };
   
@@ -257,21 +434,38 @@ export async function generateDCFExcel(assumptions: DCFAssumptions): Promise<Buf
   summarySheet.getCell('A11').font = { bold: true, size: 14 };
   
   summarySheet.getCell('A12').value = 'Base Year Revenue:';
-  summarySheet.getCell('B12').value = { formula: '=Assumptions!B5' };
+  summarySheet.getCell('B12').value = baseYearRevenue;
   summarySheet.getCell('B12').numFmt = currencyFormat;
   
   summarySheet.getCell('A13').value = 'WACC:';
-  summarySheet.getCell('B13').value = { formula: '=Assumptions!B26' };
+  summarySheet.getCell('B13').value = wacc;
   summarySheet.getCell('B13').numFmt = percentFormat;
   
   summarySheet.getCell('A14').value = 'Terminal Growth Rate:';
-  summarySheet.getCell('B14').value = { formula: '=Assumptions!B12' };
+  summarySheet.getCell('B14').value = terminalGrowthRate;
   summarySheet.getCell('B14').numFmt = percentFormat;
   
   summarySheet.getCell('A15').value = 'Terminal EBITDA Margin:';
-  summarySheet.getCell('B15').value = { formula: '=Assumptions!B16' };
+  summarySheet.getCell('B15').value = targetEBITDAMargin;
   summarySheet.getCell('B15').numFmt = percentFormat;
 
+  // Add valuation breakdown
+  summarySheet.getCell('A17').value = 'VALUATION BREAKDOWN';
+  summarySheet.getCell('A17').font = { bold: true, size: 14 };
+  
+  summarySheet.getCell('A18').value = 'PV of Projected FCFs:';
+  summarySheet.getCell('B18').value = pvFCF;
+  summarySheet.getCell('B18').numFmt = currencyFormat;
+  
+  summarySheet.getCell('A19').value = 'Terminal Value:';
+  summarySheet.getCell('B19').value = terminalValue;
+  summarySheet.getCell('B19').numFmt = currencyFormat;
+  
+  summarySheet.getCell('A20').value = 'PV of Terminal Value:';
+  summarySheet.getCell('B20').value = pvTerminal;
+  summarySheet.getCell('B20').numFmt = currencyFormat;
+
+  // ============ ASSUMPTIONS ============
   const assumptionsSheet = workbook.addWorksheet('Assumptions');
   assumptionsSheet.columns = [
     { header: '', key: 'label', width: 40 },
@@ -368,6 +562,7 @@ export async function generateDCFExcel(assumptions: DCFAssumptions): Promise<Buf
   assumptionsSheet.getCell('B34').font = blueFont;
   assumptionsSheet.getCell('B34').numFmt = '#,##0.0';
 
+  // ============ REVENUE & EBITDA (with computed values) ============
   const revenueSheet = workbook.addWorksheet('Revenue_EBITDA');
   const revHeaders = ['', 'Year 0', 'Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5'];
   revenueSheet.addRow(revHeaders);
@@ -384,53 +579,40 @@ export async function generateDCFExcel(assumptions: DCFAssumptions): Promise<Buf
     { width: 15 }
   ];
 
+  // Revenue Growth Rate row (with actual values)
   revenueSheet.addRow(['Revenue Growth Rate', '', 
-    { formula: '=Assumptions!B6' },
-    { formula: '=Assumptions!B7' },
-    { formula: '=Assumptions!B8' },
-    { formula: '=Assumptions!B9' },
-    { formula: '=Assumptions!B10' }
+    revenueGrowthRates[0] || 0.10,
+    revenueGrowthRates[1] || 0.10,
+    revenueGrowthRates[2] || 0.10,
+    revenueGrowthRates[3] || 0.10,
+    revenueGrowthRates[4] || 0.10
   ]);
   for (let i = 2; i <= 7; i++) {
     revenueSheet.getCell(2, i).numFmt = percentFormat;
   }
 
-  revenueSheet.addRow(['Revenue ($M)',
-    { formula: '=Assumptions!B5' },
-    { formula: '=B3*(1+C2)' },
-    { formula: '=C3*(1+D2)' },
-    { formula: '=D3*(1+E2)' },
-    { formula: '=E3*(1+F2)' },
-    { formula: '=F3*(1+G2)' }
-  ]);
+  // Revenue row (with actual computed values)
+  revenueSheet.addRow(['Revenue ($M)', revenue[0], revenue[1], revenue[2], revenue[3], revenue[4], revenue[5]]);
   for (let i = 2; i <= 7; i++) {
     revenueSheet.getCell(3, i).numFmt = currencyFormat;
   }
 
-  revenueSheet.addRow(['EBITDA Margin',
-    { formula: '=Assumptions!B15' },
-    { formula: '=Assumptions!B15+(Assumptions!B16-Assumptions!B15)*(1/Assumptions!B17)' },
-    { formula: '=Assumptions!B15+(Assumptions!B16-Assumptions!B15)*(2/Assumptions!B17)' },
-    { formula: '=Assumptions!B15+(Assumptions!B16-Assumptions!B15)*(3/Assumptions!B17)' },
-    { formula: '=Assumptions!B15+(Assumptions!B16-Assumptions!B15)*(4/Assumptions!B17)' },
-    { formula: '=Assumptions!B16' }
+  // EBITDA Margin row (with actual values)
+  revenueSheet.addRow(['EBITDA Margin', baseEBITDAMargin, 
+    ebitdaMargins[0], ebitdaMargins[1], ebitdaMargins[2], ebitdaMargins[3], ebitdaMargins[4]
   ]);
   for (let i = 2; i <= 7; i++) {
     revenueSheet.getCell(4, i).numFmt = percentFormat;
   }
 
-  revenueSheet.addRow(['EBITDA ($M)',
-    { formula: '=B3*B4' },
-    { formula: '=C3*C4' },
-    { formula: '=D3*D4' },
-    { formula: '=E3*E4' },
-    { formula: '=F3*F4' },
-    { formula: '=G3*G4' }
-  ]);
+  // EBITDA row (with actual values)
+  const baseEbitda = revenue[0] * baseEBITDAMargin;
+  revenueSheet.addRow(['EBITDA ($M)', baseEbitda, ebitda[0], ebitda[1], ebitda[2], ebitda[3], ebitda[4]]);
   for (let i = 2; i <= 7; i++) {
     revenueSheet.getCell(5, i).numFmt = currencyFormat;
   }
 
+  // ============ FREE CASH FLOW (with computed values) ============
   const fcfSheet = workbook.addWorksheet('Free_Cash_Flow');
   const fcfHeaders = ['', 'Year 0', 'Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5'];
   fcfSheet.addRow(fcfHeaders);
@@ -447,104 +629,59 @@ export async function generateDCFExcel(assumptions: DCFAssumptions): Promise<Buf
     { width: 15 }
   ];
 
-  fcfSheet.addRow(['Revenue ($M)',
-    { formula: '=Revenue_EBITDA!B3' },
-    { formula: '=Revenue_EBITDA!C3' },
-    { formula: '=Revenue_EBITDA!D3' },
-    { formula: '=Revenue_EBITDA!E3' },
-    { formula: '=Revenue_EBITDA!F3' },
-    { formula: '=Revenue_EBITDA!G3' }
-  ]);
+  // Calculate detailed FCF components for each year
+  const da: number[] = [];
+  const ebit: number[] = [];
+  const taxes: number[] = [];
+  const nopat: number[] = [];
+  const capex: number[] = [];
+  const nwc: number[] = [];
+  const nwcChange: number[] = [];
+  
+  for (let i = 0; i < 6; i++) {
+    const rev = revenue[i];
+    const ebitdaVal = i === 0 ? baseEbitda : ebitda[i - 1];
+    const daVal = rev * daPercent;
+    da.push(daVal);
+    const ebitVal = ebitdaVal - daVal;
+    ebit.push(ebitVal);
+    const taxVal = ebitVal * taxRate;
+    taxes.push(taxVal);
+    const nopatVal = ebitVal - taxVal;
+    nopat.push(nopatVal);
+    const capexVal = rev * capexPercent;
+    capex.push(capexVal);
+    const nwcVal = rev * nwcPercent;
+    nwc.push(nwcVal);
+    if (i === 0) {
+      nwcChange.push(0);
+    } else {
+      nwcChange.push(nwc[i] - nwc[i - 1]);
+    }
+  }
 
-  fcfSheet.addRow(['EBITDA ($M)',
-    { formula: '=Revenue_EBITDA!B5' },
-    { formula: '=Revenue_EBITDA!C5' },
-    { formula: '=Revenue_EBITDA!D5' },
-    { formula: '=Revenue_EBITDA!E5' },
-    { formula: '=Revenue_EBITDA!F5' },
-    { formula: '=Revenue_EBITDA!G5' }
-  ]);
-
-  fcfSheet.addRow(['Less: D&A ($M)',
-    { formula: '=-B2*Assumptions!$B$18' },
-    { formula: '=-C2*Assumptions!$B$18' },
-    { formula: '=-D2*Assumptions!$B$18' },
-    { formula: '=-E2*Assumptions!$B$18' },
-    { formula: '=-F2*Assumptions!$B$18' },
-    { formula: '=-G2*Assumptions!$B$18' }
-  ]);
-
-  fcfSheet.addRow(['EBIT ($M)',
-    { formula: '=B3+B4' },
-    { formula: '=C3+C4' },
-    { formula: '=D3+D4' },
-    { formula: '=E3+E4' },
-    { formula: '=F3+F4' },
-    { formula: '=G3+G4' }
-  ]);
-
-  fcfSheet.addRow(['Less: Taxes ($M)',
-    { formula: '=-B5*Assumptions!$B$19' },
-    { formula: '=-C5*Assumptions!$B$19' },
-    { formula: '=-D5*Assumptions!$B$19' },
-    { formula: '=-E5*Assumptions!$B$19' },
-    { formula: '=-F5*Assumptions!$B$19' },
-    { formula: '=-G5*Assumptions!$B$19' }
-  ]);
-
-  fcfSheet.addRow(['NOPAT ($M)',
-    { formula: '=B5+B6' },
-    { formula: '=C5+C6' },
-    { formula: '=D5+D6' },
-    { formula: '=E5+E6' },
-    { formula: '=F5+F6' },
-    { formula: '=G5+G6' }
-  ]);
-
-  fcfSheet.addRow(['Add back: D&A ($M)',
-    { formula: '=-B4' },
-    { formula: '=-C4' },
-    { formula: '=-D4' },
-    { formula: '=-E4' },
-    { formula: '=-F4' },
-    { formula: '=-G4' }
-  ]);
-
-  fcfSheet.addRow(['Less: CapEx ($M)',
-    { formula: '=-B2*Assumptions!$B$22' },
-    { formula: '=-C2*Assumptions!$B$22' },
-    { formula: '=-D2*Assumptions!$B$22' },
-    { formula: '=-E2*Assumptions!$B$22' },
-    { formula: '=-F2*Assumptions!$B$22' },
-    { formula: '=-G2*Assumptions!$B$22' }
-  ]);
-
-  fcfSheet.addRow(['NWC Balance ($M)',
-    { formula: '=B2*Assumptions!$B$23' },
-    { formula: '=C2*Assumptions!$B$23' },
-    { formula: '=D2*Assumptions!$B$23' },
-    { formula: '=E2*Assumptions!$B$23' },
-    { formula: '=F2*Assumptions!$B$23' },
-    { formula: '=G2*Assumptions!$B$23' }
-  ]);
-
-  fcfSheet.addRow(['Less: Change in NWC ($M)',
-    '',
-    { formula: '=-(C10-B10)' },
-    { formula: '=-(D10-C10)' },
-    { formula: '=-(E10-D10)' },
-    { formula: '=-(F10-E10)' },
-    { formula: '=-(G10-F10)' }
-  ]);
-
-  fcfSheet.addRow(['Unlevered FCF ($M)',
-    { formula: '=B7+B8+B9+B11' },
-    { formula: '=C7+C8+C9+C11' },
-    { formula: '=D7+D8+D9+D11' },
-    { formula: '=E7+E8+E9+E11' },
-    { formula: '=F7+F8+F9+F11' },
-    { formula: '=G7+G8+G9+G11' }
-  ]);
+  fcfSheet.addRow(['Revenue ($M)', revenue[0], revenue[1], revenue[2], revenue[3], revenue[4], revenue[5]]);
+  fcfSheet.addRow(['EBITDA ($M)', baseEbitda, ebitda[0], ebitda[1], ebitda[2], ebitda[3], ebitda[4]]);
+  fcfSheet.addRow(['Less: D&A ($M)', -da[0], -da[1], -da[2], -da[3], -da[4], -da[5]]);
+  fcfSheet.addRow(['EBIT ($M)', ebit[0], ebit[1], ebit[2], ebit[3], ebit[4], ebit[5]]);
+  fcfSheet.addRow(['Less: Taxes ($M)', -taxes[0], -taxes[1], -taxes[2], -taxes[3], -taxes[4], -taxes[5]]);
+  fcfSheet.addRow(['NOPAT ($M)', nopat[0], nopat[1], nopat[2], nopat[3], nopat[4], nopat[5]]);
+  fcfSheet.addRow(['Add back: D&A ($M)', da[0], da[1], da[2], da[3], da[4], da[5]]);
+  fcfSheet.addRow(['Less: CapEx ($M)', -capex[0], -capex[1], -capex[2], -capex[3], -capex[4], -capex[5]]);
+  fcfSheet.addRow(['NWC Balance ($M)', nwc[0], nwc[1], nwc[2], nwc[3], nwc[4], nwc[5]]);
+  fcfSheet.addRow(['Less: Change in NWC ($M)', '', -nwcChange[1], -nwcChange[2], -nwcChange[3], -nwcChange[4], -nwcChange[5]]);
+  
+  // Calculate actual unlevered FCF
+  const unleveredFcf: (number | string)[] = [];
+  for (let i = 0; i < 6; i++) {
+    if (i === 0) {
+      unleveredFcf.push('');
+    } else {
+      const fcfCalc = nopat[i] + da[i] - capex[i] - nwcChange[i];
+      unleveredFcf.push(fcfCalc);
+    }
+  }
+  fcfSheet.addRow(['Unlevered FCF ($M)', ...unleveredFcf]);
   fcfSheet.getRow(12).font = { bold: true };
 
   for (let row = 2; row <= 12; row++) {
@@ -553,6 +690,7 @@ export async function generateDCFExcel(assumptions: DCFAssumptions): Promise<Buf
     }
   }
 
+  // ============ DCF VALUATION (with computed values) ============
   const dcfSheet = workbook.addWorksheet('DCF_Valuation');
   dcfSheet.columns = [
     { width: 35 },
@@ -568,69 +706,79 @@ export async function generateDCFExcel(assumptions: DCFAssumptions): Promise<Buf
   dcfSheet.getRow(2).font = { bold: true };
   dcfSheet.getRow(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
 
+  // Add each year's FCF with computed values
+  const pvValues: number[] = [];
   for (let year = 1; year <= 5; year++) {
-    const row = dcfSheet.addRow([
-      year,
-      { formula: `=Free_Cash_Flow!${String.fromCharCode(66 + year)}12` },
-      { formula: `=1/(1+Assumptions!$B$26)^${year}` },
-      { formula: `=B${2 + year}*C${2 + year}` }
-    ]);
+    const yearFcf = fcf[year - 1];
+    const discountFactor = 1 / Math.pow(1 + wacc, year);
+    const pv = yearFcf * discountFactor;
+    pvValues.push(pv);
+    
+    const row = dcfSheet.addRow([year, yearFcf, discountFactor, pv]);
     row.getCell(2).numFmt = currencyFormat;
     row.getCell(3).numFmt = '0.0000';
     row.getCell(4).numFmt = currencyFormat;
   }
 
-  dcfSheet.addRow(['Total PV of Years 1-5:', '', '', { formula: '=SUM(D3:D7)' }]);
+  const totalPVFCF = pvValues.reduce((a, b) => a + b, 0);
+  dcfSheet.addRow(['Total PV of Years 1-5:', '', '', totalPVFCF]);
   dcfSheet.getRow(8).font = { bold: true };
   dcfSheet.getCell('D8').numFmt = currencyFormat;
 
   dcfSheet.getCell('A10').value = 'TERMINAL VALUE CALCULATION';
   dcfSheet.getCell('A10').font = { bold: true, size: 14 };
   
-  dcfSheet.addRow(['Year 6 FCF ($M):', { formula: '=Free_Cash_Flow!G12*(1+Assumptions!B12)' }]);
+  const year6Fcf = fcf[4] * (1 + terminalGrowthRate);
+  dcfSheet.addRow(['Year 6 FCF ($M):', year6Fcf]);
   dcfSheet.getCell('B11').numFmt = currencyFormat;
   
-  dcfSheet.addRow(['Terminal Value ($M):', { formula: '=B11/(Assumptions!B26-Assumptions!B12)' }]);
+  const calculatedTerminalValue = year6Fcf / (wacc - terminalGrowthRate);
+  dcfSheet.addRow(['Terminal Value ($M):', calculatedTerminalValue]);
   dcfSheet.getCell('B12').numFmt = currencyFormat;
   
-  dcfSheet.addRow(['Discount Factor (Year 5):', { formula: '=1/(1+Assumptions!B26)^5' }]);
+  const discountFactor5 = 1 / Math.pow(1 + wacc, 5);
+  dcfSheet.addRow(['Discount Factor (Year 5):', discountFactor5]);
   dcfSheet.getCell('B13').numFmt = '0.0000';
   
-  dcfSheet.addRow(['PV of Terminal Value ($M):', { formula: '=B12*B13' }]);
+  const pvTerminalValue = calculatedTerminalValue * discountFactor5;
+  dcfSheet.addRow(['PV of Terminal Value ($M):', pvTerminalValue]);
   dcfSheet.getCell('B14').numFmt = currencyFormat;
   dcfSheet.getRow(14).font = { bold: true };
 
   dcfSheet.getCell('A16').value = 'ENTERPRISE VALUE BRIDGE';
   dcfSheet.getCell('A16').font = { bold: true, size: 14 };
   
-  dcfSheet.addRow(['PV of Explicit Period FCFs ($M):', { formula: '=D8' }]);
+  dcfSheet.addRow(['PV of Explicit Period FCFs ($M):', totalPVFCF]);
   dcfSheet.getCell('B17').numFmt = currencyFormat;
   
-  dcfSheet.addRow(['Plus: PV of Terminal Value ($M):', { formula: '=B14' }]);
+  dcfSheet.addRow(['Plus: PV of Terminal Value ($M):', pvTerminalValue]);
   dcfSheet.getCell('B18').numFmt = currencyFormat;
   
   dcfSheet.addRow(['']);
   
-  dcfSheet.addRow(['Enterprise Value ($M):', { formula: '=B17+B18' }]);
+  const calculatedEV = totalPVFCF + pvTerminalValue;
+  dcfSheet.addRow(['Enterprise Value ($M):', calculatedEV]);
   dcfSheet.getCell('B20').numFmt = currencyFormat;
   dcfSheet.getRow(20).font = { bold: true };
   
-  dcfSheet.addRow(['Less: Total Debt ($M):', { formula: '=-Assumptions!B32' }]);
+  dcfSheet.addRow(['Less: Total Debt ($M):', -totalDebt]);
   dcfSheet.getCell('B21').numFmt = currencyFormat;
   
-  dcfSheet.addRow(['Plus: Cash ($M):', { formula: '=Assumptions!B33' }]);
+  dcfSheet.addRow(['Plus: Cash ($M):', cashAndEquivalents]);
   dcfSheet.getCell('B22').numFmt = currencyFormat;
   
   dcfSheet.addRow(['']);
   
-  dcfSheet.addRow(['Equity Value ($M):', { formula: '=B20+B21+B22' }]);
+  const calculatedEquityValue = calculatedEV - totalDebt + cashAndEquivalents;
+  dcfSheet.addRow(['Equity Value ($M):', calculatedEquityValue]);
   dcfSheet.getCell('B24').numFmt = currencyFormat;
   dcfSheet.getRow(24).font = { bold: true };
   
-  dcfSheet.addRow(['Shares Outstanding (M):', { formula: '=Assumptions!B34' }]);
+  dcfSheet.addRow(['Shares Outstanding (M):', sharesOutstanding]);
   dcfSheet.getCell('B25').numFmt = '#,##0.0';
   
-  dcfSheet.addRow(['Value per Share:', { formula: '=B24/B25' }]);
+  const calculatedSharePrice = calculatedEquityValue / sharesOutstanding;
+  dcfSheet.addRow(['Value per Share:', calculatedSharePrice]);
   dcfSheet.getCell('B26').numFmt = perShareFormat;
   dcfSheet.getRow(26).font = { bold: true, size: 14 };
   dcfSheet.getCell('B26').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };

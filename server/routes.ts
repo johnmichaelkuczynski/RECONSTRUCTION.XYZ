@@ -3227,10 +3227,92 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
     }
   });
 
-  // Finance Panel - Generate Financial Models
+  // Finance Panel - Parse DCF description and return valuation preview
+  app.post("/api/finance/parse-dcf", async (req: Request, res: Response) => {
+    try {
+      const { description, customInstructions, llmProvider = 'zhi1' } = req.body;
+
+      if (!description || !description.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Description is required"
+        });
+      }
+
+      const providerNames: Record<string, string> = {
+        'zhi1': 'OpenAI GPT-4',
+        'zhi2': 'Anthropic Claude',
+        'zhi3': 'DeepSeek',
+        'zhi4': 'Perplexity',
+        'zhi5': 'Grok'
+      };
+
+      console.log(`Finance Panel - Parsing DCF with ${llmProvider} (${providerNames[llmProvider]})`);
+      console.log(`Description length: ${description.length} characters`);
+
+      // Import the calculation function
+      const { calculateDCFValuation } = await import('./services/dcfModelService');
+
+      // Parse the natural language description to extract assumptions
+      const assumptions = await parseFinancialDescription(description, customInstructions, llmProvider);
+      console.log("Extracted assumptions:", JSON.stringify(assumptions, null, 2));
+
+      // Calculate valuation
+      const result = calculateDCFValuation(assumptions, providerNames[llmProvider] || llmProvider);
+
+      res.json({
+        success: true,
+        ...result
+      });
+
+    } catch (error: any) {
+      console.error("DCF Parse error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to parse financial description"
+      });
+    }
+  });
+
+  // Finance Panel - Download Excel from pre-parsed assumptions
+  app.post("/api/finance/download-dcf", async (req: Request, res: Response) => {
+    try {
+      const { assumptions } = req.body;
+
+      if (!assumptions) {
+        return res.status(400).json({
+          success: false,
+          message: "Assumptions are required"
+        });
+      }
+
+      console.log("Generating DCF Excel from parsed assumptions...");
+      const excelBuffer = await generateDCFExcel(assumptions);
+
+      // Generate filename
+      const companyNameSlug = assumptions.companyName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `${companyNameSlug}_DCF_Model_${dateStr}.xlsx`;
+
+      // Send the file
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', excelBuffer.length);
+      res.send(excelBuffer);
+
+    } catch (error: any) {
+      console.error("DCF Excel download error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to generate Excel file"
+      });
+    }
+  });
+
+  // Finance Panel - Generate Financial Models (legacy endpoint, kept for compatibility)
   app.post("/api/finance/generate-model", async (req: Request, res: Response) => {
     try {
-      const { modelType, description, customInstructions, llmProvider = 'zhi2' } = req.body;
+      const { modelType, description, customInstructions, llmProvider = 'zhi1' } = req.body;
 
       if (!modelType || !description) {
         return res.status(400).json({

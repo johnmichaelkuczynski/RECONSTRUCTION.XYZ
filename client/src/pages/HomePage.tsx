@@ -179,9 +179,11 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [financeInputText, setFinanceInputText] = useState("");
   const [financeCustomInstructions, setFinanceCustomInstructions] = useState("");
   const [financeLoading, setFinanceLoading] = useState(false);
+  const [financeLoadingPhase, setFinanceLoadingPhase] = useState<string>("");
   const [financeResult, setFinanceResult] = useState<any>(null);
   const [showFinanceCustomization, setShowFinanceCustomization] = useState(false);
   const [financeLLMProvider, setFinanceLLMProvider] = useState<"zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5">("zhi1");
+  const [financeDownloadLoading, setFinanceDownloadLoading] = useState(false);
   
   // Load writing samples and style presets on component mount
   useEffect(() => {
@@ -555,7 +557,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setValidatorCustomInstructions("");
   };
 
-  // Finance Panel Handler
+  // Finance Panel Handler - Two-step flow: Parse & Preview, then Download
   const handleFinanceModelGenerate = async (modelType: "dcf" | "lbo" | "ma" | "threestatement") => {
     if (!financeInputText.trim()) {
       toast({
@@ -570,27 +572,91 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setFinanceLoading(true);
     setFinanceResult(null);
 
+    const providerNames: Record<string, string> = {
+      'zhi1': 'OpenAI GPT-4',
+      'zhi2': 'Anthropic Claude',
+      'zhi3': 'DeepSeek',
+      'zhi4': 'Perplexity',
+      'zhi5': 'Grok'
+    };
+
     try {
-      const response = await fetch('/api/finance/generate-model', {
+      if (modelType === "dcf") {
+        setFinanceLoadingPhase(`Parsing with ${providerNames[financeLLMProvider]}...`);
+        
+        const response = await fetch('/api/finance/parse-dcf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description: financeInputText,
+            customInstructions: financeCustomInstructions,
+            llmProvider: financeLLMProvider,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Parsing failed');
+        }
+
+        const result = await response.json();
+        setFinanceResult(result);
+        
+        toast({
+          title: "Analysis Complete",
+          description: `DCF valuation computed for ${result.assumptions?.companyName || 'company'}`,
+        });
+      } else {
+        toast({
+          title: "Coming Soon",
+          description: `${modelType.toUpperCase()} model is not yet available. DCF is fully functional.`,
+          variant: "destructive"
+        });
+      }
+    } catch (error: any) {
+      console.error('Finance model error:', error);
+      toast({
+        title: "Analysis Failed",
+        description: error.message || "An error occurred during analysis.",
+        variant: "destructive",
+      });
+    } finally {
+      setFinanceLoading(false);
+      setFinanceLoadingPhase("");
+    }
+  };
+
+  // Download Excel from parsed results
+  const handleFinanceDownloadExcel = async () => {
+    if (!financeResult?.assumptions) {
+      toast({
+        title: "No Results",
+        description: "Please generate a valuation first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setFinanceDownloadLoading(true);
+
+    try {
+      const response = await fetch('/api/finance/download-dcf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          modelType,
-          description: financeInputText,
-          customInstructions: financeCustomInstructions,
-          llmProvider: financeLLMProvider,
+          assumptions: financeResult.assumptions,
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Model generation failed');
+        throw new Error(errorData.message || 'Download failed');
       }
 
       // Handle file download
       const blob = await response.blob();
       const contentDisposition = response.headers.get('Content-Disposition');
-      let filename = `${modelType.toUpperCase()}_Model_${new Date().toISOString().split('T')[0]}.xlsx`;
+      let filename = `DCF_Model_${new Date().toISOString().split('T')[0]}.xlsx`;
       
       if (contentDisposition) {
         const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
@@ -609,20 +675,19 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
-      setFinanceResult({ success: true, filename });
       toast({
-        title: "Model Generated!",
-        description: `${modelType.toUpperCase()} model downloaded as ${filename}`,
+        title: "Excel Downloaded",
+        description: `Model saved as ${filename}`,
       });
     } catch (error: any) {
-      console.error('Finance model error:', error);
+      console.error('Excel download error:', error);
       toast({
-        title: "Generation Failed",
-        description: error.message || "An error occurred during model generation.",
+        title: "Download Failed",
+        description: error.message || "Failed to download Excel file.",
         variant: "destructive",
       });
     } finally {
-      setFinanceLoading(false);
+      setFinanceDownloadLoading(false);
     }
   };
 
@@ -632,6 +697,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setFinanceModelType(null);
     setFinanceResult(null);
     setShowFinanceCustomization(false);
+    setFinanceLoadingPhase("");
   };
 
   // Coherence Meter Handlers
@@ -2522,12 +2588,12 @@ Generated on: ${new Date().toLocaleString()}`;
                   {financeLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Generating Model...
+                      {financeLoadingPhase || "Analyzing..."}
                     </>
                   ) : (
                     <>
-                      <FileSpreadsheet className="w-4 h-4 mr-2" />
-                      Generate Excel Model
+                      <Calculator className="w-4 h-4 mr-2" />
+                      Analyze & Value
                     </>
                   )}
                 </Button>
@@ -2542,12 +2608,244 @@ Generated on: ${new Date().toLocaleString()}`;
             </div>
           )}
 
-          {/* Result notification */}
-          {financeResult && financeResult.success && (
-            <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700">
-              <div className="flex items-center gap-2 text-green-800 dark:text-green-200">
-                <Download className="w-5 h-5" />
-                <span className="font-medium">Model downloaded: {financeResult.filename}</span>
+          {/* DCF Results Display */}
+          {financeResult && financeResult.success && financeResult.assumptions && (
+            <div className="mb-6 space-y-6">
+              {/* Header with company name and download button */}
+              <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-700">
+                <div>
+                  <h3 className="text-xl font-bold text-blue-900 dark:text-blue-100">
+                    {financeResult.assumptions.companyName} - DCF Valuation
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Analyzed by {financeResult.providerUsed}
+                  </p>
+                </div>
+                <Button
+                  onClick={handleFinanceDownloadExcel}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  disabled={financeDownloadLoading}
+                  data-testid="button-download-excel"
+                >
+                  {financeDownloadLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Download Excel Model
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Valuation Summary - Three Scenarios */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Bear Case */}
+                <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-700">
+                  <h4 className="text-lg font-semibold text-red-800 dark:text-red-200 mb-3 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 rotate-180" />
+                    Bear Case
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Enterprise Value:</span>
+                      <span className="font-semibold text-red-700 dark:text-red-300">
+                        ${(financeResult.valuation.bear.enterpriseValue).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Equity Value:</span>
+                      <span className="font-semibold text-red-700 dark:text-red-300">
+                        ${(financeResult.valuation.bear.equityValue).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-red-200 dark:border-red-600 pt-2">
+                      <span className="text-gray-700 dark:text-gray-300 font-medium">Share Price:</span>
+                      <span className="font-bold text-red-800 dark:text-red-200 text-lg">
+                        ${(financeResult.valuation.bear.sharePrice).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Base Case */}
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border-2 border-blue-400 dark:border-blue-500">
+                  <h4 className="text-lg font-semibold text-blue-800 dark:text-blue-200 mb-3 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    Base Case
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Enterprise Value:</span>
+                      <span className="font-semibold text-blue-700 dark:text-blue-300">
+                        ${(financeResult.valuation.base.enterpriseValue).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Equity Value:</span>
+                      <span className="font-semibold text-blue-700 dark:text-blue-300">
+                        ${(financeResult.valuation.base.equityValue).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-blue-300 dark:border-blue-500 pt-2">
+                      <span className="text-gray-700 dark:text-gray-300 font-medium">Share Price:</span>
+                      <span className="font-bold text-blue-800 dark:text-blue-200 text-xl">
+                        ${(financeResult.valuation.base.sharePrice).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bull Case */}
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700">
+                  <h4 className="text-lg font-semibold text-green-800 dark:text-green-200 mb-3 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    Bull Case
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Enterprise Value:</span>
+                      <span className="font-semibold text-green-700 dark:text-green-300">
+                        ${(financeResult.valuation.bull.enterpriseValue).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Equity Value:</span>
+                      <span className="font-semibold text-green-700 dark:text-green-300">
+                        ${(financeResult.valuation.bull.equityValue).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-green-200 dark:border-green-600 pt-2">
+                      <span className="text-gray-700 dark:text-gray-300 font-medium">Share Price:</span>
+                      <span className="font-bold text-green-800 dark:text-green-200 text-lg">
+                        ${(financeResult.valuation.bull.sharePrice).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Key Assumptions Table */}
+              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-700">
+                <h4 className="text-lg font-semibold text-blue-800 dark:text-blue-200 mb-4">
+                  Extracted Assumptions
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Base Revenue</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      ${financeResult.assumptions.baseYearRevenue?.toLocaleString()}M
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">WACC</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      {(financeResult.assumptions.wacc * 100)?.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Terminal Growth</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      {(financeResult.assumptions.terminalGrowthRate * 100)?.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Tax Rate</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      {(financeResult.assumptions.taxRate * 100)?.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Base EBITDA Margin</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      {(financeResult.assumptions.baseEBITDAMargin * 100)?.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Target EBITDA Margin</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      {(financeResult.assumptions.targetEBITDAMargin * 100)?.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Net Debt</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      ${(financeResult.assumptions.totalDebt - financeResult.assumptions.cashAndEquivalents)?.toLocaleString()}M
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Shares Outstanding</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      {financeResult.assumptions.sharesOutstanding?.toLocaleString()}M
+                    </div>
+                  </div>
+                </div>
+
+                {/* Revenue Growth Rates */}
+                <div className="mt-4">
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Revenue Growth Rates (Y1-Y5)</div>
+                  <div className="flex gap-2">
+                    {financeResult.assumptions.revenueGrowthRates?.map((rate: number, idx: number) => (
+                      <div key={idx} className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 rounded text-sm font-medium text-blue-800 dark:text-blue-200">
+                        Y{idx + 1}: {(rate * 100).toFixed(0)}%
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Projections Table */}
+              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-700 overflow-x-auto">
+                <h4 className="text-lg font-semibold text-blue-800 dark:text-blue-200 mb-4">
+                  5-Year Projections
+                </h4>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-600">
+                      <th className="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Metric</th>
+                      {financeResult.projections?.years?.map((year: number) => (
+                        <th key={year} className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Year {year}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Revenue ($M)</td>
+                      {financeResult.projections?.revenue?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          ${val.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">EBITDA ($M)</td>
+                      {financeResult.projections?.ebitda?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          ${val.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">EBITDA Margin</td>
+                      {financeResult.projections?.ebitdaMargin?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          {(val * 100).toFixed(1)}%
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Free Cash Flow ($M)</td>
+                      {financeResult.projections?.fcf?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-bold text-blue-700 dark:text-blue-300">
+                          ${val.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
