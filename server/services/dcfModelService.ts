@@ -1,5 +1,8 @@
 import ExcelJS from 'exceljs';
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
+
+export type FinanceLLMProvider = 'zhi1' | 'zhi2' | 'zhi3' | 'zhi4' | 'zhi5';
 
 interface DCFAssumptions {
   companyName: string;
@@ -20,11 +23,12 @@ interface DCFAssumptions {
   sharesOutstanding: number;
 }
 
-export async function parseFinancialDescription(description: string, customInstructions?: string): Promise<DCFAssumptions> {
-  const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
-
+export async function parseFinancialDescription(
+  description: string, 
+  customInstructions?: string,
+  llmProvider: FinanceLLMProvider = 'zhi2'
+): Promise<DCFAssumptions> {
+  
   const systemPrompt = `You are a financial analyst expert at extracting DCF model assumptions from natural language descriptions.
 Extract ALL the following variables from the user's description. If a value is not explicitly stated, use reasonable defaults based on industry standards.
 
@@ -72,24 +76,110 @@ IMPORTANT: Return ONLY valid JSON, no markdown, no explanations.`;
     userPrompt += `\n\nAdditional instructions: ${customInstructions}`;
   }
 
-  const response = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
-    max_tokens: 2000,
-    temperature: 0,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userPrompt }]
-  });
+  let responseText: string;
 
-  const content = response.content[0];
-  if (content.type !== 'text') {
-    throw new Error('Unexpected response type from AI');
+  if (llmProvider === 'zhi1') {
+    // OpenAI (GPT-4)
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      max_tokens: 2000,
+      temperature: 0,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ]
+    });
+    responseText = response.choices[0]?.message?.content || '';
+    
+  } else if (llmProvider === 'zhi2') {
+    // Anthropic (Claude)
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await anthropic.messages.create({
+      model: 'claude-3-7-sonnet-20250219',
+      max_tokens: 2000,
+      temperature: 0,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    });
+    const content = response.content[0];
+    if (content.type !== 'text') {
+      throw new Error('Unexpected response type from Anthropic');
+    }
+    responseText = content.text;
+    
+  } else if (llmProvider === 'zhi3') {
+    // DeepSeek
+    const openaiCompatible = new OpenAI({
+      baseURL: 'https://api.deepseek.com/v1',
+      apiKey: process.env.DEEPSEEK_API_KEY
+    });
+    const response = await openaiCompatible.chat.completions.create({
+      model: 'deepseek-chat',
+      max_tokens: 2000,
+      temperature: 0,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ]
+    });
+    responseText = response.choices[0]?.message?.content || '';
+    
+  } else if (llmProvider === 'zhi4') {
+    // Perplexity
+    const perplexity = new OpenAI({
+      baseURL: 'https://api.perplexity.ai',
+      apiKey: process.env.PERPLEXITY_API_KEY
+    });
+    const response = await perplexity.chat.completions.create({
+      model: 'llama-3.1-sonar-large-128k-online',
+      max_tokens: 2000,
+      temperature: 0,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ]
+    });
+    responseText = response.choices[0]?.message?.content || '';
+    
+  } else if (llmProvider === 'zhi5') {
+    // Grok (xAI)
+    const grok = new OpenAI({
+      baseURL: 'https://api.x.ai/v1',
+      apiKey: process.env.GROK_API_KEY
+    });
+    const response = await grok.chat.completions.create({
+      model: 'grok-beta',
+      max_tokens: 2000,
+      temperature: 0,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ]
+    });
+    responseText = response.choices[0]?.message?.content || '';
+    
+  } else {
+    throw new Error(`Unknown LLM provider: ${llmProvider}`);
   }
 
+  // Clean up potential markdown code blocks
+  let cleanedText = responseText.trim();
+  if (cleanedText.startsWith('```json')) {
+    cleanedText = cleanedText.slice(7);
+  } else if (cleanedText.startsWith('```')) {
+    cleanedText = cleanedText.slice(3);
+  }
+  if (cleanedText.endsWith('```')) {
+    cleanedText = cleanedText.slice(0, -3);
+  }
+  cleanedText = cleanedText.trim();
+
   try {
-    const assumptions = JSON.parse(content.text.trim());
+    const assumptions = JSON.parse(cleanedText);
     return assumptions as DCFAssumptions;
   } catch (error) {
-    console.error('Failed to parse AI response:', content.text);
+    console.error('Failed to parse AI response:', responseText);
     throw new Error('Failed to parse financial assumptions from description');
   }
 }

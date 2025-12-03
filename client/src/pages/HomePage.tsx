@@ -181,6 +181,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [financeLoading, setFinanceLoading] = useState(false);
   const [financeResult, setFinanceResult] = useState<any>(null);
   const [showFinanceCustomization, setShowFinanceCustomization] = useState(false);
+  const [financeLLMProvider, setFinanceLLMProvider] = useState<"zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5">("zhi1");
   
   // Load writing samples and style presets on component mount
   useEffect(() => {
@@ -577,6 +578,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           modelType,
           description: financeInputText,
           customInstructions: financeCustomInstructions,
+          llmProvider: financeLLMProvider,
         }),
       });
 
@@ -2469,6 +2471,25 @@ Generated on: ${new Date().toLocaleString()}`;
                 {financeModelType === "ma" && "M&A Model Customization"}
                 {financeModelType === "threestatement" && "3-Statement Model Customization"}
               </h3>
+
+              {/* LLM Provider Selector */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  AI Model
+                </label>
+                <Select value={financeLLMProvider} onValueChange={(value: "zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5") => setFinanceLLMProvider(value)}>
+                  <SelectTrigger className="w-full max-w-xs" data-testid="select-finance-llm">
+                    <SelectValue placeholder="Select AI Model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="zhi1" data-testid="select-item-zhi1">Zhi 1 (OpenAI GPT-4)</SelectItem>
+                    <SelectItem value="zhi2" data-testid="select-item-zhi2">Zhi 2 (Anthropic Claude)</SelectItem>
+                    <SelectItem value="zhi3" data-testid="select-item-zhi3">Zhi 3 (DeepSeek)</SelectItem>
+                    <SelectItem value="zhi4" data-testid="select-item-zhi4">Zhi 4 (Perplexity)</SelectItem>
+                    <SelectItem value="zhi5" data-testid="select-item-zhi5">Zhi 5 (Grok)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

@@ -3230,7 +3230,7 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
   // Finance Panel - Generate Financial Models
   app.post("/api/finance/generate-model", async (req: Request, res: Response) => {
     try {
-      const { modelType, description, customInstructions } = req.body;
+      const { modelType, description, customInstructions, llmProvider = 'zhi2' } = req.body;
 
       if (!modelType || !description) {
         return res.status(400).json({
@@ -3239,12 +3239,12 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
         });
       }
 
-      console.log(`Finance Panel - Model Type: ${modelType}, Description length: ${description.length}`);
+      console.log(`Finance Panel - Model Type: ${modelType}, LLM: ${llmProvider}, Description length: ${description.length}`);
 
       if (modelType === "dcf") {
         // Parse the natural language description to extract assumptions
-        console.log("Parsing financial description with AI...");
-        const assumptions = await parseFinancialDescription(description, customInstructions);
+        console.log(`Parsing financial description with ${llmProvider}...`);
+        const assumptions = await parseFinancialDescription(description, customInstructions, llmProvider);
         console.log("Extracted assumptions:", JSON.stringify(assumptions, null, 2));
 
         // Generate the DCF Excel file
