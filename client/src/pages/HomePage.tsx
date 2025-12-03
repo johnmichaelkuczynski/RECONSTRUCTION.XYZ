@@ -182,7 +182,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [financeLoadingPhase, setFinanceLoadingPhase] = useState<string>("");
   const [financeResult, setFinanceResult] = useState<any>(null);
   const [showFinanceCustomization, setShowFinanceCustomization] = useState(false);
-  const [financeLLMProvider, setFinanceLLMProvider] = useState<"zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5">("zhi1");
+  const [financeLLMProvider, setFinanceLLMProvider] = useState<"zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5">("zhi5");
   const [financeDownloadLoading, setFinanceDownloadLoading] = useState(false);
   
   // Load writing samples and style presets on component mount
@@ -653,15 +653,19 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         throw new Error(errorData.message || 'Download failed');
       }
 
-      // Handle file download
-      const blob = await response.blob();
+      // Handle file download - get array buffer and create blob with correct type
+      const arrayBuffer = await response.arrayBuffer();
+      const blob = new Blob([arrayBuffer], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      
       const contentDisposition = response.headers.get('Content-Disposition');
       let filename = `DCF_Model_${new Date().toISOString().split('T')[0]}.xlsx`;
       
       if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+        const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
         if (filenameMatch) {
-          filename = filenameMatch[1];
+          filename = filenameMatch[1].replace(/"/g, '');
         }
       }
 
@@ -2548,11 +2552,11 @@ Generated on: ${new Date().toLocaleString()}`;
                     <SelectValue placeholder="Select AI Model" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="zhi1" data-testid="select-item-zhi1">Zhi 1 (OpenAI GPT-4)</SelectItem>
-                    <SelectItem value="zhi2" data-testid="select-item-zhi2">Zhi 2 (Anthropic Claude)</SelectItem>
-                    <SelectItem value="zhi3" data-testid="select-item-zhi3">Zhi 3 (DeepSeek)</SelectItem>
-                    <SelectItem value="zhi4" data-testid="select-item-zhi4">Zhi 4 (Perplexity)</SelectItem>
-                    <SelectItem value="zhi5" data-testid="select-item-zhi5">Zhi 5 (Grok)</SelectItem>
+                    <SelectItem value="zhi1" data-testid="select-item-zhi1">Zhi 1</SelectItem>
+                    <SelectItem value="zhi2" data-testid="select-item-zhi2">Zhi 2</SelectItem>
+                    <SelectItem value="zhi3" data-testid="select-item-zhi3">Zhi 3</SelectItem>
+                    <SelectItem value="zhi4" data-testid="select-item-zhi4">Zhi 4</SelectItem>
+                    <SelectItem value="zhi5" data-testid="select-item-zhi5">Zhi 5</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
