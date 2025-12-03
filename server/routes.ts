@@ -14,6 +14,7 @@ import { extractTextFromFile } from "./api/documentParser";
 import { sendSimpleEmail } from "./api/simpleEmailService";
 import { upload as speechUpload, processSpeechToText } from "./api/simpleSpeechToText";
 import { parseFinancialDescription, generateDCFExcel } from "./services/dcfModelService";
+import { parseLBODescription, calculateLBOReturns, generateLBOExcel } from "./services/lboModelService";
 
 
 // Configure multer for file uploads
@@ -3309,6 +3310,81 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
     }
   });
 
+  // Finance Panel - Parse LBO description and return structured data
+  app.post("/api/finance/parse-lbo", async (req: Request, res: Response) => {
+    try {
+      const { description, customInstructions, llmProvider = "zhi5" } = req.body;
+
+      if (!description) {
+        return res.status(400).json({
+          success: false,
+          message: "Description is required"
+        });
+      }
+
+      console.log(`Parsing LBO description with ${llmProvider}...`);
+      const { assumptions, providerUsed } = await parseLBODescription(
+        description,
+        llmProvider as "zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5",
+        customInstructions
+      );
+
+      console.log("Calculating LBO returns...");
+      const results = calculateLBOReturns(assumptions);
+
+      res.json({
+        success: true,
+        assumptions: results.assumptions,
+        projections: results.projections,
+        sourcesAndUses: results.sourcesAndUses,
+        exitValuation: results.exitValuation,
+        returns: results.returns,
+        keyMetrics: results.keyMetrics,
+        providerUsed
+      });
+
+    } catch (error: any) {
+      console.error("LBO parsing error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to parse LBO description"
+      });
+    }
+  });
+
+  // Finance Panel - Download LBO Excel from pre-parsed assumptions
+  app.post("/api/finance/download-lbo", async (req: Request, res: Response) => {
+    try {
+      const { assumptions } = req.body;
+
+      if (!assumptions) {
+        return res.status(400).json({
+          success: false,
+          message: "Assumptions are required"
+        });
+      }
+
+      console.log("Generating LBO Excel from parsed assumptions...");
+      const excelBuffer = await generateLBOExcel(assumptions);
+
+      const companyNameSlug = assumptions.companyName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `${companyNameSlug}_LBO_Model_${dateStr}.xlsx`;
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', excelBuffer.length);
+      res.send(excelBuffer);
+
+    } catch (error: any) {
+      console.error("LBO Excel download error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to generate Excel file"
+      });
+    }
+  });
+
   // Finance Panel - Generate Financial Models (legacy endpoint, kept for compatibility)
   app.post("/api/finance/generate-model", async (req: Request, res: Response) => {
     try {
@@ -3345,11 +3421,26 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
         res.send(excelBuffer);
 
       } else if (modelType === "lbo") {
-        // LBO Model - placeholder for future implementation
-        return res.status(501).json({
-          success: false,
-          message: "LBO Model coming soon - DCF Model is currently available"
-        });
+        // LBO Model - generate using new service
+        console.log(`Parsing LBO description with ${llmProvider}...`);
+        const { assumptions: lboAssumptions, providerUsed } = await parseLBODescription(
+          description,
+          llmProvider as "zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5",
+          customInstructions
+        );
+        console.log("LBO assumptions extracted:", JSON.stringify(lboAssumptions, null, 2));
+
+        console.log("Generating LBO Excel model...");
+        const lboExcelBuffer = await generateLBOExcel(lboAssumptions);
+
+        const lboCompanySlug = lboAssumptions.companyName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+        const lboDateStr = new Date().toISOString().split('T')[0];
+        const lboFilename = `${lboCompanySlug}_LBO_Model_${lboDateStr}.xlsx`;
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${lboFilename}"`);
+        res.setHeader('Content-Length', lboExcelBuffer.length);
+        res.send(lboExcelBuffer);
 
       } else if (modelType === "ma") {
         // M&A Model - placeholder for future implementation  

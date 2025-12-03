@@ -606,10 +606,35 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           title: "Analysis Complete",
           description: `DCF valuation computed for ${result.assumptions?.companyName || 'company'}`,
         });
+      } else if (modelType === "lbo") {
+        setFinanceLoadingPhase(`Parsing LBO with ${providerNames[financeLLMProvider]}...`);
+        
+        const response = await fetch('/api/finance/parse-lbo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description: financeInputText,
+            customInstructions: financeCustomInstructions,
+            llmProvider: financeLLMProvider,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'LBO parsing failed');
+        }
+
+        const result = await response.json();
+        setFinanceResult(result);
+        
+        toast({
+          title: "LBO Analysis Complete",
+          description: `Returns calculated for ${result.assumptions?.companyName || 'target company'}`,
+        });
       } else {
         toast({
           title: "Coming Soon",
-          description: `${modelType.toUpperCase()} model is not yet available. DCF is fully functional.`,
+          description: `${modelType.toUpperCase()} model is not yet available. DCF and LBO are fully functional.`,
           variant: "destructive"
         });
       }
@@ -640,7 +665,11 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setFinanceDownloadLoading(true);
 
     try {
-      const response = await fetch('/api/finance/download-dcf', {
+      // Choose the appropriate endpoint based on model type
+      const endpoint = financeModelType === "lbo" ? '/api/finance/download-lbo' : '/api/finance/download-dcf';
+      const modelLabel = financeModelType === "lbo" ? "LBO" : "DCF";
+      
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -660,7 +689,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       });
       
       const contentDisposition = response.headers.get('Content-Disposition');
-      let filename = `DCF_Model_${new Date().toISOString().split('T')[0]}.xlsx`;
+      let filename = `${modelLabel}_Model_${new Date().toISOString().split('T')[0]}.xlsx`;
       
       if (contentDisposition) {
         const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
@@ -2613,7 +2642,7 @@ Generated on: ${new Date().toLocaleString()}`;
           )}
 
           {/* DCF Results Display */}
-          {financeResult && financeResult.success && financeResult.assumptions && (
+          {financeResult && financeResult.success && financeModelType === "dcf" && financeResult.valuation && (
             <div className="mb-6 space-y-6">
               {/* Header with company name and download button */}
               <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-700">
@@ -2845,6 +2874,293 @@ Generated on: ${new Date().toLocaleString()}`;
                       {financeResult.projections?.fcf?.map((val: number, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-bold text-blue-700 dark:text-blue-300">
                           ${val.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* LBO Results Display */}
+          {financeResult && financeResult.success && financeModelType === "lbo" && financeResult.returns && (
+            <div className="mb-6 space-y-6">
+              {/* Header with company name and download button */}
+              <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-purple-200 dark:border-purple-700">
+                <div>
+                  <h3 className="text-xl font-bold text-purple-900 dark:text-purple-100">
+                    {financeResult.assumptions?.companyName} - LBO Analysis
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Analyzed by {financeResult.providerUsed}
+                  </p>
+                </div>
+                <Button
+                  onClick={handleFinanceDownloadExcel}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  disabled={financeDownloadLoading}
+                  data-testid="button-download-lbo-excel"
+                >
+                  {financeDownloadLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Download LBO Excel Model
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Returns Summary - Sponsor and Management */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Sponsor Returns */}
+                <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border-2 border-purple-400 dark:border-purple-500">
+                  <h4 className="text-lg font-semibold text-purple-800 dark:text-purple-200 mb-3 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    Sponsor Returns
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Initial Equity:</span>
+                      <span className="font-semibold text-purple-700 dark:text-purple-300">
+                        ${financeResult.returns?.sponsor?.equity?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Exit Proceeds:</span>
+                      <span className="font-semibold text-purple-700 dark:text-purple-300">
+                        ${financeResult.returns?.sponsor?.exitProceeds?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-purple-300 dark:border-purple-500 pt-2">
+                      <span className="text-gray-700 dark:text-gray-300 font-medium">MOIC:</span>
+                      <span className="font-bold text-purple-800 dark:text-purple-200 text-xl">
+                        {financeResult.returns?.sponsor?.moic?.toFixed(1)}x
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-700 dark:text-gray-300 font-medium">IRR:</span>
+                      <span className="font-bold text-purple-800 dark:text-purple-200 text-xl">
+                        {((financeResult.returns?.sponsor?.irr || 0) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Exit Valuation */}
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700">
+                  <h4 className="text-lg font-semibold text-green-800 dark:text-green-200 mb-3 flex items-center gap-2">
+                    <DollarSign className="w-5 h-5" />
+                    Exit Valuation
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Exit EBITDA:</span>
+                      <span className="font-semibold text-green-700 dark:text-green-300">
+                        ${financeResult.exitValuation?.exitEBITDA?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Exit Multiple:</span>
+                      <span className="font-semibold text-green-700 dark:text-green-300">
+                        {financeResult.exitValuation?.exitMultiple?.toFixed(1)}x
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Enterprise Value:</span>
+                      <span className="font-semibold text-green-700 dark:text-green-300">
+                        ${financeResult.exitValuation?.exitEV?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-green-200 dark:border-green-600 pt-2">
+                      <span className="text-gray-700 dark:text-gray-300 font-medium">Exit Equity Value:</span>
+                      <span className="font-bold text-green-800 dark:text-green-200 text-lg">
+                        ${financeResult.exitValuation?.exitEquityValue?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sources & Uses */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Sources */}
+                <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-purple-200 dark:border-purple-700">
+                  <h4 className="text-lg font-semibold text-purple-800 dark:text-purple-200 mb-3">Sources of Funds</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Senior Debt:</span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        ${financeResult.sourcesAndUses?.sources?.seniorDebt?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Subordinated Debt:</span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        ${financeResult.sourcesAndUses?.sources?.subDebt?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Sponsor Equity:</span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        ${financeResult.sourcesAndUses?.sources?.sponsorEquity?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    {financeResult.sourcesAndUses?.sources?.managementRollover > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Management Rollover:</span>
+                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                          ${financeResult.sourcesAndUses?.sources?.managementRollover?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between border-t border-gray-200 dark:border-gray-600 pt-2">
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">Total Sources:</span>
+                      <span className="font-bold text-purple-800 dark:text-purple-200">
+                        ${financeResult.sourcesAndUses?.sources?.total?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Uses */}
+                <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-purple-200 dark:border-purple-700">
+                  <h4 className="text-lg font-semibold text-purple-800 dark:text-purple-200 mb-3">Uses of Funds</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Purchase Price:</span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        ${financeResult.sourcesAndUses?.uses?.purchasePrice?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Transaction Costs:</span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        ${financeResult.sourcesAndUses?.uses?.transactionCosts?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-gray-200 dark:border-gray-600 pt-2">
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">Total Uses:</span>
+                      <span className="font-bold text-purple-800 dark:text-purple-200">
+                        ${financeResult.sourcesAndUses?.uses?.total?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Key Metrics */}
+              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-purple-200 dark:border-purple-700">
+                <h4 className="text-lg font-semibold text-purple-800 dark:text-purple-200 mb-4">Key Deal Metrics</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Entry Multiple</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      {financeResult.keyMetrics?.entryMultiple?.toFixed(1)}x
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Exit Multiple</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      {financeResult.keyMetrics?.exitMultiple?.toFixed(1)}x
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Entry Leverage</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      {financeResult.keyMetrics?.entryLeverage?.toFixed(1)}x
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Exit Leverage</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      {financeResult.keyMetrics?.exitLeverage?.toFixed(1)}x
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Debt Paydown</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      ${financeResult.keyMetrics?.debtPaydown?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">% Debt Repaid</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      {((financeResult.keyMetrics?.debtPaydownPercent || 0) * 100).toFixed(0)}%
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Hold Period</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      {financeResult.exitValuation?.exitYear} Years
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Remaining Debt</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      ${financeResult.exitValuation?.remainingDebt?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Projections Table */}
+              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-purple-200 dark:border-purple-700 overflow-x-auto">
+                <h4 className="text-lg font-semibold text-purple-800 dark:text-purple-200 mb-4">
+                  5-Year Projections
+                </h4>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-600">
+                      <th className="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Metric</th>
+                      {financeResult.projections?.years?.map((year: number) => (
+                        <th key={year} className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Year {year}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Revenue ($M)</td>
+                      {financeResult.projections?.revenue?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">EBITDA ($M)</td>
+                      {financeResult.projections?.ebitda?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Senior Debt ($M)</td>
+                      {financeResult.projections?.seniorDebt?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Subordinated Debt ($M)</td>
+                      {financeResult.projections?.subDebt?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Free Cash Flow ($M)</td>
+                      {financeResult.projections?.freeCashFlow?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-bold text-purple-700 dark:text-purple-300">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>

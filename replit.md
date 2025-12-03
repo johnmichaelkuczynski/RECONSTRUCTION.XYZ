@@ -19,7 +19,12 @@ The application uses a monorepo structure, separating client and server.
     - **Text Model Validator**: Includes "Truth Select" for truth-value isomorphism and "Math Truth Select" for rigorous first-order model theory and truth-grounded model searching, both supporting literal truth verification.
     - **AI Chat Assistant**: Features full conversation history tracking and Zhi Database integration for contextual philosophical content.
     - **Conservative Reconstruction**: "Charitable Interpretation" mode produces self-contained, coherent essays articulating a text's unified argument.
-    - **Finance Panel**: Generates professional Excel financial models (DCF, LBO, M&A, 3-Statement) from natural language input, producing formula-based workbooks with executive summaries, assumptions, projections, valuations, and sensitivity analysis.
+    - **Finance Panel**: Generates professional Excel financial models from natural language input, producing value-based workbooks with executive summaries, assumptions, projections, valuations, and sensitivity analysis.
+      - **DCF Model**: Fully implemented with 3 valuation scenarios (Bear/Base/Bull), 5-year projections, and sensitivity analysis.
+      - **LBO Model**: Fully implemented with sources/uses, debt schedules, sponsor returns (IRR/MOIC), exit valuation, and 5-year projections.
+      - **M&A Model**: Coming soon.
+      - **3-Statement Model**: Coming soon.
+      - Default LLM: Zhi 5 (Grok) for finance models.
 - **UI/UX**: Utilizes shadcn/ui and TailwindCSS for styling, offering detailed card-based layouts for analysis reports and supporting PDF/text downloads, document upload, and output download.
 
 ## External Dependencies
