@@ -2592,104 +2592,131 @@ Structural understanding is always understanding of relationships. Observational
       let userPrompt = "";
 
       if (mode === "reconstruction") {
-        // DRAMATICALLY different prompts based on fidelity level
+        // Count input words for budget enforcement
+        const inputWordCount = text.trim().split(/\s+/).length;
+        const targetWordCount = Math.floor(inputWordCount * 0.85); // 85% of input
+        const maxWordCount = inputWordCount; // Never exceed input
+        
         if (fidelityLevel === 'conservative') {
-          systemPrompt = `You are a LOGICAL RECONSTRUCTOR. Your job is to REBUILD arguments from the ground up.
+          systemPrompt = `You are a LOGIC SURGEON. You FIX broken reasoning. You do NOT decorate prose.
 
-WHAT "RECONSTRUCT" MEANS:
-This is NOT paraphrasing. NOT rewriting. NOT "making it sound better."
-RECONSTRUCT = Find whatever kernel of a defensible claim exists in the text, then BUILD A COMPLETELY NEW, RIGOROUS ARGUMENT that:
-1. States a claim that is EXPLICITLY TRUE and MEANINGFUL
-2. Defends that claim with UTTERLY COGENT arguments
-3. Uses REAL evidence, REAL examples, REAL logical steps
-4. Contains ZERO filler, ZERO hand-waving, ZERO circular reasoning
+WHAT YOU DO:
+- Find the 2-3 WEAKEST points in the argument (gaps, unsupported leaps, vague claims, hidden assumptions)
+- FIX those specific weaknesses with actual reasoning or evidence
+- CUT everything that doesn't serve the argument
+- Make the logic DIAGRAMMABLE: someone could draw the inference steps
 
-YOUR PROCESS:
-1. IDENTIFY THE KERNEL: What is the author TRYING to argue? Strip away the bad reasoning.
-2. FORMULATE A TRUE CLAIM: State a version of that claim that is actually defensible and explicitly true.
-3. BUILD COGENT SUPPORT: Construct 2-4 arguments that ACTUALLY prove the claim using logic, evidence, examples.
-4. ELIMINATE WEAKNESS: Every sentence must do work. No repetition. No hedging. No filler.
+WHAT YOU DON'T DO:
+- Add fancy words
+- Make it "sound smarter"
+- Expand prose
+- Add hedging or qualifiers
+- Write longer sentences
 
-WHAT MAKES AN ARGUMENT COGENT:
-- Premises are TRUE (not just plausible-sounding)
-- Logic is VALID (premises actually lead to conclusion)
-- Evidence is CONCRETE (specific examples, not vague gestures)
-- No logical fallacies (no circular reasoning, no false equivalence, no appeal to authority without substance)
+SMARTER = clearer logic, fewer gaps, specific claims, concrete evidence
+SMARTER ≠ bigger words, longer sentences, more qualifications
 
-OUTPUT REQUIREMENTS:
-- Continuous prose, 2-5 tight paragraphs
-- SHORTER than input if possible (strength, not length)
-- Plain, direct language
-- Every claim supported; every support actually proves something
-- NO meta-commentary, NO explaining what you did
+WORD BUDGET: ${targetWordCount}-${maxWordCount} words. Input is ${inputWordCount} words. You MUST be at or BELOW this count.
 
-FORBIDDEN:
-- Paraphrasing the original's weak arguments in fancier words
-- Adding length without adding substance
-- Vague claims ("many people believe", "it is often said")
-- Academic bloat ("utilize", "facilitate", "in terms of")
-- Any sentence that doesn't advance the argument`;
+BANNED WORDS/PHRASES (instant failure if used):
+- utilize, facilitate, leverage, implement, optimize
+- in terms of, with respect to, in the context of
+- it is important to note, it should be noted
+- furthermore, moreover, additionally (unless adding genuinely new info)
+- multifaceted, nuanced, complex, intricate
+- "studies show" (without naming the study)
+- "experts agree" (without naming experts)
+- "many believe" (who? how many?)
 
-          userPrompt = `RECONSTRUCT THIS TEXT INTO A RIGOROUS ARGUMENT
+OUTPUT FORMAT:
+CLAIM: [One sentence. Specific. Falsifiable.]
 
-================================
-ORIGINAL TEXT (contains a kernel worth saving, but poorly argued):
-================================
+BECAUSE:
+P1. [Premise - max 20 words, specific, testable]
+P2. [Premise - max 20 words]
+P3. [Premise if needed]
+
+EVIDENCE:
+- [Specific datum, example, or fact for P1]
+- [Specific datum, example, or fact for P2]
+
+THEREFORE: [Conclusion restated, showing how P1+P2→Claim]
+
+WORD COUNT: [X] (must be ≤${maxWordCount})`;
+
+          userPrompt = `FIX THIS ARGUMENT (don't decorate it)
+
+INPUT TEXT (${inputWordCount} words):
 ${text}
 
-${targetDomain ? `Domain/context: ${targetDomain}` : ''}
-${customInstructions ? `\nCustom instructions from user: ${customInstructions}` : ''}
+${targetDomain ? `Domain: ${targetDomain}` : ''}
+${customInstructions ? `\nUSER INSTRUCTIONS: ${customInstructions}` : ''}
 
-================================
-YOUR TASK
-================================
-1. Find the KERNEL: What true/meaningful claim is buried in this text?
-2. State it EXPLICITLY: Formulate a clear, defensible thesis.
-3. Build COGENT support: 2-4 arguments with real logic and evidence.
-4. Make it TIGHT: Shorter is better. Every sentence must earn its place.
+STEP 1 - DIAGNOSE (do this mentally, don't output):
+What are the 2-3 weakest points? (vague claims, logical gaps, missing evidence, hidden assumptions)
 
-The output should be a completely rebuilt argument that someone would actually find convincing—not because it "sounds smart" but because the reasoning is actually sound.
+STEP 2 - OUTPUT THE FIXED VERSION:
+Use the format: CLAIM / BECAUSE (premises) / EVIDENCE / THEREFORE
 
-OUTPUT: Just the reconstructed argument. No commentary. No explanation. Pure cogent prose.`;
+RULES:
+- Total words MUST be ≤${maxWordCount} (input was ${inputWordCount})
+- Each premise max 20 words
+- Evidence must be SPECIFIC (names, numbers, examples)
+- No filler, no decoration, no "sounding smart"
+- End with: WORD COUNT: [X]`;
 
         } else {
-          // AGGRESSIVE MODE - maximum transformation
-          systemPrompt = `You are an expert at AGGRESSIVELY transforming muddled, half-true, or unsubstantiated text into LITERALLY TRUE, evidence-rich writing.
+          // AGGRESSIVE MODE - maximum truth transformation
+          systemPrompt = `You are a TRUTH MACHINE. You replace vague/false claims with SPECIFIC TRUE claims.
 
-AGGRESSIVE MODE RULES:
-1. Every claim you make must be 100% LITERALLY TRUE - not "plausible" or "reasonable", but FACTUALLY ACCURATE
-2. EVERY SINGLE CLAIM must be illustrated with AT LEAST ONE CONCRETE EXAMPLE (minimum 1 per claim, prefer 2-3)
-3. Use natural, conversational language - NEVER bloat (say "has" not "possesses", "uses" not "utilizes")
-4. Preserve the author's personality and voice - don't make it generic or academic
-5. If the input makes false claims, REPLACE them with true claims in the same conceptual area
-6. If the input lacks examples, ADD real, concrete, specific examples for every claim
-7. Be willing to completely rewrite for truth and clarity
-8. Expand significantly if needed to add sufficient examples
+YOUR JOB:
+1. Identify each claim in the input
+2. For each claim that is vague or false: REPLACE it with a specific, literally true version
+3. For each claim, add ONE concrete example (real name, real number, real event)
+4. CUT any sentence that doesn't make a verifiable claim
 
-FORBIDDEN:
-- Generic statements without examples
-- Bloated academic language ("possess", "utilize", "facilitate")
-- Vague or "plausible-sounding" claims that aren't literally true
-- Explanations, commentary, or meta-discussion about the transformation`;
+NOT YOUR JOB:
+- Making prose "flow better"
+- Adding transitions
+- Expanding ideas
+- Using sophisticated vocabulary
+
+WORD BUDGET: ${targetWordCount}-${maxWordCount} words. Input is ${inputWordCount} words.
+
+EXAMPLE TRANSFORMATION:
+BAD: "Many successful companies have used this approach"
+GOOD: "Amazon used this approach to reduce shipping costs 23% in 2019"
+
+BAD: "Research shows that exercise improves mood"
+GOOD: "A 2018 Lancet study of 1.2M people found exercisers had 43% fewer bad mental health days"
+
+BAD: "This method has proven effective"  
+GOOD: "Toyota cut defects 40% after adopting this in 1965"
+
+BANNED:
+- Any claim without a specific example
+- "Studies show" without citation
+- "Experts agree" without names
+- "Often", "frequently", "many" without numbers
+- Adjective stacking (avoid: "robust, comprehensive, innovative approach")`;
         
-          userPrompt = `AGGRESSIVE RECONSTRUCTION MODE
+          userPrompt = `MAKE THIS TRUE AND SPECIFIC
 
-Text to transform (MAXIMUM TRANSFORMATION FOR TRUTH):
+INPUT (${inputWordCount} words):
 ${text}
 
-${targetDomain ? `Target domain: ${targetDomain}` : ''}
-${customInstructions ? `\nCustom Instructions: ${customInstructions}` : ''}
+${targetDomain ? `Domain: ${targetDomain}` : ''}
+${customInstructions ? `\nUSER INSTRUCTIONS: ${customInstructions}` : ''}
 
-YOUR TASK:
-Aggressively transform this text into a version where:
-- EVERY CLAIM is 100% LITERALLY TRUE (not "plausible", FACTUALLY ACCURATE)
-- EVERY CLAIM has AT LEAST ONE CONCRETE EXAMPLE (prefer 2-3 examples per claim)
-- Language is natural and conversational (no bloat, no academic jargon)
-- The author's personality and voice are preserved
-- Be willing to completely rewrite if needed
-- Expand significantly to add sufficient real examples
+FOR EACH CLAIM:
+1. Is it specific and literally true? Keep it.
+2. Is it vague? Replace with specific version + one real example.
+3. Is it false? Replace with a true claim in the same area + example.
+4. Is it filler? Delete it.
 
-CRITICAL: Output ONLY the reconstructed text itself. NO commentary, NO explanation, NO "here's what I changed", NO headers. Just the pure rewritten text.`;
+OUTPUT: Just the fixed text. No commentary.
+Must be ≤${maxWordCount} words.
+End with: [WORD COUNT: X]`;
         }
 
       } else if (mode === "isomorphism") {
