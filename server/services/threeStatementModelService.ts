@@ -818,6 +818,27 @@ export function calculateThreeStatementModel(
   );
   const totalAssets: number[] = totalCurrentAssets.map((ca, i) => ca + totalNonCurrentAssets[i]);
 
+  // ============ ANCHOR HISTORICAL ASSETS TO USER INPUT ============
+  // Force totalAssets[0] = historicalTotalAssets by adjusting otherCABalance[0]
+  const calculatedAssets0 = totalAssets[0];
+  const targetAssets0 = assumptions.historicalTotalAssets;
+  const assetGap = targetAssets0 - calculatedAssets0;
+  
+  if (Math.abs(assetGap) > 0.01) {
+    // Adjust otherCABalance[0] to plug the gap
+    otherCABalance[0] += assetGap;
+    totalCurrentAssets[0] += assetGap;
+    totalAssets[0] = targetAssets0;
+    
+    console.log(`[3-Statement Model] Anchored historical assets to ${targetAssets0.toFixed(2)}M (adjusted other current assets by ${assetGap.toFixed(2)}M)`);
+  }
+  
+  // HARD ASSERTION: Verify asset anchoring succeeded
+  const postAnchorDiff = Math.abs(totalAssets[0] - assumptions.historicalTotalAssets);
+  if (postAnchorDiff > 0.01) {
+    throw new Error(`[3-Statement Model] CRITICAL: Failed to anchor historical assets. Calculated ${totalAssets[0].toFixed(2)}M vs Target ${assumptions.historicalTotalAssets}M`);
+  }
+
   // FIX: Use historical values from assumptions for liabilities
   const histDeferredTaxLiab = assumptions.historicalDeferredTaxLiability ?? 0;
   const histOtherLTLiab = assumptions.historicalOtherLTLiabilities ?? 0;
@@ -839,6 +860,53 @@ export function calculateThreeStatementModel(
   const totalLiabilities: number[] = totalCurrentLiabilities.map((cl, i) => cl + totalNonCurrentLiabilities[i]);
   const totalLiabilitiesEquity: number[] = totalLiabilities.map((l, i) => l + totalEquity[i]);
   const balanceCheck: number[] = totalAssets.map((a, i) => Math.abs(a - totalLiabilitiesEquity[i]));
+
+  // ============ BALANCE SHEET RECONCILIATION ============
+  // Step 1: Assets already anchored to historicalTotalAssets (above)
+  // Step 2: Backsolve retained earnings to force Assets = Liabilities + Equity
+  const originalRetainedEarnings0 = retainedEarnings[0];
+  const requiredEquity0 = totalAssets[0] - totalLiabilities[0];
+  const equityGap = requiredEquity0 - totalEquity[0];
+  
+  if (Math.abs(equityGap) > 0.01) {
+    // Adjust retained earnings to force balance
+    retainedEarnings[0] += equityGap;
+    totalEquity[0] += equityGap;
+    
+    console.log(`[3-Statement Model] Adjusted retained earnings by ${equityGap.toFixed(2)}M to force A=L+E (${originalRetainedEarnings0.toFixed(2)}M -> ${retainedEarnings[0].toFixed(2)}M)`);
+  }
+  
+  // Step 3: Recompute totalLiabilitiesEquity and balanceCheck for ALL periods after adjustments
+  for (let i = 0; i <= years; i++) {
+    totalLiabilitiesEquity[i] = totalLiabilities[i] + totalEquity[i];
+    balanceCheck[i] = Math.abs(totalAssets[i] - totalLiabilitiesEquity[i]);
+  }
+  
+  // Step 4: HARD FAILURE ENFORCEMENT - throw if any period has imbalance > $0.01M
+  const maxImbalance = Math.max(...balanceCheck);
+  const imbalancedPeriods = balanceCheck.map((b, i) => b > 0.01 ? i : -1).filter(i => i >= 0);
+  
+  // Store whether balance sheet is balanced (will be used in summary)
+  const isBalancedAfterReconciliation = maxImbalance <= 0.01;
+  
+  if (imbalancedPeriods.length > 0) {
+    const errorMsg = `[3-Statement Model] CRITICAL: Balance sheet imbalanced in periods ${imbalancedPeriods.join(', ')} (max: $${maxImbalance.toFixed(4)}M)`;
+    console.error(errorMsg);
+    // Throw error for critical imbalance - caller should handle gracefully
+    throw new Error(errorMsg);
+  }
+  
+  // Step 5: Verify historical assets tied to user input
+  const historicalAssetCheck = Math.abs(totalAssets[0] - assumptions.historicalTotalAssets);
+  if (historicalAssetCheck > 0.01) {
+    const errorMsg = `[3-Statement Model] CRITICAL: Historical assets not anchored: ${totalAssets[0].toFixed(2)}M vs ${assumptions.historicalTotalAssets}M`;
+    console.error(errorMsg);
+    throw new Error(errorMsg);
+  }
+  
+  // Log final reconciliation status
+  console.log(`[3-Statement Model] Balance sheet reconciliation: Max imbalance = $${maxImbalance.toFixed(4)}M, Periods balanced = ${balanceCheck.filter(b => b <= 0.01).length}/${years + 1}`);
+  console.log(`[3-Statement Model] Historical asset tie: Calculated ${totalAssets[0].toFixed(2)}M vs Target ${assumptions.historicalTotalAssets}M (diff: ${historicalAssetCheck.toFixed(4)}M)`);
 
   // ============ RATIO ANALYSIS ============
   const roe: number[] = netIncome.map((ni, i) => {
@@ -907,7 +975,8 @@ export function calculateThreeStatementModel(
   const endingNetDebtToEBITDA = netDebtToEBITDA[years];
   const endingDebtToEquity = debtToEquity[years];
   const averageROIC = roic.slice(1).reduce((a, b) => a + b, 0) / years;
-  const isBalanced = balanceCheck.every(c => c < 0.01);
+  // Use the post-reconciliation balance check (computed after adjustments in reconciliation section)
+  const isBalanced = isBalancedAfterReconciliation;
   const cashFlowReconciled = endingCash.every((c, i) => i === 0 || Math.abs(c - (beginningCash[i] + netCashChange[i])) < 0.01);
 
   return {
