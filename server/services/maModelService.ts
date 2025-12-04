@@ -474,8 +474,12 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
     ? targetFairValueNetAssets
     : (targetBookValueNetAssets || targetRevenue * 0.3); // Fallback to book value or estimate
   
-  // CORRECT Goodwill formula: Purchase Price - Fair Value Net Assets - Identified Intangibles
-  const goodwill = Math.max(0, purchasePrice - fairValueNetAssets - totalIdentifiedIntangibles);
+  // Calculate Deferred Tax Liability (DTL) = Tax Rate * Amortizable Intangibles
+  const deferredTaxLiability = acquirerTaxRate * totalIdentifiedIntangibles;
+  
+  // CORRECT Goodwill formula: Purchase Price - Fair Value Net Assets - Identified Intangibles + DTL
+  // This matches the Excel PPA formula: =MAX(0,B21-B45-E53+E54)
+  const goodwill = Math.max(0, purchasePrice - fairValueNetAssets - totalIdentifiedIntangibles + deferredTaxLiability);
   
   // Calculate annual intangible amortization from breakdown if available
   const customerRelAmort = identifiedCustomerRel / (customerRelationshipsLife || 10);
@@ -741,82 +745,218 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
 
 export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Finance Panel";
+  workbook.creator = "Finance Panel - Formula-Based Model";
   workbook.created = new Date();
 
   const results = calculateMAMetrics(assumptions);
   const { acquirerProjections, targetProjections, transactionMetrics, synergies, sourcesAndUses, proFormaProjections, accretionDilution } = results;
   
-  // Extract commonly used values for sensitivity analysis and new tabs
-  const proFormaShares = transactionMetrics.proFormaShares;
-  const targetNetDebt = (assumptions.targetNetDebt || 0);
-  // Extract base year values from projections for balance sheet and contribution tabs
-  const acquirerRevenue = acquirerProjections.revenue[0];
-  const targetRevenue = targetProjections.revenue[0];
-  const targetEBITDAMargin = assumptions.targetEBITDAMargin || 0.2;
-  const acquirerSharesOutstanding = assumptions.acquirerSharesOutstanding || 100;
-
   const currencyFormat = '"$"#,##0';
   const percentFormat = "0.0%";
   const multipleFormat = "0.0x";
   const epsFormat = '"$"0.00';
+  const inputFill = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FFE0F0FF" } }; // Light blue for inputs
+  const formulaFill = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FFFFF0D0" } }; // Light yellow for formulas
 
-  // ============ EXECUTIVE SUMMARY ============
-  const summarySheet = workbook.addWorksheet("Executive Summary");
+  // ============ ASSUMPTIONS SHEET (SINGLE SOURCE OF TRUTH) ============
+  const aSheet = workbook.addWorksheet("Assumptions");
+  aSheet.columns = [{ width: 35 }, { width: 18 }, { width: 5 }, { width: 35 }, { width: 18 }];
+
+  aSheet.getCell("A1").value = "M&A MODEL ASSUMPTIONS";
+  aSheet.getCell("A1").font = { bold: true, size: 16 };
+  aSheet.getCell("A2").value = `${assumptions.acquirerName} Acquisition of ${assumptions.targetName}`;
+  aSheet.getCell("A3").value = `Transaction Date: ${assumptions.transactionDate || new Date().toLocaleDateString()}`;
+
+  // ---- ACQUIRER INPUTS (Column A/B, rows 5-18) ----
+  aSheet.getCell("A5").value = "ACQUIRER FINANCIALS";
+  aSheet.getCell("A5").font = { bold: true, size: 12 };
+
+  aSheet.getCell("A6").value = "Revenue ($M)"; aSheet.getCell("B6").value = assumptions.acquirerRevenue || 1000; aSheet.getCell("B6").numFmt = currencyFormat; aSheet.getCell("B6").fill = inputFill;
+  aSheet.getCell("A7").value = "Revenue Growth Y1"; aSheet.getCell("B7").value = (assumptions.acquirerRevenueGrowth || [0.05])[0]; aSheet.getCell("B7").numFmt = percentFormat; aSheet.getCell("B7").fill = inputFill;
+  aSheet.getCell("A8").value = "Revenue Growth Y2"; aSheet.getCell("B8").value = (assumptions.acquirerRevenueGrowth || [0.05, 0.05])[1]; aSheet.getCell("B8").numFmt = percentFormat; aSheet.getCell("B8").fill = inputFill;
+  aSheet.getCell("A9").value = "Revenue Growth Y3"; aSheet.getCell("B9").value = (assumptions.acquirerRevenueGrowth || [0.05, 0.05, 0.05])[2]; aSheet.getCell("B9").numFmt = percentFormat; aSheet.getCell("B9").fill = inputFill;
+  aSheet.getCell("A10").value = "Revenue Growth Y4"; aSheet.getCell("B10").value = (assumptions.acquirerRevenueGrowth || [0.05, 0.05, 0.05, 0.05])[3]; aSheet.getCell("B10").numFmt = percentFormat; aSheet.getCell("B10").fill = inputFill;
+  aSheet.getCell("A11").value = "Revenue Growth Y5"; aSheet.getCell("B11").value = (assumptions.acquirerRevenueGrowth || [0.05, 0.05, 0.05, 0.05, 0.05])[4]; aSheet.getCell("B11").numFmt = percentFormat; aSheet.getCell("B11").fill = inputFill;
+  aSheet.getCell("A12").value = "EBITDA Margin"; aSheet.getCell("B12").value = assumptions.acquirerEBITDAMargin || 0.20; aSheet.getCell("B12").numFmt = percentFormat; aSheet.getCell("B12").fill = inputFill;
+  aSheet.getCell("A13").value = "D&A % of Revenue"; aSheet.getCell("B13").value = assumptions.acquirerDAPercent || 0.03; aSheet.getCell("B13").numFmt = percentFormat; aSheet.getCell("B13").fill = inputFill;
+  aSheet.getCell("A14").value = "Interest Expense ($M)"; aSheet.getCell("B14").value = assumptions.acquirerInterestExpense || 0; aSheet.getCell("B14").numFmt = currencyFormat; aSheet.getCell("B14").fill = inputFill;
+  aSheet.getCell("A15").value = "Tax Rate"; aSheet.getCell("B15").value = assumptions.acquirerTaxRate || 0.25; aSheet.getCell("B15").numFmt = percentFormat; aSheet.getCell("B15").fill = inputFill;
+  aSheet.getCell("A16").value = "Shares Outstanding (M)"; aSheet.getCell("B16").value = assumptions.acquirerSharesOutstanding || 100; aSheet.getCell("B16").fill = inputFill;
+  aSheet.getCell("A17").value = "Stock Price ($)"; aSheet.getCell("B17").value = assumptions.acquirerStockPrice || 50; aSheet.getCell("B17").numFmt = '"$"0.00'; aSheet.getCell("B17").fill = inputFill;
+  aSheet.getCell("A18").value = "Explicit EPS (if provided)"; aSheet.getCell("B18").value = assumptions.acquirerExplicitEPS || 0; aSheet.getCell("B18").numFmt = epsFormat; aSheet.getCell("B18").fill = inputFill;
+
+  // ---- TARGET INPUTS (Column D/E, rows 5-18) ----
+  aSheet.getCell("D5").value = "TARGET FINANCIALS";
+  aSheet.getCell("D5").font = { bold: true, size: 12 };
+
+  aSheet.getCell("D6").value = "Revenue ($M)"; aSheet.getCell("E6").value = assumptions.targetRevenue || 500; aSheet.getCell("E6").numFmt = currencyFormat; aSheet.getCell("E6").fill = inputFill;
+  aSheet.getCell("D7").value = "Revenue Growth Y1"; aSheet.getCell("E7").value = (assumptions.targetRevenueGrowth || [0.05])[0]; aSheet.getCell("E7").numFmt = percentFormat; aSheet.getCell("E7").fill = inputFill;
+  aSheet.getCell("D8").value = "Revenue Growth Y2"; aSheet.getCell("E8").value = (assumptions.targetRevenueGrowth || [0.05, 0.05])[1]; aSheet.getCell("E8").numFmt = percentFormat; aSheet.getCell("E8").fill = inputFill;
+  aSheet.getCell("D9").value = "Revenue Growth Y3"; aSheet.getCell("E9").value = (assumptions.targetRevenueGrowth || [0.05, 0.05, 0.05])[2]; aSheet.getCell("E9").numFmt = percentFormat; aSheet.getCell("E9").fill = inputFill;
+  aSheet.getCell("D10").value = "Revenue Growth Y4"; aSheet.getCell("E10").value = (assumptions.targetRevenueGrowth || [0.05, 0.05, 0.05, 0.05])[3]; aSheet.getCell("E10").numFmt = percentFormat; aSheet.getCell("E10").fill = inputFill;
+  aSheet.getCell("D11").value = "Revenue Growth Y5"; aSheet.getCell("E11").value = (assumptions.targetRevenueGrowth || [0.05, 0.05, 0.05, 0.05, 0.05])[4]; aSheet.getCell("E11").numFmt = percentFormat; aSheet.getCell("E11").fill = inputFill;
+  aSheet.getCell("D12").value = "EBITDA Margin"; aSheet.getCell("E12").value = assumptions.targetEBITDAMargin || 0.20; aSheet.getCell("E12").numFmt = percentFormat; aSheet.getCell("E12").fill = inputFill;
+  aSheet.getCell("D13").value = "D&A % of Revenue"; aSheet.getCell("E13").value = assumptions.targetDAPercent || 0.03; aSheet.getCell("E13").numFmt = percentFormat; aSheet.getCell("E13").fill = inputFill;
+  aSheet.getCell("D14").value = "Interest Expense ($M)"; aSheet.getCell("E14").value = assumptions.targetInterestExpense || 0; aSheet.getCell("E14").numFmt = currencyFormat; aSheet.getCell("E14").fill = inputFill;
+  aSheet.getCell("D15").value = "Tax Rate"; aSheet.getCell("E15").value = assumptions.targetTaxRate || 0.25; aSheet.getCell("E15").numFmt = percentFormat; aSheet.getCell("E15").fill = inputFill;
+  aSheet.getCell("D16").value = "Net Debt ($M)"; aSheet.getCell("E16").value = assumptions.targetNetDebt || 0; aSheet.getCell("E16").numFmt = currencyFormat; aSheet.getCell("E16").fill = inputFill;
+
+  // ---- TRANSACTION STRUCTURE (Column A/B, rows 20-28) ----
+  aSheet.getCell("A20").value = "TRANSACTION STRUCTURE";
+  aSheet.getCell("A20").font = { bold: true, size: 12 };
+
+  aSheet.getCell("A21").value = "Purchase Price (Equity, $M)"; aSheet.getCell("B21").value = assumptions.purchasePrice || 1000; aSheet.getCell("B21").numFmt = currencyFormat; aSheet.getCell("B21").fill = inputFill;
+  aSheet.getCell("A22").value = "Cash %"; aSheet.getCell("B22").value = assumptions.cashPercent || 0.5; aSheet.getCell("B22").numFmt = percentFormat; aSheet.getCell("B22").fill = inputFill;
+  aSheet.getCell("A23").value = "Stock %"; aSheet.getCell("B23").value = assumptions.stockPercent || 0.5; aSheet.getCell("B23").numFmt = percentFormat; aSheet.getCell("B23").fill = inputFill;
+  aSheet.getCell("A24").value = "Premium Paid"; aSheet.getCell("B24").value = assumptions.premium || 0.30; aSheet.getCell("B24").numFmt = percentFormat; aSheet.getCell("B24").fill = inputFill;
+  aSheet.getCell("A25").value = "Transaction Fee %"; aSheet.getCell("B25").value = assumptions.transactionFeePercent || 0.025; aSheet.getCell("B25").numFmt = percentFormat; aSheet.getCell("B25").fill = inputFill;
+  aSheet.getCell("A26").value = "Explicit Transaction Fees ($M)"; aSheet.getCell("B26").value = assumptions.transactionFees || 0; aSheet.getCell("B26").numFmt = currencyFormat; aSheet.getCell("B26").fill = inputFill;
+
+  // ---- FINANCING (Column D/E, rows 20-26) ----
+  aSheet.getCell("D20").value = "FINANCING";
+  aSheet.getCell("D20").font = { bold: true, size: 12 };
+
+  aSheet.getCell("D21").value = "Cash from Balance Sheet ($M)"; aSheet.getCell("E21").value = assumptions.cashFromBalance || 0; aSheet.getCell("E21").numFmt = currencyFormat; aSheet.getCell("E21").fill = inputFill;
+  aSheet.getCell("D22").value = "New Debt Amount ($M)"; aSheet.getCell("E22").value = assumptions.newDebtAmount || 0; aSheet.getCell("E22").numFmt = currencyFormat; aSheet.getCell("E22").fill = inputFill;
+  aSheet.getCell("D23").value = "New Debt Interest Rate"; aSheet.getCell("E23").value = assumptions.newDebtRate || 0.06; aSheet.getCell("E23").numFmt = percentFormat; aSheet.getCell("E23").fill = inputFill;
+  aSheet.getCell("D24").value = "Debt Amortization Rate"; aSheet.getCell("E24").value = assumptions.debtAmortizationRate || 0.05; aSheet.getCell("E24").numFmt = percentFormat; aSheet.getCell("E24").fill = inputFill;
+  aSheet.getCell("D25").value = "Debt Maturity (Years)"; aSheet.getCell("E25").value = assumptions.debtMaturityYears || 5; aSheet.getCell("E25").fill = inputFill;
+
+  // ---- SYNERGIES (Rows 30-46) ----
+  aSheet.getCell("A30").value = "SYNERGIES";
+  aSheet.getCell("A30").font = { bold: true, size: 12 };
+
+  aSheet.getCell("A31").value = "Revenue Synergies (Run-Rate, $M)"; aSheet.getCell("B31").value = assumptions.revenueSynergies || 0; aSheet.getCell("B31").numFmt = currencyFormat; aSheet.getCell("B31").fill = inputFill;
+  aSheet.getCell("A32").value = "Rev Synergy Realization Y1"; aSheet.getCell("B32").value = assumptions.revenueSynergyRealizationY1 ?? 0; aSheet.getCell("B32").numFmt = percentFormat; aSheet.getCell("B32").fill = inputFill;
+  aSheet.getCell("A33").value = "Rev Synergy Realization Y2"; aSheet.getCell("B33").value = assumptions.revenueSynergyRealizationY2 ?? 0.5; aSheet.getCell("B33").numFmt = percentFormat; aSheet.getCell("B33").fill = inputFill;
+  aSheet.getCell("A34").value = "Rev Synergy Realization Y3"; aSheet.getCell("B34").value = assumptions.revenueSynergyRealizationY3 ?? 1.0; aSheet.getCell("B34").numFmt = percentFormat; aSheet.getCell("B34").fill = inputFill;
+  aSheet.getCell("A35").value = "Rev Synergy Realization Y4"; aSheet.getCell("B35").value = assumptions.revenueSynergyRealizationY4 ?? 1.0; aSheet.getCell("B35").numFmt = percentFormat; aSheet.getCell("B35").fill = inputFill;
+  aSheet.getCell("A36").value = "Rev Synergy Realization Y5"; aSheet.getCell("B36").value = assumptions.revenueSynergyRealizationY5 ?? 1.0; aSheet.getCell("B36").numFmt = percentFormat; aSheet.getCell("B36").fill = inputFill;
+  aSheet.getCell("A37").value = "Revenue Synergy Margin"; aSheet.getCell("B37").value = assumptions.revenueSynergyMargin ?? 1.0; aSheet.getCell("B37").numFmt = percentFormat; aSheet.getCell("B37").fill = inputFill;
+
+  aSheet.getCell("D31").value = "Cost Synergies (Run-Rate, $M)"; aSheet.getCell("E31").value = assumptions.costSynergies || 0; aSheet.getCell("E31").numFmt = currencyFormat; aSheet.getCell("E31").fill = inputFill;
+  aSheet.getCell("D32").value = "Cost Synergy Realization Y1"; aSheet.getCell("E32").value = assumptions.costSynergyRealizationY1 ?? 0.20; aSheet.getCell("E32").numFmt = percentFormat; aSheet.getCell("E32").fill = inputFill;
+  aSheet.getCell("D33").value = "Cost Synergy Realization Y2"; aSheet.getCell("E33").value = assumptions.costSynergyRealizationY2 ?? 0.60; aSheet.getCell("E33").numFmt = percentFormat; aSheet.getCell("E33").fill = inputFill;
+  aSheet.getCell("D34").value = "Cost Synergy Realization Y3"; aSheet.getCell("E34").value = assumptions.costSynergyRealizationY3 ?? 1.0; aSheet.getCell("E34").numFmt = percentFormat; aSheet.getCell("E34").fill = inputFill;
+  aSheet.getCell("D35").value = "Cost Synergy Realization Y4"; aSheet.getCell("E35").value = assumptions.costSynergyRealizationY4 ?? 1.0; aSheet.getCell("E35").numFmt = percentFormat; aSheet.getCell("E35").fill = inputFill;
+  aSheet.getCell("D36").value = "Cost Synergy Realization Y5"; aSheet.getCell("E36").value = assumptions.costSynergyRealizationY5 ?? 1.0; aSheet.getCell("E36").numFmt = percentFormat; aSheet.getCell("E36").fill = inputFill;
+
+  aSheet.getCell("A39").value = "Integration Costs Y1 ($M)"; aSheet.getCell("B39").value = assumptions.integrationCostsY1 || 0; aSheet.getCell("B39").numFmt = currencyFormat; aSheet.getCell("B39").fill = inputFill;
+  aSheet.getCell("A40").value = "Integration Costs Y2 ($M)"; aSheet.getCell("B40").value = assumptions.integrationCostsY2 || 0; aSheet.getCell("B40").numFmt = currencyFormat; aSheet.getCell("B40").fill = inputFill;
+  aSheet.getCell("A41").value = "Integration Costs Y3 ($M)"; aSheet.getCell("B41").value = assumptions.integrationCostsY3 || 0; aSheet.getCell("B41").numFmt = currencyFormat; aSheet.getCell("B41").fill = inputFill;
+
+  // ---- PURCHASE PRICE ALLOCATION (Rows 44-55) ----
+  aSheet.getCell("A44").value = "PURCHASE PRICE ALLOCATION";
+  aSheet.getCell("A44").font = { bold: true, size: 12 };
+
+  aSheet.getCell("A45").value = "Fair Value Net Assets ($M)"; aSheet.getCell("B45").value = assumptions.targetFairValueNetAssets || (assumptions.targetRevenue || 500) * 0.3; aSheet.getCell("B45").numFmt = currencyFormat; aSheet.getCell("B45").fill = inputFill;
+  aSheet.getCell("A46").value = "Customer Relationships ($M)"; aSheet.getCell("B46").value = assumptions.customerRelationships || 0; aSheet.getCell("B46").numFmt = currencyFormat; aSheet.getCell("B46").fill = inputFill;
+  aSheet.getCell("A47").value = "Customer Rel. Life (Years)"; aSheet.getCell("B47").value = assumptions.customerRelationshipsLife || 10; aSheet.getCell("B47").fill = inputFill;
+  aSheet.getCell("A48").value = "Developed Technology ($M)"; aSheet.getCell("B48").value = assumptions.developedTechnology || 0; aSheet.getCell("B48").numFmt = currencyFormat; aSheet.getCell("B48").fill = inputFill;
+  aSheet.getCell("A49").value = "Developed Tech. Life (Years)"; aSheet.getCell("B49").value = assumptions.developedTechnologyLife || 5; aSheet.getCell("B49").fill = inputFill;
+  aSheet.getCell("A50").value = "Other Intangibles ($M)"; aSheet.getCell("B50").value = assumptions.otherIntangibles || 0; aSheet.getCell("B50").numFmt = currencyFormat; aSheet.getCell("B50").fill = inputFill;
+  aSheet.getCell("A51").value = "Other Intangibles Life (Years)"; aSheet.getCell("B51").value = assumptions.otherIntangiblesLife || 10; aSheet.getCell("B51").fill = inputFill;
+  aSheet.getCell("A52").value = "Total Intangibles (Legacy, $M)"; aSheet.getCell("B52").value = assumptions.intangibleAssets || 0; aSheet.getCell("B52").numFmt = currencyFormat; aSheet.getCell("B52").fill = inputFill;
+  aSheet.getCell("A53").value = "Intangible Amort Years (Legacy)"; aSheet.getCell("B53").value = assumptions.intangibleAmortYears || 10; aSheet.getCell("B53").fill = inputFill;
+
+  // ---- DERIVED/COMPUTED VALUES (Column D/E, rows 44+) ----
+  aSheet.getCell("D44").value = "DERIVED VALUES (FORMULAS)";
+  aSheet.getCell("D44").font = { bold: true, size: 12 };
+
+  // Enterprise Value = Purchase Price + Net Debt
+  aSheet.getCell("D45").value = "Enterprise Value ($M)"; 
+  aSheet.getCell("E45").value = { formula: "=B21+E16" }; aSheet.getCell("E45").numFmt = currencyFormat; aSheet.getCell("E45").fill = formulaFill;
+
+  // Stock Consideration = Purchase Price * Stock %
+  aSheet.getCell("D46").value = "Stock Consideration ($M)";
+  aSheet.getCell("E46").value = { formula: "=B21*B23" }; aSheet.getCell("E46").numFmt = currencyFormat; aSheet.getCell("E46").fill = formulaFill;
+
+  // Cash Consideration = Purchase Price * Cash %
+  aSheet.getCell("D47").value = "Cash Consideration ($M)";
+  aSheet.getCell("E47").value = { formula: "=B21*B22" }; aSheet.getCell("E47").numFmt = currencyFormat; aSheet.getCell("E47").fill = formulaFill;
+
+  // New Shares Issued = Stock Consideration / Stock Price
+  aSheet.getCell("D48").value = "New Shares Issued (M)";
+  aSheet.getCell("E48").value = { formula: "=IF(B17>0,E46/B17,0)" }; aSheet.getCell("E48").fill = formulaFill;
+
+  // Pro Forma Shares = Acquirer Shares + New Shares
+  aSheet.getCell("D49").value = "Pro Forma Shares (M)";
+  aSheet.getCell("E49").value = { formula: "=B16+E48" }; aSheet.getCell("E49").fill = formulaFill;
+
+  // Transaction Fees = IF Explicit > 0 THEN Explicit ELSE EV * Fee %
+  aSheet.getCell("D50").value = "Transaction Fees ($M)";
+  aSheet.getCell("E50").value = { formula: "=IF(B26>0,B26,E45*B25)" }; aSheet.getCell("E50").numFmt = currencyFormat; aSheet.getCell("E50").fill = formulaFill;
+
+  // Debt Payoff = MAX(0, Net Debt)
+  aSheet.getCell("D51").value = "Debt Payoff ($M)";
+  aSheet.getCell("E51").value = { formula: "=MAX(0,E16)" }; aSheet.getCell("E51").numFmt = currencyFormat; aSheet.getCell("E51").fill = formulaFill;
+
+  // Net Cash from Target = MAX(0, -Net Debt)
+  aSheet.getCell("D52").value = "Net Cash from Target ($M)";
+  aSheet.getCell("E52").value = { formula: "=MAX(0,-E16)" }; aSheet.getCell("E52").numFmt = currencyFormat; aSheet.getCell("E52").fill = formulaFill;
+
+  // Total Identified Intangibles = SUM of components OR legacy total
+  aSheet.getCell("D53").value = "Total Identified Intangibles ($M)";
+  aSheet.getCell("E53").value = { formula: "=IF(B46+B48+B50>0,B46+B48+B50,B52)" }; aSheet.getCell("E53").numFmt = currencyFormat; aSheet.getCell("E53").fill = formulaFill;
+
+  // Deferred Tax Liability on step-up = Tax Rate * Amortizable Intangibles
+  aSheet.getCell("D54").value = "Deferred Tax Liability ($M)";
+  aSheet.getCell("E54").value = { formula: "=B15*E53" }; aSheet.getCell("E54").numFmt = currencyFormat; aSheet.getCell("E54").fill = formulaFill;
+
+  // CORRECTED Goodwill = Purchase Price - FV Net Assets - Intangibles + DTL
+  aSheet.getCell("D55").value = "Goodwill ($M)";
+  aSheet.getCell("E55").value = { formula: "=MAX(0,B21-B45-E53+E54)" }; aSheet.getCell("E55").numFmt = currencyFormat; aSheet.getCell("E55").fill = formulaFill;
+  aSheet.getCell("E55").font = { bold: true };
+
+  // Annual Intangible Amortization
+  aSheet.getCell("D56").value = "Annual Intangible Amortization ($M)";
+  aSheet.getCell("E56").value = { formula: "=IF(B46+B48+B50>0,B46/B47+B48/B49+B50/B51,B52/B53)" }; aSheet.getCell("E56").numFmt = currencyFormat; aSheet.getCell("E56").fill = formulaFill;
+
+  // ============ EXECUTIVE SUMMARY (With Formulas) ============
+  const summarySheet = workbook.addWorksheet("Executive_Summary");
   summarySheet.columns = [{ width: 35 }, { width: 20 }, { width: 20 }];
 
   summarySheet.getCell("A1").value = `${assumptions.acquirerName} Acquisition of ${assumptions.targetName}`;
   summarySheet.getCell("A1").font = { bold: true, size: 16 };
-  summarySheet.getCell("A2").value = `Transaction Date: ${assumptions.transactionDate || new Date().toLocaleDateString()}`;
+  summarySheet.getCell("A2").value = { formula: "=\"Transaction Date: \"&Assumptions!A3" };
 
   summarySheet.getCell("A4").value = "TRANSACTION OVERVIEW";
   summarySheet.getCell("A4").font = { bold: true, size: 14 };
 
   summarySheet.getCell("A5").value = "Purchase Price (Equity):";
-  summarySheet.getCell("B5").value = transactionMetrics.purchasePrice;
-  summarySheet.getCell("B5").numFmt = currencyFormat;
+  summarySheet.getCell("B5").value = { formula: "=Assumptions!B21" }; summarySheet.getCell("B5").numFmt = currencyFormat;
 
   summarySheet.getCell("A6").value = "Enterprise Value:";
-  summarySheet.getCell("B6").value = transactionMetrics.enterpriseValue;
-  summarySheet.getCell("B6").numFmt = currencyFormat;
+  summarySheet.getCell("B6").value = { formula: "=Assumptions!E45" }; summarySheet.getCell("B6").numFmt = currencyFormat;
 
   summarySheet.getCell("A7").value = "EV/EBITDA Multiple:";
-  summarySheet.getCell("B7").value = transactionMetrics.evEbitdaMultiple;
-  summarySheet.getCell("B7").numFmt = multipleFormat;
+  summarySheet.getCell("B7").value = { formula: "=IF(Assumptions!E6*Assumptions!E12>0,Assumptions!E45/(Assumptions!E6*Assumptions!E12),0)" }; summarySheet.getCell("B7").numFmt = multipleFormat;
 
   summarySheet.getCell("A8").value = "Premium Paid:";
-  summarySheet.getCell("B8").value = assumptions.premium;
-  summarySheet.getCell("B8").numFmt = percentFormat;
+  summarySheet.getCell("B8").value = { formula: "=Assumptions!B24" }; summarySheet.getCell("B8").numFmt = percentFormat;
 
   summarySheet.getCell("A10").value = "CONSIDERATION MIX";
   summarySheet.getCell("A10").font = { bold: true, size: 14 };
 
   summarySheet.getCell("A11").value = "Cash:";
-  summarySheet.getCell("B11").value = transactionMetrics.cashConsideration;
-  summarySheet.getCell("B11").numFmt = currencyFormat;
-  summarySheet.getCell("C11").value = assumptions.cashPercent;
-  summarySheet.getCell("C11").numFmt = percentFormat;
+  summarySheet.getCell("B11").value = { formula: "=Assumptions!E47" }; summarySheet.getCell("B11").numFmt = currencyFormat;
+  summarySheet.getCell("C11").value = { formula: "=Assumptions!B22" }; summarySheet.getCell("C11").numFmt = percentFormat;
 
   summarySheet.getCell("A12").value = "Stock:";
-  summarySheet.getCell("B12").value = transactionMetrics.stockConsideration;
-  summarySheet.getCell("B12").numFmt = currencyFormat;
-  summarySheet.getCell("C12").value = assumptions.stockPercent;
-  summarySheet.getCell("C12").numFmt = percentFormat;
+  summarySheet.getCell("B12").value = { formula: "=Assumptions!E46" }; summarySheet.getCell("B12").numFmt = currencyFormat;
+  summarySheet.getCell("C12").value = { formula: "=Assumptions!B23" }; summarySheet.getCell("C12").numFmt = percentFormat;
 
   summarySheet.getCell("A14").value = "SYNERGIES";
   summarySheet.getCell("A14").font = { bold: true, size: 14 };
 
   summarySheet.getCell("A15").value = "Revenue Synergies (Run-Rate):";
-  summarySheet.getCell("B15").value = synergies.revenueSynergies;
-  summarySheet.getCell("B15").numFmt = currencyFormat;
+  summarySheet.getCell("B15").value = { formula: "=Assumptions!B31" }; summarySheet.getCell("B15").numFmt = currencyFormat;
 
   summarySheet.getCell("A16").value = "Cost Synergies (Run-Rate):";
-  summarySheet.getCell("B16").value = synergies.costSynergies;
-  summarySheet.getCell("B16").numFmt = currencyFormat;
+  summarySheet.getCell("B16").value = { formula: "=Assumptions!E31" }; summarySheet.getCell("B16").numFmt = currencyFormat;
 
   summarySheet.getCell("A17").value = "Total Synergies:";
-  summarySheet.getCell("B17").value = synergies.totalSynergies;
-  summarySheet.getCell("B17").numFmt = currencyFormat;
+  summarySheet.getCell("B17").value = { formula: "=B15+B16" }; summarySheet.getCell("B17").numFmt = currencyFormat;
   summarySheet.getRow(17).font = { bold: true };
 
   summarySheet.getCell("A19").value = "ACCRETION/DILUTION";
@@ -840,7 +980,7 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   summarySheet.getCell("C22").value = accretionDilution.isAccretiveY3 ? "Accretive" : "Dilutive";
   summarySheet.getCell("C22").font = { color: { argb: accretionDilution.isAccretiveY3 ? "FF008000" : "FFFF0000" } };
 
-  // ============ SOURCES & USES ============
+  // ============ SOURCES & USES (Formula-Based) ============
   const suSheet = workbook.addWorksheet("Sources_Uses");
   suSheet.columns = [{ width: 35 }, { width: 18 }, { width: 18 }];
 
@@ -852,70 +992,87 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   suSheet.getCell("C3").value = "% of Total";
   suSheet.getRow(3).font = { bold: true };
 
+  // Cash from Balance Sheet (uses min of user input and remaining to fund)
   suSheet.getCell("A4").value = "Cash from Balance Sheet";
-  suSheet.getCell("B4").value = sourcesAndUses.sources.cashFromBalance;
-  suSheet.getCell("B4").numFmt = currencyFormat;
-  suSheet.getCell("C4").value = sourcesAndUses.sources.cashFromBalance / sourcesAndUses.sources.total;
-  suSheet.getCell("C4").numFmt = percentFormat;
+  suSheet.getCell("B4").value = { formula: "=MIN(Assumptions!E21,MAX(0,B12-B6-B7))" };
+  suSheet.getCell("B4").numFmt = currencyFormat; suSheet.getCell("B4").fill = formulaFill;
+  suSheet.getCell("C4").value = { formula: "=IF(B8>0,B4/B8,0)" }; suSheet.getCell("C4").numFmt = percentFormat;
 
+  // New Debt Raised (balancing amount = Total Uses - Stock - Net Cash - Cash from BS)
   suSheet.getCell("A5").value = "New Debt Raised";
-  suSheet.getCell("B5").value = sourcesAndUses.sources.newDebtRaised;
-  suSheet.getCell("B5").numFmt = currencyFormat;
-  suSheet.getCell("C5").value = sourcesAndUses.sources.newDebtRaised / sourcesAndUses.sources.total;
-  suSheet.getCell("C5").numFmt = percentFormat;
+  suSheet.getCell("B5").value = { formula: "=MAX(0,B12-B6-B7-B4)" };
+  suSheet.getCell("B5").numFmt = currencyFormat; suSheet.getCell("B5").fill = formulaFill;
+  suSheet.getCell("C5").value = { formula: "=IF(B8>0,B5/B8,0)" }; suSheet.getCell("C5").numFmt = percentFormat;
 
+  // Stock Consideration
   suSheet.getCell("A6").value = "Stock Consideration";
-  suSheet.getCell("B6").value = sourcesAndUses.sources.stockConsideration;
-  suSheet.getCell("B6").numFmt = currencyFormat;
-  suSheet.getCell("C6").value = sourcesAndUses.sources.total > 0 ? sourcesAndUses.sources.stockConsideration / sourcesAndUses.sources.total : 0;
-  suSheet.getCell("C6").numFmt = percentFormat;
+  suSheet.getCell("B6").value = { formula: "=MIN(Assumptions!E46,B12)" };
+  suSheet.getCell("B6").numFmt = currencyFormat; suSheet.getCell("B6").fill = formulaFill;
+  suSheet.getCell("C6").value = { formula: "=IF(B8>0,B6/B8,0)" }; suSheet.getCell("C6").numFmt = percentFormat;
 
-  let sourceRowOffset = 7;
-  // Include net cash from target if applicable (net cash acquisition)
-  if (sourcesAndUses.sources.netCashFromTarget && sourcesAndUses.sources.netCashFromTarget > 0) {
-    suSheet.getCell(`A${sourceRowOffset}`).value = "Net Cash from Target";
-    suSheet.getCell(`B${sourceRowOffset}`).value = sourcesAndUses.sources.netCashFromTarget;
-    suSheet.getCell(`B${sourceRowOffset}`).numFmt = currencyFormat;
-    suSheet.getCell(`C${sourceRowOffset}`).value = sourcesAndUses.sources.netCashFromTarget / sourcesAndUses.sources.total;
-    suSheet.getCell(`C${sourceRowOffset}`).numFmt = percentFormat;
-    sourceRowOffset++;
-  }
+  // Net Cash from Target (only if target has net cash, i.e., negative net debt)
+  suSheet.getCell("A7").value = "Net Cash from Target";
+  suSheet.getCell("B7").value = { formula: "=MIN(Assumptions!E52,MAX(0,B12-B6))" };
+  suSheet.getCell("B7").numFmt = currencyFormat; suSheet.getCell("B7").fill = formulaFill;
+  suSheet.getCell("C7").value = { formula: "=IF(B8>0,B7/B8,0)" }; suSheet.getCell("C7").numFmt = percentFormat;
 
-  suSheet.getCell(`A${sourceRowOffset}`).value = "TOTAL SOURCES";
-  suSheet.getCell(`B${sourceRowOffset}`).value = sourcesAndUses.sources.total;
-  suSheet.getCell(`B${sourceRowOffset}`).numFmt = currencyFormat;
-  suSheet.getRow(sourceRowOffset).font = { bold: true };
+  // TOTAL SOURCES = SUM
+  suSheet.getCell("A8").value = "TOTAL SOURCES";
+  suSheet.getCell("B8").value = { formula: "=SUM(B4:B7)" };
+  suSheet.getCell("B8").numFmt = currencyFormat; suSheet.getCell("B8").fill = formulaFill;
+  suSheet.getRow(8).font = { bold: true };
 
-  const usesStartRow = sourceRowOffset + 2;
-  suSheet.getCell(`A${usesStartRow}`).value = "USES";
-  suSheet.getRow(usesStartRow).font = { bold: true };
+  // USES section
+  suSheet.getCell("A10").value = "USES";
+  suSheet.getRow(10).font = { bold: true };
 
-  let usesRow = usesStartRow + 1;
-  suSheet.getCell(`A${usesRow}`).value = "Target Equity Value";
-  suSheet.getCell(`B${usesRow}`).value = sourcesAndUses.uses.equityValue;
-  suSheet.getCell(`B${usesRow}`).numFmt = currencyFormat;
-  usesRow++;
+  // Target Equity Value
+  suSheet.getCell("A11").value = "Target Equity Value";
+  suSheet.getCell("B11").value = { formula: "=Assumptions!B21" };
+  suSheet.getCell("B11").numFmt = currencyFormat; suSheet.getCell("B11").fill = formulaFill;
 
-  // Only show debt payoff if positive
-  if (sourcesAndUses.uses.debtPayoff > 0) {
-    suSheet.getCell(`A${usesRow}`).value = "Target Net Debt Payoff";
-    suSheet.getCell(`B${usesRow}`).value = sourcesAndUses.uses.debtPayoff;
-    suSheet.getCell(`B${usesRow}`).numFmt = currencyFormat;
-    usesRow++;
-  }
+  // Debt Payoff (only if target has net debt)
+  suSheet.getCell("A12").value = "Target Net Debt Payoff";
+  suSheet.getCell("B12").value = { formula: "=Assumptions!E51" };
+  suSheet.getCell("B12").numFmt = currencyFormat; suSheet.getCell("B12").fill = formulaFill;
 
-  suSheet.getCell(`A${usesRow}`).value = "Transaction Fees";
-  suSheet.getCell(`B${usesRow}`).value = sourcesAndUses.uses.transactionFees;
-  suSheet.getCell(`B${usesRow}`).numFmt = currencyFormat;
-  usesRow++;
+  // Transaction Fees
+  suSheet.getCell("A13").value = "Transaction Fees";
+  suSheet.getCell("B13").value = { formula: "=Assumptions!E50" };
+  suSheet.getCell("B13").numFmt = currencyFormat; suSheet.getCell("B13").fill = formulaFill;
 
-  suSheet.getCell(`A${usesRow}`).value = "TOTAL USES";
-  suSheet.getCell(`B${usesRow}`).value = sourcesAndUses.uses.total;
-  suSheet.getCell(`B${usesRow}`).numFmt = currencyFormat;
-  suSheet.getRow(usesRow).font = { bold: true };
-  const balanceCheckRow = usesRow + 2;
+  // TOTAL USES = Equity + Debt Payoff + Fees
+  suSheet.getCell("A14").value = "TOTAL USES";
+  suSheet.getCell("B14").value = { formula: "=B11+B12+B13" };
+  suSheet.getCell("B14").numFmt = currencyFormat; suSheet.getCell("B14").fill = formulaFill;
+  suSheet.getRow(14).font = { bold: true };
 
-  // ============ ACQUIRER PROJECTIONS ============
+  // Balance Check
+  suSheet.getCell("A16").value = "BALANCE CHECK (Sources - Uses)";
+  suSheet.getCell("B16").value = { formula: "=B8-B14" };
+  suSheet.getCell("B16").numFmt = currencyFormat; suSheet.getCell("B16").fill = formulaFill;
+  suSheet.getCell("C16").value = { formula: '=IF(ABS(B16)<0.01,"BALANCED","IMBALANCED")' };
+  suSheet.getCell("C16").font = { bold: true };
+  suSheet.getRow(16).font = { bold: true };
+
+  // Key transaction metrics for reference
+  suSheet.getCell("A18").value = "KEY TRANSACTION METRICS";
+  suSheet.getCell("A18").font = { bold: true };
+
+  suSheet.getCell("A19").value = "Pro Forma Shares (M)";
+  suSheet.getCell("B19").value = { formula: "=Assumptions!E49" }; suSheet.getCell("B19").fill = formulaFill;
+
+  suSheet.getCell("A20").value = "New Shares Issued (M)";
+  suSheet.getCell("B20").value = { formula: "=Assumptions!E48" }; suSheet.getCell("B20").fill = formulaFill;
+
+  // Note about balancing: Uses are fixed, sources adjust to match
+  // Gross Uses = Equity Value + Debt Payoff + Transaction Fees
+  // This is the TOTAL that needs to be funded
+  suSheet.getCell("A12").value = "GROSS USES (to fund)";
+  suSheet.getCell("B12").value = { formula: "=B11+Assumptions!E51+B13" };
+  suSheet.getCell("B12").numFmt = currencyFormat; suSheet.getCell("B12").fill = formulaFill;
+
+  // ============ ACQUIRER PROJECTIONS (Formula-Based) ============
   const acqSheet = workbook.addWorksheet("Acquirer_Standalone");
   acqSheet.columns = [
     { width: 25 },
@@ -929,19 +1086,84 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   acqSheet.getRow(2).font = { bold: true };
   acqSheet.getRow(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
 
-  acqSheet.addRow(["Revenue ($M)", ...acquirerProjections.revenue]);
-  for (let i = 2; i <= 7; i++) acqSheet.getCell(3, i).numFmt = currencyFormat;
+  // Revenue: Year 0 from assumptions, subsequent years = prior * (1 + growth)
+  acqSheet.getCell("A3").value = "Revenue ($M)";
+  acqSheet.getCell("B3").value = { formula: "=Assumptions!B6" }; acqSheet.getCell("B3").numFmt = currencyFormat; acqSheet.getCell("B3").fill = formulaFill;
+  acqSheet.getCell("C3").value = { formula: "=B3*(1+Assumptions!B7)" }; acqSheet.getCell("C3").numFmt = currencyFormat; acqSheet.getCell("C3").fill = formulaFill;
+  acqSheet.getCell("D3").value = { formula: "=C3*(1+Assumptions!B8)" }; acqSheet.getCell("D3").numFmt = currencyFormat; acqSheet.getCell("D3").fill = formulaFill;
+  acqSheet.getCell("E3").value = { formula: "=D3*(1+Assumptions!B9)" }; acqSheet.getCell("E3").numFmt = currencyFormat; acqSheet.getCell("E3").fill = formulaFill;
+  acqSheet.getCell("F3").value = { formula: "=E3*(1+Assumptions!B10)" }; acqSheet.getCell("F3").numFmt = currencyFormat; acqSheet.getCell("F3").fill = formulaFill;
+  acqSheet.getCell("G3").value = { formula: "=F3*(1+Assumptions!B11)" }; acqSheet.getCell("G3").numFmt = currencyFormat; acqSheet.getCell("G3").fill = formulaFill;
 
-  acqSheet.addRow(["EBITDA ($M)", ...acquirerProjections.ebitda]);
-  for (let i = 2; i <= 7; i++) acqSheet.getCell(4, i).numFmt = currencyFormat;
+  // EBITDA = Revenue * EBITDA Margin
+  acqSheet.getCell("A4").value = "EBITDA ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col); // B, C, D, E, F, G
+    acqSheet.getCell(4, col).value = { formula: `=${colLetter}3*Assumptions!$B$12` };
+    acqSheet.getCell(4, col).numFmt = currencyFormat; acqSheet.getCell(4, col).fill = formulaFill;
+  }
 
-  acqSheet.addRow(["Net Income ($M)", ...acquirerProjections.netIncome]);
-  for (let i = 2; i <= 7; i++) acqSheet.getCell(5, i).numFmt = currencyFormat;
+  // D&A = Revenue * D&A %
+  acqSheet.getCell("A5").value = "D&A ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    acqSheet.getCell(5, col).value = { formula: `=${colLetter}3*Assumptions!$B$13` };
+    acqSheet.getCell(5, col).numFmt = currencyFormat; acqSheet.getCell(5, col).fill = formulaFill;
+  }
 
-  acqSheet.addRow(["EPS", ...acquirerProjections.eps]);
-  for (let i = 2; i <= 7; i++) acqSheet.getCell(6, i).numFmt = epsFormat;
+  // EBIT = EBITDA - D&A
+  acqSheet.getCell("A6").value = "EBIT ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    acqSheet.getCell(6, col).value = { formula: `=${colLetter}4-${colLetter}5` };
+    acqSheet.getCell(6, col).numFmt = currencyFormat; acqSheet.getCell(6, col).fill = formulaFill;
+  }
 
-  // ============ TARGET PROJECTIONS ============
+  // Interest Expense (constant from assumptions)
+  acqSheet.getCell("A7").value = "Interest Expense ($M)";
+  for (let col = 2; col <= 7; col++) {
+    acqSheet.getCell(7, col).value = { formula: "=Assumptions!$B$14" };
+    acqSheet.getCell(7, col).numFmt = currencyFormat; acqSheet.getCell(7, col).fill = formulaFill;
+  }
+
+  // EBT = EBIT - Interest
+  acqSheet.getCell("A8").value = "EBT ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    acqSheet.getCell(8, col).value = { formula: `=${colLetter}6-${colLetter}7` };
+    acqSheet.getCell(8, col).numFmt = currencyFormat; acqSheet.getCell(8, col).fill = formulaFill;
+  }
+
+  // Taxes = MAX(0, EBT * Tax Rate)
+  acqSheet.getCell("A9").value = "Taxes ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    acqSheet.getCell(9, col).value = { formula: `=MAX(0,${colLetter}8*Assumptions!$B$15)` };
+    acqSheet.getCell(9, col).numFmt = currencyFormat; acqSheet.getCell(9, col).fill = formulaFill;
+  }
+
+  // Net Income = EBT - Taxes
+  acqSheet.getCell("A10").value = "Net Income ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    acqSheet.getCell(10, col).value = { formula: `=${colLetter}8-${colLetter}9` };
+    acqSheet.getCell(10, col).numFmt = currencyFormat; acqSheet.getCell(10, col).fill = formulaFill;
+  }
+  acqSheet.getRow(10).font = { bold: true };
+
+  // EPS: Use explicit EPS if provided for Y0, otherwise calculate; project proportionally
+  acqSheet.getCell("A11").value = "EPS";
+  // Year 0: IF explicit EPS provided use it, else calculate
+  acqSheet.getCell("B11").value = { formula: "=IF(Assumptions!B18>0,Assumptions!B18,B10/Assumptions!B16)" };
+  acqSheet.getCell("B11").numFmt = epsFormat; acqSheet.getCell("B11").fill = formulaFill;
+  // Years 1-5: grow from base proportionally by Net Income growth
+  for (let col = 3; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    acqSheet.getCell(11, col).value = { formula: `=IF(Assumptions!$B$18>0,$B$11*(${colLetter}10/$B$10),${colLetter}10/Assumptions!$B$16)` };
+    acqSheet.getCell(11, col).numFmt = epsFormat; acqSheet.getCell(11, col).fill = formulaFill;
+  }
+
+  // ============ TARGET PROJECTIONS (Formula-Based) ============
   const tgtSheet = workbook.addWorksheet("Target_Standalone");
   tgtSheet.columns = [
     { width: 25 },
@@ -955,16 +1177,72 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   tgtSheet.getRow(2).font = { bold: true };
   tgtSheet.getRow(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
 
-  tgtSheet.addRow(["Revenue ($M)", ...targetProjections.revenue]);
-  for (let i = 2; i <= 7; i++) tgtSheet.getCell(3, i).numFmt = currencyFormat;
+  // Revenue: Year 0 from assumptions, subsequent years = prior * (1 + growth)
+  tgtSheet.getCell("A3").value = "Revenue ($M)";
+  tgtSheet.getCell("B3").value = { formula: "=Assumptions!E6" }; tgtSheet.getCell("B3").numFmt = currencyFormat; tgtSheet.getCell("B3").fill = formulaFill;
+  tgtSheet.getCell("C3").value = { formula: "=B3*(1+Assumptions!E7)" }; tgtSheet.getCell("C3").numFmt = currencyFormat; tgtSheet.getCell("C3").fill = formulaFill;
+  tgtSheet.getCell("D3").value = { formula: "=C3*(1+Assumptions!E8)" }; tgtSheet.getCell("D3").numFmt = currencyFormat; tgtSheet.getCell("D3").fill = formulaFill;
+  tgtSheet.getCell("E3").value = { formula: "=D3*(1+Assumptions!E9)" }; tgtSheet.getCell("E3").numFmt = currencyFormat; tgtSheet.getCell("E3").fill = formulaFill;
+  tgtSheet.getCell("F3").value = { formula: "=E3*(1+Assumptions!E10)" }; tgtSheet.getCell("F3").numFmt = currencyFormat; tgtSheet.getCell("F3").fill = formulaFill;
+  tgtSheet.getCell("G3").value = { formula: "=F3*(1+Assumptions!E11)" }; tgtSheet.getCell("G3").numFmt = currencyFormat; tgtSheet.getCell("G3").fill = formulaFill;
 
-  tgtSheet.addRow(["EBITDA ($M)", ...targetProjections.ebitda]);
-  for (let i = 2; i <= 7; i++) tgtSheet.getCell(4, i).numFmt = currencyFormat;
+  // EBITDA = Revenue * EBITDA Margin
+  tgtSheet.getCell("A4").value = "EBITDA ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    tgtSheet.getCell(4, col).value = { formula: `=${colLetter}3*Assumptions!$E$12` };
+    tgtSheet.getCell(4, col).numFmt = currencyFormat; tgtSheet.getCell(4, col).fill = formulaFill;
+  }
 
-  tgtSheet.addRow(["Net Income ($M)", ...targetProjections.netIncome]);
-  for (let i = 2; i <= 7; i++) tgtSheet.getCell(5, i).numFmt = currencyFormat;
+  // D&A = Revenue * D&A %
+  tgtSheet.getCell("A5").value = "D&A ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    tgtSheet.getCell(5, col).value = { formula: `=${colLetter}3*Assumptions!$E$13` };
+    tgtSheet.getCell(5, col).numFmt = currencyFormat; tgtSheet.getCell(5, col).fill = formulaFill;
+  }
 
-  // ============ SYNERGIES ============
+  // EBIT = EBITDA - D&A
+  tgtSheet.getCell("A6").value = "EBIT ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    tgtSheet.getCell(6, col).value = { formula: `=${colLetter}4-${colLetter}5` };
+    tgtSheet.getCell(6, col).numFmt = currencyFormat; tgtSheet.getCell(6, col).fill = formulaFill;
+  }
+
+  // Interest Expense
+  tgtSheet.getCell("A7").value = "Interest Expense ($M)";
+  for (let col = 2; col <= 7; col++) {
+    tgtSheet.getCell(7, col).value = { formula: "=Assumptions!$E$14" };
+    tgtSheet.getCell(7, col).numFmt = currencyFormat; tgtSheet.getCell(7, col).fill = formulaFill;
+  }
+
+  // EBT = EBIT - Interest
+  tgtSheet.getCell("A8").value = "EBT ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    tgtSheet.getCell(8, col).value = { formula: `=${colLetter}6-${colLetter}7` };
+    tgtSheet.getCell(8, col).numFmt = currencyFormat; tgtSheet.getCell(8, col).fill = formulaFill;
+  }
+
+  // Taxes = MAX(0, EBT * Tax Rate)
+  tgtSheet.getCell("A9").value = "Taxes ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    tgtSheet.getCell(9, col).value = { formula: `=MAX(0,${colLetter}8*Assumptions!$E$15)` };
+    tgtSheet.getCell(9, col).numFmt = currencyFormat; tgtSheet.getCell(9, col).fill = formulaFill;
+  }
+
+  // Net Income = EBT - Taxes
+  tgtSheet.getCell("A10").value = "Net Income ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    tgtSheet.getCell(10, col).value = { formula: `=${colLetter}8-${colLetter}9` };
+    tgtSheet.getCell(10, col).numFmt = currencyFormat; tgtSheet.getCell(10, col).fill = formulaFill;
+  }
+  tgtSheet.getRow(10).font = { bold: true };
+
+  // ============ SYNERGIES (Formula-Based) ============
   const synSheet = workbook.addWorksheet("Synergies");
   synSheet.columns = [
     { width: 30 },
@@ -977,43 +1255,77 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   synSheet.addRow(["", "Year 0", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5"]);
   synSheet.getRow(2).font = { bold: true };
 
-  synSheet.addRow(["Revenue Synergies (Top-Line)", ...synergies.revSynergiesByYear]);
-  for (let i = 2; i <= 7; i++) synSheet.getCell(3, i).numFmt = currencyFormat;
+  // Revenue Synergies (Top-Line) = Run Rate * Phase-In %
+  synSheet.getCell("A3").value = "Revenue Synergies (Top-Line)";
+  synSheet.getCell("B3").value = 0; synSheet.getCell("B3").numFmt = currencyFormat; // Year 0 = 0
+  synSheet.getCell("C3").value = { formula: "=Assumptions!$B$31*Assumptions!B32" }; synSheet.getCell("C3").numFmt = currencyFormat; synSheet.getCell("C3").fill = formulaFill;
+  synSheet.getCell("D3").value = { formula: "=Assumptions!$B$31*Assumptions!B33" }; synSheet.getCell("D3").numFmt = currencyFormat; synSheet.getCell("D3").fill = formulaFill;
+  synSheet.getCell("E3").value = { formula: "=Assumptions!$B$31*Assumptions!B34" }; synSheet.getCell("E3").numFmt = currencyFormat; synSheet.getCell("E3").fill = formulaFill;
+  synSheet.getCell("F3").value = { formula: "=Assumptions!$B$31*Assumptions!B35" }; synSheet.getCell("F3").numFmt = currencyFormat; synSheet.getCell("F3").fill = formulaFill;
+  synSheet.getCell("G3").value = { formula: "=Assumptions!$B$31*Assumptions!B36" }; synSheet.getCell("G3").numFmt = currencyFormat; synSheet.getCell("G3").fill = formulaFill;
 
-  synSheet.getCell("A4").value = `Revenue Synergy EBITDA (${(synergies.revenueSynergyMargin * 100).toFixed(0)}% margin)`;
-  synSheet.getCell("B4").value = synergies.revSynergyEBITDAByYear[0];
-  synSheet.getCell("C4").value = synergies.revSynergyEBITDAByYear[1];
-  synSheet.getCell("D4").value = synergies.revSynergyEBITDAByYear[2];
-  synSheet.getCell("E4").value = synergies.revSynergyEBITDAByYear[3];
-  synSheet.getCell("F4").value = synergies.revSynergyEBITDAByYear[4];
-  synSheet.getCell("G4").value = synergies.revSynergyEBITDAByYear[5];
-  for (let i = 2; i <= 7; i++) synSheet.getCell(4, i).numFmt = currencyFormat;
+  // Revenue Synergy EBITDA = Rev Synergies * Synergy Margin
+  synSheet.getCell("A4").value = "Revenue Synergy EBITDA";
+  synSheet.getCell("B4").value = 0; synSheet.getCell("B4").numFmt = currencyFormat;
+  for (let col = 3; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    synSheet.getCell(4, col).value = { formula: `=${colLetter}3*Assumptions!$B$37` };
+    synSheet.getCell(4, col).numFmt = currencyFormat; synSheet.getCell(4, col).fill = formulaFill;
+  }
 
-  synSheet.addRow(["Cost Synergies (Direct EBITDA)", ...synergies.costSynergiesByYear]);
-  for (let i = 2; i <= 7; i++) synSheet.getCell(5, i).numFmt = currencyFormat;
+  // Cost Synergies = Run Rate * Phase-In %
+  synSheet.getCell("A5").value = "Cost Synergies (Direct EBITDA)";
+  synSheet.getCell("B5").value = 0; synSheet.getCell("B5").numFmt = currencyFormat;
+  synSheet.getCell("C5").value = { formula: "=Assumptions!$E$31*Assumptions!E32" }; synSheet.getCell("C5").numFmt = currencyFormat; synSheet.getCell("C5").fill = formulaFill;
+  synSheet.getCell("D5").value = { formula: "=Assumptions!$E$31*Assumptions!E33" }; synSheet.getCell("D5").numFmt = currencyFormat; synSheet.getCell("D5").fill = formulaFill;
+  synSheet.getCell("E5").value = { formula: "=Assumptions!$E$31*Assumptions!E34" }; synSheet.getCell("E5").numFmt = currencyFormat; synSheet.getCell("E5").fill = formulaFill;
+  synSheet.getCell("F5").value = { formula: "=Assumptions!$E$31*Assumptions!E35" }; synSheet.getCell("F5").numFmt = currencyFormat; synSheet.getCell("F5").fill = formulaFill;
+  synSheet.getCell("G5").value = { formula: "=Assumptions!$E$31*Assumptions!E36" }; synSheet.getCell("G5").numFmt = currencyFormat; synSheet.getCell("G5").fill = formulaFill;
 
-  synSheet.addRow(["Total EBITDA Synergies", ...synergies.totalEBITDASynergiesByYear]);
-  for (let i = 2; i <= 7; i++) synSheet.getCell(6, i).numFmt = currencyFormat;
+  // Total EBITDA Synergies = Rev Synergy EBITDA + Cost Synergies
+  synSheet.getCell("A6").value = "Total EBITDA Synergies";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    synSheet.getCell(6, col).value = { formula: `=${colLetter}4+${colLetter}5` };
+    synSheet.getCell(6, col).numFmt = currencyFormat; synSheet.getCell(6, col).fill = formulaFill;
+  }
   synSheet.getRow(6).font = { bold: true };
 
+  // Integration Costs
   synSheet.addRow([]);
-  synSheet.addRow(["Integration Costs ($M)", ...synergies.integrationCosts]);
-  for (let i = 2; i <= 7; i++) synSheet.getCell(8, i).numFmt = currencyFormat;
+  synSheet.getCell("A8").value = "Integration Costs ($M)";
+  synSheet.getCell("B8").value = 0; synSheet.getCell("B8").numFmt = currencyFormat;
+  synSheet.getCell("C8").value = { formula: "=Assumptions!B39" }; synSheet.getCell("C8").numFmt = currencyFormat; synSheet.getCell("C8").fill = formulaFill;
+  synSheet.getCell("D8").value = { formula: "=Assumptions!B40" }; synSheet.getCell("D8").numFmt = currencyFormat; synSheet.getCell("D8").fill = formulaFill;
+  synSheet.getCell("E8").value = { formula: "=Assumptions!B41" }; synSheet.getCell("E8").numFmt = currencyFormat; synSheet.getCell("E8").fill = formulaFill;
+  synSheet.getCell("F8").value = 0; synSheet.getCell("F8").numFmt = currencyFormat;
+  synSheet.getCell("G8").value = 0; synSheet.getCell("G8").numFmt = currencyFormat;
 
+  // Phase-In Schedules
   synSheet.addRow([]);
   synSheet.getCell("A10").value = "PHASE-IN SCHEDULES";
   synSheet.getCell("A10").font = { bold: true };
 
-  synSheet.addRow(["Revenue Synergy Phase-In (%)", ...synergies.revenueSynergyRealization.map((r: number) => r * 100)]);
-  synSheet.getRow(11).numFmt = "0%";
+  synSheet.getCell("A11").value = "Revenue Synergy Phase-In (%)";
+  synSheet.getCell("B11").value = 0; synSheet.getCell("B11").numFmt = percentFormat;
+  synSheet.getCell("C11").value = { formula: "=Assumptions!B32" }; synSheet.getCell("C11").numFmt = percentFormat; synSheet.getCell("C11").fill = formulaFill;
+  synSheet.getCell("D11").value = { formula: "=Assumptions!B33" }; synSheet.getCell("D11").numFmt = percentFormat; synSheet.getCell("D11").fill = formulaFill;
+  synSheet.getCell("E11").value = { formula: "=Assumptions!B34" }; synSheet.getCell("E11").numFmt = percentFormat; synSheet.getCell("E11").fill = formulaFill;
+  synSheet.getCell("F11").value = { formula: "=Assumptions!B35" }; synSheet.getCell("F11").numFmt = percentFormat; synSheet.getCell("F11").fill = formulaFill;
+  synSheet.getCell("G11").value = { formula: "=Assumptions!B36" }; synSheet.getCell("G11").numFmt = percentFormat; synSheet.getCell("G11").fill = formulaFill;
 
-  synSheet.addRow(["Cost Synergy Phase-In (%)", ...synergies.costSynergyRealization.map((r: number) => r * 100)]);
-  synSheet.getRow(12).numFmt = "0%";
+  synSheet.getCell("A12").value = "Cost Synergy Phase-In (%)";
+  synSheet.getCell("B12").value = 0; synSheet.getCell("B12").numFmt = percentFormat;
+  synSheet.getCell("C12").value = { formula: "=Assumptions!E32" }; synSheet.getCell("C12").numFmt = percentFormat; synSheet.getCell("C12").fill = formulaFill;
+  synSheet.getCell("D12").value = { formula: "=Assumptions!E33" }; synSheet.getCell("D12").numFmt = percentFormat; synSheet.getCell("D12").fill = formulaFill;
+  synSheet.getCell("E12").value = { formula: "=Assumptions!E34" }; synSheet.getCell("E12").numFmt = percentFormat; synSheet.getCell("E12").fill = formulaFill;
+  synSheet.getCell("F12").value = { formula: "=Assumptions!E35" }; synSheet.getCell("F12").numFmt = percentFormat; synSheet.getCell("F12").fill = formulaFill;
+  synSheet.getCell("G12").value = { formula: "=Assumptions!E36" }; synSheet.getCell("G12").numFmt = percentFormat; synSheet.getCell("G12").fill = formulaFill;
 
-  // ============ PRO FORMA ============
+  // ============ PRO FORMA (Formula-Based) ============
   const pfSheet = workbook.addWorksheet("Pro_Forma_Combined");
   pfSheet.columns = [
-    { width: 25 },
+    { width: 30 },
     { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 },
   ];
 
@@ -1024,19 +1336,92 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   pfSheet.getRow(2).font = { bold: true };
   pfSheet.getRow(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
 
-  pfSheet.addRow(["Revenue ($M)", ...proFormaProjections.revenue]);
-  for (let i = 2; i <= 7; i++) pfSheet.getCell(3, i).numFmt = currencyFormat;
+  // Revenue = Acquirer + Target + Revenue Synergies
+  pfSheet.getCell("A3").value = "Revenue ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    pfSheet.getCell(3, col).value = { formula: `=Acquirer_Standalone!${colLetter}3+Target_Standalone!${colLetter}3+Synergies!${colLetter}3` };
+    pfSheet.getCell(3, col).numFmt = currencyFormat; pfSheet.getCell(3, col).fill = formulaFill;
+  }
 
-  pfSheet.addRow(["EBITDA ($M)", ...proFormaProjections.ebitda]);
-  for (let i = 2; i <= 7; i++) pfSheet.getCell(4, i).numFmt = currencyFormat;
+  // EBITDA = Acquirer EBITDA + Target EBITDA + Total EBITDA Synergies
+  pfSheet.getCell("A4").value = "EBITDA ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    pfSheet.getCell(4, col).value = { formula: `=Acquirer_Standalone!${colLetter}4+Target_Standalone!${colLetter}4+Synergies!${colLetter}6` };
+    pfSheet.getCell(4, col).numFmt = currencyFormat; pfSheet.getCell(4, col).fill = formulaFill;
+  }
 
-  pfSheet.addRow(["Net Income ($M)", ...proFormaProjections.netIncome]);
-  for (let i = 2; i <= 7; i++) pfSheet.getCell(5, i).numFmt = currencyFormat;
+  // D&A = Acquirer D&A + Target D&A + PPA Amortization (starting Y1)
+  pfSheet.getCell("A5").value = "D&A ($M)";
+  pfSheet.getCell("B5").value = { formula: "=Acquirer_Standalone!B5+Target_Standalone!B5" };
+  pfSheet.getCell("B5").numFmt = currencyFormat; pfSheet.getCell("B5").fill = formulaFill;
+  for (let col = 3; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    pfSheet.getCell(5, col).value = { formula: `=Acquirer_Standalone!${colLetter}5+Target_Standalone!${colLetter}5+Assumptions!$E$56` };
+    pfSheet.getCell(5, col).numFmt = currencyFormat; pfSheet.getCell(5, col).fill = formulaFill;
+  }
 
-  pfSheet.addRow(["Pro Forma EPS", ...proFormaProjections.eps]);
-  for (let i = 2; i <= 7; i++) pfSheet.getCell(6, i).numFmt = epsFormat;
+  // EBIT = EBITDA - D&A
+  pfSheet.getCell("A6").value = "EBIT ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    pfSheet.getCell(6, col).value = { formula: `=${colLetter}4-${colLetter}5` };
+    pfSheet.getCell(6, col).numFmt = currencyFormat; pfSheet.getCell(6, col).fill = formulaFill;
+  }
 
-  // ============ ACCRETION/DILUTION ============
+  // Interest = Acquirer Interest + Target Interest + New Debt Interest (from Debt Schedule)
+  pfSheet.getCell("A7").value = "Interest Expense ($M)";
+  pfSheet.getCell("B7").value = { formula: "=Assumptions!B14+Assumptions!E14" };
+  pfSheet.getCell("B7").numFmt = currencyFormat; pfSheet.getCell("B7").fill = formulaFill;
+  for (let col = 3; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    pfSheet.getCell(7, col).value = { formula: `=Assumptions!$B$14+Assumptions!$E$14+Debt_Schedule!${colLetter}6` };
+    pfSheet.getCell(7, col).numFmt = currencyFormat; pfSheet.getCell(7, col).fill = formulaFill;
+  }
+
+  // EBT = EBIT - Interest
+  pfSheet.getCell("A8").value = "EBT ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    pfSheet.getCell(8, col).value = { formula: `=${colLetter}6-${colLetter}7` };
+    pfSheet.getCell(8, col).numFmt = currencyFormat; pfSheet.getCell(8, col).fill = formulaFill;
+  }
+
+  // Taxes = MAX(0, EBT * Tax Rate)
+  pfSheet.getCell("A9").value = "Taxes ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    pfSheet.getCell(9, col).value = { formula: `=MAX(0,${colLetter}8*Assumptions!$B$15)` };
+    pfSheet.getCell(9, col).numFmt = currencyFormat; pfSheet.getCell(9, col).fill = formulaFill;
+  }
+
+  // Integration Costs (after-tax)
+  pfSheet.getCell("A10").value = "Integration Costs (After-Tax)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    pfSheet.getCell(10, col).value = { formula: `=Synergies!${colLetter}8*(1-Assumptions!$B$15)` };
+    pfSheet.getCell(10, col).numFmt = currencyFormat; pfSheet.getCell(10, col).fill = formulaFill;
+  }
+
+  // Net Income = EBT - Taxes - Integration Costs
+  pfSheet.getCell("A11").value = "Net Income ($M)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    pfSheet.getCell(11, col).value = { formula: `=${colLetter}8-${colLetter}9-${colLetter}10` };
+    pfSheet.getCell(11, col).numFmt = currencyFormat; pfSheet.getCell(11, col).fill = formulaFill;
+  }
+  pfSheet.getRow(11).font = { bold: true };
+
+  // Pro Forma EPS = Net Income / Pro Forma Shares
+  pfSheet.getCell("A12").value = "Pro Forma EPS";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    pfSheet.getCell(12, col).value = { formula: `=${colLetter}11/Assumptions!$E$49` };
+    pfSheet.getCell(12, col).numFmt = epsFormat; pfSheet.getCell(12, col).fill = formulaFill;
+  }
+
+  // ============ ACCRETION/DILUTION (Formula-Based) ============
   const adSheet = workbook.addWorksheet("Accretion_Dilution");
   adSheet.columns = [
     { width: 30 },
@@ -1049,27 +1434,110 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   adSheet.addRow(["", "Year 0", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5"]);
   adSheet.getRow(2).font = { bold: true };
 
-  adSheet.addRow(["Acquirer Standalone EPS", ...acquirerProjections.eps]);
-  for (let i = 2; i <= 7; i++) adSheet.getCell(3, i).numFmt = epsFormat;
-
-  adSheet.addRow(["Pro Forma EPS", ...proFormaProjections.eps]);
-  for (let i = 2; i <= 7; i++) adSheet.getCell(4, i).numFmt = epsFormat;
-
-  adSheet.addRow(["EPS Impact ($)", ...accretionDilution.epsImpact]);
-  for (let i = 2; i <= 7; i++) adSheet.getCell(5, i).numFmt = epsFormat;
-
-  adSheet.addRow(["EPS Impact (%)", ...accretionDilution.percentImpact]);
-  for (let i = 2; i <= 7; i++) {
-    adSheet.getCell(6, i).numFmt = percentFormat;
-    const val = accretionDilution.percentImpact[i - 2];
-    if (val > 0) {
-      adSheet.getCell(6, i).font = { color: { argb: "FF008000" } };
-    } else if (val < 0) {
-      adSheet.getCell(6, i).font = { color: { argb: "FFFF0000" } };
-    }
+  // Acquirer Standalone EPS (reference to Acquirer sheet)
+  adSheet.getCell("A3").value = "Acquirer Standalone EPS";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    adSheet.getCell(3, col).value = { formula: `=Acquirer_Standalone!${colLetter}11` };
+    adSheet.getCell(3, col).numFmt = epsFormat; adSheet.getCell(3, col).fill = formulaFill;
   }
 
-  // ============ PURCHASE PRICE ALLOCATION (BUG #4 FIX) ============
+  // Pro Forma EPS (reference to Pro Forma sheet)
+  adSheet.getCell("A4").value = "Pro Forma EPS";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    adSheet.getCell(4, col).value = { formula: `=Pro_Forma_Combined!${colLetter}12` };
+    adSheet.getCell(4, col).numFmt = epsFormat; adSheet.getCell(4, col).fill = formulaFill;
+  }
+
+  // EPS Impact ($) = Pro Forma EPS - Acquirer EPS
+  adSheet.getCell("A5").value = "EPS Impact ($)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    adSheet.getCell(5, col).value = { formula: `=${colLetter}4-${colLetter}3` };
+    adSheet.getCell(5, col).numFmt = epsFormat; adSheet.getCell(5, col).fill = formulaFill;
+  }
+
+  // EPS Impact (%) = (Pro Forma / Acquirer) - 1
+  adSheet.getCell("A6").value = "EPS Impact (%)";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    adSheet.getCell(6, col).value = { formula: `=IF(${colLetter}3<>0,(${colLetter}4/${colLetter}3)-1,0)` };
+    adSheet.getCell(6, col).numFmt = percentFormat; adSheet.getCell(6, col).fill = formulaFill;
+  }
+
+  // Accretive/Dilutive Labels
+  adSheet.getCell("A7").value = "Status";
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    adSheet.getCell(7, col).value = { formula: `=IF(${colLetter}6>0,"Accretive",IF(${colLetter}6<0,"Dilutive","Neutral"))` };
+    adSheet.getCell(7, col).fill = formulaFill;
+  }
+
+  // ============ DEBT SCHEDULE (Formula-Based) ============
+  const debtSheet = workbook.addWorksheet("Debt_Schedule");
+  debtSheet.columns = [{ width: 25 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 }];
+
+  debtSheet.getCell("A1").value = "DEBT SCHEDULE";
+  debtSheet.getCell("A1").font = { bold: true, size: 14 };
+
+  debtSheet.addRow(["", "Year 0", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5"]);
+  debtSheet.getRow(2).font = { bold: true };
+  debtSheet.getRow(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
+
+  // Beginning Balance: Year 0 = New Debt from Sources & Uses, subsequent = prior ending
+  debtSheet.getCell("A3").value = "Beginning Balance ($M)";
+  debtSheet.getCell("B3").value = 0; debtSheet.getCell("B3").numFmt = currencyFormat;
+  debtSheet.getCell("C3").value = { formula: "=Sources_Uses!B5" }; debtSheet.getCell("C3").numFmt = currencyFormat; debtSheet.getCell("C3").fill = formulaFill;
+  for (let col = 4; col <= 7; col++) {
+    const prevCol = String.fromCharCode(63 + col);
+    debtSheet.getCell(3, col).value = { formula: `=${prevCol}5` };
+    debtSheet.getCell(3, col).numFmt = currencyFormat; debtSheet.getCell(3, col).fill = formulaFill;
+  }
+
+  // Mandatory Amortization = Beginning Balance * Amort Rate
+  debtSheet.getCell("A4").value = "Mandatory Amortization ($M)";
+  debtSheet.getCell("B4").value = 0; debtSheet.getCell("B4").numFmt = currencyFormat;
+  for (let col = 3; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    debtSheet.getCell(4, col).value = { formula: `=${colLetter}3*Assumptions!$E$24` };
+    debtSheet.getCell(4, col).numFmt = currencyFormat; debtSheet.getCell(4, col).fill = formulaFill;
+  }
+
+  // Ending Balance = Beginning - Amortization
+  debtSheet.getCell("A5").value = "Ending Balance ($M)";
+  debtSheet.getCell("B5").value = 0; debtSheet.getCell("B5").numFmt = currencyFormat;
+  for (let col = 3; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    debtSheet.getCell(5, col).value = { formula: `=MAX(0,${colLetter}3-${colLetter}4)` };
+    debtSheet.getCell(5, col).numFmt = currencyFormat; debtSheet.getCell(5, col).fill = formulaFill;
+  }
+  debtSheet.getRow(5).font = { bold: true };
+
+  // Interest Expense = Average Balance * Interest Rate
+  debtSheet.getCell("A6").value = "Interest Expense ($M)";
+  debtSheet.getCell("B6").value = 0; debtSheet.getCell("B6").numFmt = currencyFormat;
+  for (let col = 3; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    debtSheet.getCell(6, col).value = { formula: `=((${colLetter}3+${colLetter}5)/2)*Assumptions!$E$23` };
+    debtSheet.getCell(6, col).numFmt = currencyFormat; debtSheet.getCell(6, col).fill = formulaFill;
+  }
+
+  // Key inputs reference
+  debtSheet.addRow([]);
+  debtSheet.getCell("A8").value = "KEY INPUTS (from Assumptions)";
+  debtSheet.getCell("A8").font = { bold: true };
+
+  debtSheet.getCell("A9").value = "Interest Rate";
+  debtSheet.getCell("B9").value = { formula: "=Assumptions!E23" }; debtSheet.getCell("B9").numFmt = percentFormat; debtSheet.getCell("B9").fill = formulaFill;
+
+  debtSheet.getCell("A10").value = "Amortization Rate";
+  debtSheet.getCell("B10").value = { formula: "=Assumptions!E24" }; debtSheet.getCell("B10").numFmt = percentFormat; debtSheet.getCell("B10").fill = formulaFill;
+
+  debtSheet.getCell("A11").value = "Maturity (Years)";
+  debtSheet.getCell("B11").value = { formula: "=Assumptions!E25" }; debtSheet.getCell("B11").fill = formulaFill;
+
+  // ============ PURCHASE PRICE ALLOCATION (Formula-Based with DTL) ============
   const ppaSheet = workbook.addWorksheet("Purchase_Price_Allocation");
   ppaSheet.columns = [{ width: 35 }, { width: 18 }, { width: 18 }, { width: 18 }];
 
@@ -1077,125 +1545,90 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   ppaSheet.getCell("A1").font = { bold: true, size: 14 };
 
   ppaSheet.getCell("A3").value = "Purchase Price (Equity Value)";
-  ppaSheet.getCell("B3").value = results.ppa.purchasePrice;
+  ppaSheet.getCell("B3").value = { formula: "=Assumptions!B21" };
   ppaSheet.getCell("B3").numFmt = currencyFormat;
-  ppaSheet.getCell("B3").font = { color: { argb: "FF0000FF" } }; // Blue for inputs
+  ppaSheet.getCell("B3").font = { color: { argb: "FF0000FF" } }; ppaSheet.getCell("B3").fill = formulaFill;
 
-  ppaSheet.getCell("A5").value = "Less: Fair Value of Identifiable Net Assets";
-  ppaSheet.getCell("B5").value = -results.ppa.fairValueNetAssets;
-  ppaSheet.getCell("B5").numFmt = currencyFormat;
+  ppaSheet.getCell("A5").value = "Less: Fair Value of Net Assets";
+  ppaSheet.getCell("B5").value = { formula: "=-Assumptions!B45" };
+  ppaSheet.getCell("B5").numFmt = currencyFormat; ppaSheet.getCell("B5").fill = formulaFill;
 
   ppaSheet.getCell("A7").value = "Identified Intangible Assets:";
   ppaSheet.getCell("A7").font = { bold: true };
 
   ppaSheet.getCell("A8").value = "  Customer Relationships";
-  ppaSheet.getCell("B8").value = -results.ppa.customerRelationships;
-  ppaSheet.getCell("B8").numFmt = currencyFormat;
-  ppaSheet.getCell("C8").value = `${results.ppa.customerRelationshipsLife} year life`;
+  ppaSheet.getCell("B8").value = { formula: "=-Assumptions!B46" };
+  ppaSheet.getCell("B8").numFmt = currencyFormat; ppaSheet.getCell("B8").fill = formulaFill;
+  ppaSheet.getCell("C8").value = { formula: '=Assumptions!B47&" year life"' };
 
   ppaSheet.getCell("A9").value = "  Developed Technology";
-  ppaSheet.getCell("B9").value = -results.ppa.developedTechnology;
-  ppaSheet.getCell("B9").numFmt = currencyFormat;
-  ppaSheet.getCell("C9").value = `${results.ppa.developedTechnologyLife} year life`;
+  ppaSheet.getCell("B9").value = { formula: "=-Assumptions!B48" };
+  ppaSheet.getCell("B9").numFmt = currencyFormat; ppaSheet.getCell("B9").fill = formulaFill;
+  ppaSheet.getCell("C9").value = { formula: '=Assumptions!B49&" year life"' };
 
-  ppaSheet.getCell("A10").value = "  Total Identified Intangibles";
-  ppaSheet.getCell("B10").value = -results.ppa.totalIdentifiedIntangibles;
-  ppaSheet.getCell("B10").numFmt = currencyFormat;
-  ppaSheet.getRow(10).font = { bold: true };
+  ppaSheet.getCell("A10").value = "  Other Intangibles";
+  ppaSheet.getCell("B10").value = { formula: "=-Assumptions!B50" };
+  ppaSheet.getCell("B10").numFmt = currencyFormat; ppaSheet.getCell("B10").fill = formulaFill;
+  ppaSheet.getCell("C10").value = { formula: '=Assumptions!B51&" year life"' };
 
-  ppaSheet.getCell("A12").value = "Goodwill (Residual)";
-  ppaSheet.getCell("B12").value = results.ppa.goodwill;
-  ppaSheet.getCell("B12").numFmt = currencyFormat;
-  ppaSheet.getRow(12).font = { bold: true };
-  ppaSheet.getRow(12).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF0C0" } };
+  ppaSheet.getCell("A11").value = "  Total Identified Intangibles";
+  ppaSheet.getCell("B11").value = { formula: "=-Assumptions!E53" };
+  ppaSheet.getCell("B11").numFmt = currencyFormat; ppaSheet.getCell("B11").fill = formulaFill;
+  ppaSheet.getRow(11).font = { bold: true };
+
+  // Deferred Tax Liability (added back for Goodwill calculation)
+  ppaSheet.getCell("A13").value = "Plus: Deferred Tax Liability";
+  ppaSheet.getCell("B13").value = { formula: "=Assumptions!E54" };
+  ppaSheet.getCell("B13").numFmt = currencyFormat; ppaSheet.getCell("B13").fill = formulaFill;
+
+  // CORRECTED Goodwill = Purchase Price - FV Net Assets - Intangibles + DTL
+  ppaSheet.getCell("A15").value = "Goodwill (Residual)";
+  ppaSheet.getCell("B15").value = { formula: "=Assumptions!E55" };
+  ppaSheet.getCell("B15").numFmt = currencyFormat; ppaSheet.getCell("B15").fill = formulaFill;
+  ppaSheet.getRow(15).font = { bold: true };
+  ppaSheet.getRow(15).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF0C0" } };
+
+  // Goodwill Check Formula
+  ppaSheet.getCell("A16").value = "Goodwill Check (PP - FV NA - Intang + DTL)";
+  ppaSheet.getCell("B16").value = { formula: "=B3+B5+B11+B13" };
+  ppaSheet.getCell("B16").numFmt = currencyFormat; ppaSheet.getCell("B16").fill = formulaFill;
 
   // Amortization Schedule
-  ppaSheet.getCell("A15").value = "INTANGIBLE AMORTIZATION SCHEDULE";
-  ppaSheet.getCell("A15").font = { bold: true, size: 12 };
+  ppaSheet.getCell("A18").value = "INTANGIBLE AMORTIZATION SCHEDULE";
+  ppaSheet.getCell("A18").font = { bold: true, size: 12 };
 
   ppaSheet.addRow(["", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5"]);
-  ppaSheet.getRow(16).font = { bold: true };
-
-  const custRelAmort = results.ppa.customerRelAmortization;
-  const devTechAmort = results.ppa.devTechAmortization;
-  
-  ppaSheet.addRow([
-    "Customer Relationships",
-    custRelAmort, custRelAmort, custRelAmort, custRelAmort, custRelAmort
-  ]);
-  for (let i = 2; i <= 6; i++) ppaSheet.getCell(17, i).numFmt = currencyFormat;
-
-  ppaSheet.addRow([
-    "Developed Technology",
-    devTechAmort, devTechAmort, devTechAmort, devTechAmort, devTechAmort
-  ]);
-  for (let i = 2; i <= 6; i++) ppaSheet.getCell(18, i).numFmt = currencyFormat;
-
-  const totalAmort = results.ppa.totalAnnualAmortization;
-  ppaSheet.addRow([
-    "Total PPA Amortization",
-    totalAmort, totalAmort, totalAmort, totalAmort, totalAmort
-  ]);
-  for (let i = 2; i <= 6; i++) ppaSheet.getCell(19, i).numFmt = currencyFormat;
   ppaSheet.getRow(19).font = { bold: true };
 
-  // ============ DEBT SCHEDULE (BUG #4 & #6 FIX) ============
-  const debtSheet = workbook.addWorksheet("Debt_Schedule");
-  debtSheet.columns = [{ width: 25 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 }];
-
-  debtSheet.getCell("A1").value = "DEBT SCHEDULE";
-  debtSheet.getCell("A1").font = { bold: true, size: 14 };
-
-  debtSheet.getCell("A3").value = "New Debt Principal";
-  debtSheet.getCell("B3").value = results.debtSchedule.principal;
-  debtSheet.getCell("B3").numFmt = currencyFormat;
-  debtSheet.getCell("B3").font = { color: { argb: "FF0000FF" } };
-
-  debtSheet.getCell("A4").value = "Interest Rate";
-  debtSheet.getCell("B4").value = results.debtSchedule.interestRate;
-  debtSheet.getCell("B4").numFmt = percentFormat;
-  debtSheet.getCell("B4").font = { color: { argb: "FF0000FF" } };
-
-  debtSheet.getCell("A5").value = "Annual Amortization Rate";
-  debtSheet.getCell("B5").value = results.debtSchedule.amortizationRate;
-  debtSheet.getCell("B5").numFmt = percentFormat;
-  debtSheet.getCell("B5").font = { color: { argb: "FF0000FF" } };
-
-  debtSheet.getCell("A6").value = "Maturity (Years)";
-  debtSheet.getCell("B6").value = results.debtSchedule.maturityYears;
-  debtSheet.getCell("B6").font = { color: { argb: "FF0000FF" } };
-
-  debtSheet.addRow([]);
-  debtSheet.addRow(["YEAR", "Beginning Balance", "Mandatory Amort", "Ending Balance", "Interest Expense"]);
-  debtSheet.getRow(9).font = { bold: true };
-  debtSheet.getRow(9).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
-
-  for (let year = 0; year <= 5; year++) {
-    const sched = results.debtSchedule.schedule;
-    debtSheet.addRow([
-      year,
-      sched.beginningBalance[year],
-      sched.mandatoryAmort[year],
-      sched.endingBalance[year],
-      sched.interestExpense[year]
-    ]);
-    const row = 10 + year;
-    for (let col = 2; col <= 5; col++) {
-      debtSheet.getCell(row, col).numFmt = currencyFormat;
-    }
+  // Customer Relationships Amortization
+  ppaSheet.getCell("A20").value = "Customer Relationships";
+  for (let col = 2; col <= 6; col++) {
+    ppaSheet.getCell(20, col).value = { formula: "=IF(Assumptions!$B$47>0,Assumptions!$B$46/Assumptions!$B$47,0)" };
+    ppaSheet.getCell(20, col).numFmt = currencyFormat; ppaSheet.getCell(20, col).fill = formulaFill;
   }
 
-  // ============ BALANCE CHECK (BUG #2 FIX) ============
-  suSheet.getCell(`A${balanceCheckRow}`).value = "BALANCE CHECK";
-  suSheet.getCell(`A${balanceCheckRow}`).font = { bold: true };
-  suSheet.getCell(`A${balanceCheckRow + 1}`).value = "Sources - Uses:";
-  suSheet.getCell(`B${balanceCheckRow + 1}`).value = sourcesAndUses.gap || 0;
-  suSheet.getCell(`B${balanceCheckRow + 1}`).numFmt = currencyFormat;
-  suSheet.getCell(`C${balanceCheckRow + 1}`).value = sourcesAndUses.isBalanced ? "BALANCED" : "NOT BALANCED";
-  suSheet.getCell(`C${balanceCheckRow + 1}`).font = { 
-    bold: true,
-    color: { argb: sourcesAndUses.isBalanced ? "FF008000" : "FFFF0000" } 
-  };
+  // Developed Technology Amortization
+  ppaSheet.getCell("A21").value = "Developed Technology";
+  for (let col = 2; col <= 6; col++) {
+    ppaSheet.getCell(21, col).value = { formula: "=IF(Assumptions!$B$49>0,Assumptions!$B$48/Assumptions!$B$49,0)" };
+    ppaSheet.getCell(21, col).numFmt = currencyFormat; ppaSheet.getCell(21, col).fill = formulaFill;
+  }
+
+  // Other Intangibles Amortization
+  ppaSheet.getCell("A22").value = "Other Intangibles";
+  for (let col = 2; col <= 6; col++) {
+    ppaSheet.getCell(22, col).value = { formula: "=IF(Assumptions!$B$51>0,Assumptions!$B$50/Assumptions!$B$51,0)" };
+    ppaSheet.getCell(22, col).numFmt = currencyFormat; ppaSheet.getCell(22, col).fill = formulaFill;
+  }
+
+  // Total PPA Amortization
+  ppaSheet.getCell("A23").value = "Total PPA Amortization";
+  for (let col = 2; col <= 6; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    ppaSheet.getCell(23, col).value = { formula: `=${colLetter}20+${colLetter}21+${colLetter}22` };
+    ppaSheet.getCell(23, col).numFmt = currencyFormat; ppaSheet.getCell(23, col).fill = formulaFill;
+  }
+  ppaSheet.getRow(23).font = { bold: true };
 
   // ============ SENSITIVITY ANALYSIS (BUG #4 FIX) ============
   const sensSheet = workbook.addWorksheet("Sensitivity_Analysis");
@@ -1356,7 +1789,7 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   sensSheet.getCell("B25").numFmt = currencyFormat;
   sensSheet.getCell("B25").font = { color: { argb: "FF0000FF" } };
 
-  // ============ CREDIT ANALYSIS TAB ============
+  // ============ CREDIT ANALYSIS TAB (Formula-Based) ============
   const creditSheet = workbook.addWorksheet("Credit_Analysis");
   creditSheet.columns = [
     { width: 30 },
@@ -1376,66 +1809,55 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   creditSheet.getRow(3).font = { bold: true };
   creditSheet.getRow(3).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
 
-  // Total Debt
+  // Total Debt (reference Debt_Schedule ending balance)
   creditSheet.getCell("A4").value = "Total Debt ($M)";
-  for (let i = 0; i <= 5; i++) {
-    const debtBalance = i === 0 ? results.debtSchedule.principal : results.debtSchedule.schedule.endingBalance[i];
-    creditSheet.getCell(4, i + 2).value = debtBalance;
-    creditSheet.getCell(4, i + 2).numFmt = currencyFormat;
+  creditSheet.getCell("B4").value = { formula: "=Debt_Schedule!B5" }; creditSheet.getCell("B4").numFmt = currencyFormat; creditSheet.getCell("B4").fill = formulaFill;
+  for (let col = 3; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    creditSheet.getCell(4, col).value = { formula: `=Debt_Schedule!${colLetter}5` };
+    creditSheet.getCell(4, col).numFmt = currencyFormat; creditSheet.getCell(4, col).fill = formulaFill;
   }
 
-  // Pro Forma EBITDA
+  // Pro Forma EBITDA (reference Pro_Forma_Combined)
   creditSheet.getCell("A5").value = "Pro Forma EBITDA ($M)";
-  for (let i = 0; i <= 5; i++) {
-    creditSheet.getCell(5, i + 2).value = proFormaProjections.ebitda[i];
-    creditSheet.getCell(5, i + 2).numFmt = currencyFormat;
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    creditSheet.getCell(5, col).value = { formula: `=Pro_Forma_Combined!${colLetter}4` };
+    creditSheet.getCell(5, col).numFmt = currencyFormat; creditSheet.getCell(5, col).fill = formulaFill;
   }
 
   // Net Debt / EBITDA
   creditSheet.getCell("A6").value = "Net Debt / EBITDA";
   creditSheet.getCell("A6").font = { bold: true };
-  for (let i = 0; i <= 5; i++) {
-    const debtBalance = i === 0 ? results.debtSchedule.principal : results.debtSchedule.schedule.endingBalance[i];
-    const ebitda = proFormaProjections.ebitda[i];
-    const ratio = ebitda > 0 ? debtBalance / ebitda : 0;
-    creditSheet.getCell(6, i + 2).value = ratio;
-    creditSheet.getCell(6, i + 2).numFmt = "0.0x";
-    if (ratio > 4) {
-      creditSheet.getCell(6, i + 2).font = { color: { argb: "FFFF0000" } };
-    } else if (ratio < 2) {
-      creditSheet.getCell(6, i + 2).font = { color: { argb: "FF008000" } };
-    }
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    creditSheet.getCell(6, col).value = { formula: `=IF(${colLetter}5>0,${colLetter}4/${colLetter}5,0)` };
+    creditSheet.getCell(6, col).numFmt = "0.0x"; creditSheet.getCell(6, col).fill = formulaFill;
   }
 
-  // Interest Expense
+  // Interest Expense (reference Debt_Schedule)
   creditSheet.getCell("A8").value = "Interest Expense ($M)";
-  for (let i = 0; i <= 5; i++) {
-    const interest = i === 0 ? 0 : results.debtSchedule.schedule.interestExpense[i];
-    creditSheet.getCell(8, i + 2).value = interest;
-    creditSheet.getCell(8, i + 2).numFmt = currencyFormat;
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    creditSheet.getCell(8, col).value = { formula: `=Debt_Schedule!${colLetter}6` };
+    creditSheet.getCell(8, col).numFmt = currencyFormat; creditSheet.getCell(8, col).fill = formulaFill;
   }
 
-  // EBITDA
+  // EBITDA (same as row 5)
   creditSheet.getCell("A9").value = "EBITDA ($M)";
-  for (let i = 0; i <= 5; i++) {
-    creditSheet.getCell(9, i + 2).value = proFormaProjections.ebitda[i];
-    creditSheet.getCell(9, i + 2).numFmt = currencyFormat;
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    creditSheet.getCell(9, col).value = { formula: `=${colLetter}5` };
+    creditSheet.getCell(9, col).numFmt = currencyFormat; creditSheet.getCell(9, col).fill = formulaFill;
   }
 
-  // Interest Coverage Ratio
+  // Interest Coverage Ratio = EBITDA / Interest
   creditSheet.getCell("A10").value = "Interest Coverage (EBITDA/Interest)";
   creditSheet.getCell("A10").font = { bold: true };
-  for (let i = 0; i <= 5; i++) {
-    const interest = i === 0 ? 0 : results.debtSchedule.schedule.interestExpense[i];
-    const ebitda = proFormaProjections.ebitda[i];
-    const coverage = interest > 0 ? ebitda / interest : 999;
-    creditSheet.getCell(10, i + 2).value = coverage;
-    creditSheet.getCell(10, i + 2).numFmt = "0.0x";
-    if (coverage < 2) {
-      creditSheet.getCell(10, i + 2).font = { color: { argb: "FFFF0000" } };
-    } else if (coverage > 5) {
-      creditSheet.getCell(10, i + 2).font = { color: { argb: "FF008000" } };
-    }
+  for (let col = 2; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    creditSheet.getCell(10, col).value = { formula: `=IF(${colLetter}8>0,${colLetter}9/${colLetter}8,999)` };
+    creditSheet.getCell(10, col).numFmt = "0.0x"; creditSheet.getCell(10, col).fill = formulaFill;
   }
 
   // Debt Service Coverage
@@ -1445,16 +1867,17 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   creditSheet.getCell("A13").value = "Beginning Debt";
   creditSheet.getCell("A14").value = "Mandatory Amortization";
   creditSheet.getCell("A15").value = "Ending Debt";
-  for (let i = 1; i <= 5; i++) {
-    creditSheet.getCell(13, i + 2).value = results.debtSchedule.schedule.beginningBalance[i];
-    creditSheet.getCell(13, i + 2).numFmt = currencyFormat;
-    creditSheet.getCell(14, i + 2).value = -results.debtSchedule.schedule.mandatoryAmort[i];
-    creditSheet.getCell(14, i + 2).numFmt = currencyFormat;
-    creditSheet.getCell(15, i + 2).value = results.debtSchedule.schedule.endingBalance[i];
-    creditSheet.getCell(15, i + 2).numFmt = currencyFormat;
+  for (let col = 3; col <= 7; col++) {
+    const colLetter = String.fromCharCode(64 + col);
+    creditSheet.getCell(13, col).value = { formula: `=Debt_Schedule!${colLetter}3` };
+    creditSheet.getCell(13, col).numFmt = currencyFormat; creditSheet.getCell(13, col).fill = formulaFill;
+    creditSheet.getCell(14, col).value = { formula: `=-Debt_Schedule!${colLetter}4` };
+    creditSheet.getCell(14, col).numFmt = currencyFormat; creditSheet.getCell(14, col).fill = formulaFill;
+    creditSheet.getCell(15, col).value = { formula: `=Debt_Schedule!${colLetter}5` };
+    creditSheet.getCell(15, col).numFmt = currencyFormat; creditSheet.getCell(15, col).fill = formulaFill;
   }
 
-  // ============ PRO FORMA BALANCE SHEET TAB ============
+  // ============ PRO FORMA BALANCE SHEET TAB (Formula-Based) ============
   const bsSheet = workbook.addWorksheet("Pro_Forma_Balance_Sheet");
   bsSheet.columns = [
     { width: 35 },
@@ -1475,118 +1898,120 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   bsSheet.getCell("A5").value = "ASSETS";
   bsSheet.getCell("A5").font = { bold: true };
 
-  const acquirerCash = assumptions.acquirerCash || acquirerRevenue * 0.05;
-  const cashUsed = sourcesAndUses.sources.cashFromBalance;
+  // Cash & Equivalents (using formula references)
   bsSheet.getCell("A6").value = "Cash & Equivalents";
-  bsSheet.getCell("B6").value = acquirerCash;
-  bsSheet.getCell("C6").value = -cashUsed + (sourcesAndUses.sources.netCashFromTarget || 0);
-  bsSheet.getCell("D6").value = acquirerCash - cashUsed + (sourcesAndUses.sources.netCashFromTarget || 0);
-  bsSheet.getCell("B6").numFmt = currencyFormat;
-  bsSheet.getCell("C6").numFmt = currencyFormat;
-  bsSheet.getCell("D6").numFmt = currencyFormat;
+  bsSheet.getCell("B6").value = { formula: "=Assumptions!E21" }; // Acquirer cash available
+  bsSheet.getCell("C6").value = { formula: "=-Sources_Uses!B4+Assumptions!E52" }; // Cash used + net cash from target
+  bsSheet.getCell("D6").value = { formula: "=B6+C6" };
+  bsSheet.getCell("B6").numFmt = currencyFormat; bsSheet.getCell("B6").fill = formulaFill;
+  bsSheet.getCell("C6").numFmt = currencyFormat; bsSheet.getCell("C6").fill = formulaFill;
+  bsSheet.getCell("D6").numFmt = currencyFormat; bsSheet.getCell("D6").fill = formulaFill;
 
-  const acquirerOtherAssets = acquirerRevenue * 0.4;
+  // Other Assets (simplified estimate)
   bsSheet.getCell("A7").value = "Other Current & Fixed Assets";
-  bsSheet.getCell("B7").value = acquirerOtherAssets;
-  bsSheet.getCell("C7").value = targetRevenue * 0.4;
-  bsSheet.getCell("D7").value = acquirerOtherAssets + targetRevenue * 0.4;
-  bsSheet.getCell("B7").numFmt = currencyFormat;
-  bsSheet.getCell("C7").numFmt = currencyFormat;
-  bsSheet.getCell("D7").numFmt = currencyFormat;
+  bsSheet.getCell("B7").value = { formula: "=Assumptions!B6*0.4" }; // Acquirer revenue * 40%
+  bsSheet.getCell("C7").value = { formula: "=Assumptions!E6*0.4" }; // Target revenue * 40%
+  bsSheet.getCell("D7").value = { formula: "=B7+C7" };
+  bsSheet.getCell("B7").numFmt = currencyFormat; bsSheet.getCell("B7").fill = formulaFill;
+  bsSheet.getCell("C7").numFmt = currencyFormat; bsSheet.getCell("C7").fill = formulaFill;
+  bsSheet.getCell("D7").numFmt = currencyFormat; bsSheet.getCell("D7").fill = formulaFill;
 
+  // Goodwill (reference Assumptions sheet)
   bsSheet.getCell("A8").value = "Goodwill";
-  bsSheet.getCell("B8").value = 0;
-  bsSheet.getCell("C8").value = transactionMetrics.goodwill;
-  bsSheet.getCell("D8").value = transactionMetrics.goodwill;
-  bsSheet.getCell("B8").numFmt = currencyFormat;
-  bsSheet.getCell("C8").numFmt = currencyFormat;
-  bsSheet.getCell("D8").numFmt = currencyFormat;
+  bsSheet.getCell("B8").value = 0; bsSheet.getCell("B8").numFmt = currencyFormat;
+  bsSheet.getCell("C8").value = { formula: "=Assumptions!E55" }; // Goodwill from Assumptions
+  bsSheet.getCell("D8").value = { formula: "=C8" };
+  bsSheet.getCell("C8").numFmt = currencyFormat; bsSheet.getCell("C8").fill = formulaFill;
+  bsSheet.getCell("D8").numFmt = currencyFormat; bsSheet.getCell("D8").fill = formulaFill;
 
+  // Identified Intangibles
   bsSheet.getCell("A9").value = "Identified Intangibles";
-  bsSheet.getCell("B9").value = 0;
-  bsSheet.getCell("C9").value = transactionMetrics.totalIdentifiedIntangibles;
-  bsSheet.getCell("D9").value = transactionMetrics.totalIdentifiedIntangibles;
-  bsSheet.getCell("B9").numFmt = currencyFormat;
-  bsSheet.getCell("C9").numFmt = currencyFormat;
-  bsSheet.getCell("D9").numFmt = currencyFormat;
+  bsSheet.getCell("B9").value = 0; bsSheet.getCell("B9").numFmt = currencyFormat;
+  bsSheet.getCell("C9").value = { formula: "=Assumptions!E53" }; // Total intangibles
+  bsSheet.getCell("D9").value = { formula: "=C9" };
+  bsSheet.getCell("C9").numFmt = currencyFormat; bsSheet.getCell("C9").fill = formulaFill;
+  bsSheet.getCell("D9").numFmt = currencyFormat; bsSheet.getCell("D9").fill = formulaFill;
 
-  const totalAssets = acquirerCash - cashUsed + acquirerOtherAssets + targetRevenue * 0.4 + transactionMetrics.goodwill + transactionMetrics.totalIdentifiedIntangibles;
+  // Total Assets
   bsSheet.getCell("A10").value = "TOTAL ASSETS";
   bsSheet.getCell("A10").font = { bold: true };
-  bsSheet.getCell("D10").value = totalAssets;
-  bsSheet.getCell("D10").numFmt = currencyFormat;
+  bsSheet.getCell("D10").value = { formula: "=SUM(D6:D9)" };
+  bsSheet.getCell("D10").numFmt = currencyFormat; bsSheet.getCell("D10").fill = formulaFill;
   bsSheet.getCell("D10").font = { bold: true };
 
   // Liabilities
   bsSheet.getCell("A12").value = "LIABILITIES";
   bsSheet.getCell("A12").font = { bold: true };
 
-  const acquirerDebt = assumptions.acquirerExistingDebt || 0;
+  // Existing Debt
   bsSheet.getCell("A13").value = "Existing Debt";
-  bsSheet.getCell("B13").value = acquirerDebt;
+  bsSheet.getCell("B13").value = { formula: "=Assumptions!B19" }; // Acquirer existing debt
   bsSheet.getCell("C13").value = 0;
-  bsSheet.getCell("D13").value = acquirerDebt;
-  bsSheet.getCell("B13").numFmt = currencyFormat;
+  bsSheet.getCell("D13").value = { formula: "=B13" };
+  bsSheet.getCell("B13").numFmt = currencyFormat; bsSheet.getCell("B13").fill = formulaFill;
   bsSheet.getCell("C13").numFmt = currencyFormat;
-  bsSheet.getCell("D13").numFmt = currencyFormat;
+  bsSheet.getCell("D13").numFmt = currencyFormat; bsSheet.getCell("D13").fill = formulaFill;
 
+  // New Debt Raised
   bsSheet.getCell("A14").value = "New Debt Raised";
-  bsSheet.getCell("B14").value = 0;
-  bsSheet.getCell("C14").value = sourcesAndUses.sources.newDebtRaised;
-  bsSheet.getCell("D14").value = sourcesAndUses.sources.newDebtRaised;
-  bsSheet.getCell("B14").numFmt = currencyFormat;
-  bsSheet.getCell("C14").numFmt = currencyFormat;
-  bsSheet.getCell("D14").numFmt = currencyFormat;
+  bsSheet.getCell("B14").value = 0; bsSheet.getCell("B14").numFmt = currencyFormat;
+  bsSheet.getCell("C14").value = { formula: "=Sources_Uses!B5" }; // New debt from S&U
+  bsSheet.getCell("D14").value = { formula: "=C14" };
+  bsSheet.getCell("C14").numFmt = currencyFormat; bsSheet.getCell("C14").fill = formulaFill;
+  bsSheet.getCell("D14").numFmt = currencyFormat; bsSheet.getCell("D14").fill = formulaFill;
 
+  // Other Liabilities
   bsSheet.getCell("A15").value = "Other Liabilities";
-  bsSheet.getCell("B15").value = acquirerRevenue * 0.15;
-  bsSheet.getCell("C15").value = targetRevenue * 0.15;
-  bsSheet.getCell("D15").value = acquirerRevenue * 0.15 + targetRevenue * 0.15;
-  bsSheet.getCell("B15").numFmt = currencyFormat;
-  bsSheet.getCell("C15").numFmt = currencyFormat;
-  bsSheet.getCell("D15").numFmt = currencyFormat;
+  bsSheet.getCell("B15").value = { formula: "=Assumptions!B6*0.15" };
+  bsSheet.getCell("C15").value = { formula: "=Assumptions!E6*0.15" };
+  bsSheet.getCell("D15").value = { formula: "=B15+C15" };
+  bsSheet.getCell("B15").numFmt = currencyFormat; bsSheet.getCell("B15").fill = formulaFill;
+  bsSheet.getCell("C15").numFmt = currencyFormat; bsSheet.getCell("C15").fill = formulaFill;
+  bsSheet.getCell("D15").numFmt = currencyFormat; bsSheet.getCell("D15").fill = formulaFill;
 
-  const totalLiabilities = acquirerDebt + sourcesAndUses.sources.newDebtRaised + acquirerRevenue * 0.15 + targetRevenue * 0.15;
+  // Total Liabilities
   bsSheet.getCell("A16").value = "TOTAL LIABILITIES";
   bsSheet.getCell("A16").font = { bold: true };
-  bsSheet.getCell("D16").value = totalLiabilities;
-  bsSheet.getCell("D16").numFmt = currencyFormat;
+  bsSheet.getCell("D16").value = { formula: "=SUM(D13:D15)" };
+  bsSheet.getCell("D16").numFmt = currencyFormat; bsSheet.getCell("D16").fill = formulaFill;
   bsSheet.getCell("D16").font = { bold: true };
 
   // Equity
   bsSheet.getCell("A18").value = "SHAREHOLDERS' EQUITY";
   bsSheet.getCell("A18").font = { bold: true };
 
-  const stockIssued = sourcesAndUses.sources.stockConsideration;
+  // Common Stock + APIC
   bsSheet.getCell("A19").value = "Common Stock + APIC";
-  bsSheet.getCell("B19").value = acquirerRevenue * 0.25;
-  bsSheet.getCell("C19").value = stockIssued;
-  bsSheet.getCell("D19").value = acquirerRevenue * 0.25 + stockIssued;
-  bsSheet.getCell("B19").numFmt = currencyFormat;
-  bsSheet.getCell("C19").numFmt = currencyFormat;
-  bsSheet.getCell("D19").numFmt = currencyFormat;
+  bsSheet.getCell("B19").value = { formula: "=Assumptions!B6*0.25" }; // Pre-deal equity estimate
+  bsSheet.getCell("C19").value = { formula: "=Sources_Uses!B6" }; // Stock consideration
+  bsSheet.getCell("D19").value = { formula: "=B19+C19" };
+  bsSheet.getCell("B19").numFmt = currencyFormat; bsSheet.getCell("B19").fill = formulaFill;
+  bsSheet.getCell("C19").numFmt = currencyFormat; bsSheet.getCell("C19").fill = formulaFill;
+  bsSheet.getCell("D19").numFmt = currencyFormat; bsSheet.getCell("D19").fill = formulaFill;
 
+  // Retained Earnings (balancing item)
   bsSheet.getCell("A20").value = "Retained Earnings";
-  const retainedEarnings = totalAssets - totalLiabilities - (acquirerRevenue * 0.25 + stockIssued);
-  bsSheet.getCell("D20").value = retainedEarnings;
-  bsSheet.getCell("D20").numFmt = currencyFormat;
+  bsSheet.getCell("D20").value = { formula: "=D10-D16-D19" }; // Plug to balance
+  bsSheet.getCell("D20").numFmt = currencyFormat; bsSheet.getCell("D20").fill = formulaFill;
 
+  // Total Equity
   bsSheet.getCell("A21").value = "TOTAL EQUITY";
   bsSheet.getCell("A21").font = { bold: true };
-  bsSheet.getCell("D21").value = totalAssets - totalLiabilities;
-  bsSheet.getCell("D21").numFmt = currencyFormat;
+  bsSheet.getCell("D21").value = { formula: "=D19+D20" };
+  bsSheet.getCell("D21").numFmt = currencyFormat; bsSheet.getCell("D21").fill = formulaFill;
   bsSheet.getCell("D21").font = { bold: true };
 
+  // Total L+E
   bsSheet.getCell("A23").value = "TOTAL LIABILITIES + EQUITY";
   bsSheet.getCell("A23").font = { bold: true };
-  bsSheet.getCell("D23").value = totalAssets;
-  bsSheet.getCell("D23").numFmt = currencyFormat;
+  bsSheet.getCell("D23").value = { formula: "=D16+D21" };
+  bsSheet.getCell("D23").numFmt = currencyFormat; bsSheet.getCell("D23").fill = formulaFill;
   bsSheet.getCell("D23").font = { bold: true };
 
-  // Balance check
+  // Balance check formula
   bsSheet.getCell("A25").value = "Balance Check (Assets = L+E):";
-  bsSheet.getCell("B25").value = Math.abs(totalAssets - totalLiabilities - (totalAssets - totalLiabilities)) < 0.01 ? "BALANCED" : "ERROR";
-  bsSheet.getCell("B25").font = { bold: true, color: { argb: "FF008000" } };
+  bsSheet.getCell("B25").value = { formula: '=IF(ABS(D10-D23)<0.01,"BALANCED","ERROR")' };
+  bsSheet.getCell("B25").font = { bold: true }; bsSheet.getCell("B25").fill = formulaFill;
 
   // ============ CONTRIBUTION ANALYSIS TAB ============
   const contribSheet = workbook.addWorksheet("Contribution_Analysis");
