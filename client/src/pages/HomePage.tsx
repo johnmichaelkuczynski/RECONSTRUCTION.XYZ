@@ -2764,7 +2764,32 @@ Generated on: ${new Date().toLocaleString()}`;
               </SelectContent>
             </Select>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              Choose which AI model will analyze your financial data and generate the Excel model. Grok is recommended for financial analysis.
+              Choose which AI model will analyze your financial data and generate the Excel model.
+            </p>
+          </div>
+
+          {/* Custom Instructions */}
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-700 mb-6">
+            <label className="block text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">
+              Custom Instructions (Optional)
+            </label>
+            <Textarea
+              value={financeCustomInstructions}
+              onChange={(e) => setFinanceCustomInstructions(e.target.value)}
+              placeholder="Add any special requirements for the financial model...
+
+Examples:
+- Use a 7-year projection period instead of 5
+- Add a sensitivity analysis on revenue growth
+- Include quarterly breakdown for Year 1
+- Use different WACC for each scenario
+- Add specific industry comparables"
+              className="min-h-[100px] text-sm"
+              disabled={financeLoading}
+              data-testid="textarea-finance-custom-instructions"
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Specify additional analysis, formatting preferences, or special calculations
             </p>
           </div>
 
