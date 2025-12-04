@@ -909,7 +909,7 @@ Files Generated:
   - {PipelineConfig.OUTPUT_DIR}/model_metrics.json
   - {PipelineConfig.OUTPUT_DIR}/eda_analysis.png
   - {PipelineConfig.OUTPUT_DIR}/final_evaluation.png
-${params.interpretabilityLevel === 'full' ? `  - ${PipelineConfig.OUTPUT_DIR}/shap_analysis.png` : ''}
+${params.interpretabilityLevel === 'full' ? '  - {PipelineConfig.OUTPUT_DIR}/shap_analysis.png' : ''}
 """)
 `;
 }
