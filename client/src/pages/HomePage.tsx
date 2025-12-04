@@ -2771,53 +2771,6 @@ Generated on: ${new Date().toLocaleString()}`;
             />
           </div>
 
-          {/* AI Model Selection - Always Visible */}
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-700 mb-6">
-            <label className="block text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">
-              AI Model Selection
-            </label>
-            <Select value={financeLLMProvider} onValueChange={(value: "zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5") => setFinanceLLMProvider(value)}>
-              <SelectTrigger className="w-full max-w-xs" data-testid="select-finance-llm-main">
-                <SelectValue placeholder="Select AI Model" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="zhi2">ZHI 2 - Default</SelectItem>
-                <SelectItem value="zhi1">ZHI 1</SelectItem>
-                <SelectItem value="zhi3">ZHI 3</SelectItem>
-                <SelectItem value="zhi4">ZHI 4</SelectItem>
-                <SelectItem value="zhi5">ZHI 5</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              Choose which AI model will analyze your financial data and generate the Excel model.
-            </p>
-          </div>
-
-          {/* Custom Instructions */}
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-700 mb-6">
-            <label className="block text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">
-              Custom Instructions (Optional)
-            </label>
-            <Textarea
-              value={financeCustomInstructions}
-              onChange={(e) => setFinanceCustomInstructions(e.target.value)}
-              placeholder="Add any special requirements for the financial model...
-
-Examples:
-- Use a 7-year projection period instead of 5
-- Add a sensitivity analysis on revenue growth
-- Include quarterly breakdown for Year 1
-- Use different WACC for each scenario
-- Add specific industry comparables"
-              className="min-h-[100px] text-sm"
-              disabled={financeLoading}
-              data-testid="textarea-finance-custom-instructions"
-            />
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              Specify additional analysis, formatting preferences, or special calculations
-            </p>
-          </div>
-
           {/* Five Model Type Buttons */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
             <Button
