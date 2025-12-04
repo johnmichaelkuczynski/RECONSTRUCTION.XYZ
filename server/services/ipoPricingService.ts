@@ -6,41 +6,37 @@ export type FinanceLLMProvider = 'zhi1' | 'zhi2' | 'zhi3' | 'zhi4' | 'zhi5';
 export interface IPOAssumptions {
   companyName: string;
   filingDate: string;
-  sector: string; // biotech, saas, ai_infrastructure, fintech, consumer, tech
+  sector: string;
   
-  sharesOutstandingPreIPO: number;
-  primarySharesOffered: number;
-  secondarySharesOffered: number;
-  greenshoeShares: number; // Explicit greenshoe shares (not percent)
+  sharesOutstandingPreIPO: number; // in millions
+  primarySharesOffered: number; // in millions
+  secondarySharesOffered: number; // in millions
+  greenshoeShares: number; // in millions (explicit)
   greenshoePercent: number;
   
-  targetGrossProceeds: number;
+  targetGrossProceeds: number; // in millions
   indicatedPriceRangeLow: number;
   indicatedPriceRangeHigh: number;
   
-  // Revenue figures
+  // Revenue in millions - CRITICAL: Parse the correct NTM year
   currentYearRevenue: number;
-  nextYearRevenue: number; // NTM revenue for valuation
-  nextYearRevenueGrowth: number;
-  nextYearEBITDA: number;
-  nextYearEBITDAMargin: number;
-  
-  // For Biotech - 2030 risk-adjusted revenue (rNPV basis)
-  riskAdjustedRevenue2030?: number;
+  ntmRevenue: number; // THIS IS THE NTM REVENUE FOR VALUATION - next twelve months
+  ntmRevenueGrowth: number;
+  ntmEBITDA: number;
+  ntmEBITDAMargin: number;
   
   dcfValuePerShare: number;
   
-  // CRITICAL: Parse peer median EXACTLY as stated
-  peerMedianEVRevenue: number; // Must be parsed literally from prompt
+  // CRITICAL: Parse peer median EXACTLY as stated in prompt
+  peerMedianEVRevenue: number;
   
-  // Order book - parse EXACTLY, never smooth
+  // Order book - parse EXACTLY with all thresholds
   orderBook: {
     priceLevel: number;
     oversubscription: number;
   }[];
   
-  // Sector-specific historical pop - parse EXACTLY from prompt
-  historicalFirstDayPop: number; // e.g., 1.02 for 102%
+  historicalFirstDayPop: number;
   sectorAverageFirstDayPop: number;
   
   foundersEmployeesOwnership: number;
@@ -51,74 +47,83 @@ export interface IPOAssumptions {
   useOfProceeds?: string;
   lockupDays?: number;
   
-  // CEO/Board guidance - CRITICAL for pricing decision
-  ceoGuidance?: string; // e.g., "biggest valuation in AI history", "price to absolute limit"
-  boardGuidance?: string; // e.g., "clean, orderly aftermarket"
-  pricingAggressiveness: "conservative" | "moderate" | "aggressive" | "maximum"; // Derived from guidance
+  ceoGuidance?: string;
+  boardGuidance?: string;
+  pricingAggressiveness: "conservative" | "moderate" | "aggressive" | "maximum";
 }
 
-const IPO_PARSING_PROMPT = `You are an investment banking expert specializing in IPO pricing. Parse the following natural language description of an IPO and extract all relevant parameters.
+const IPO_PARSING_PROMPT = `You are an investment banking expert. Parse the IPO description and extract parameters.
 
-CRITICAL PARSING RULES:
-1. Parse the PEER MEDIAN MULTIPLE exactly as stated. If prompt says "Median 46×" then peerMedianEVRevenue = 46
-2. Parse the HISTORICAL FIRST-DAY POP exactly as stated. If prompt says "Average first-day pop: +102%" then historicalFirstDayPop = 1.02
-3. Parse the ORDER BOOK exactly - "$88+: 34×" means priceLevel: 88, oversubscription: 34
-4. Parse CEO/BOARD GUIDANCE verbatim and set pricingAggressiveness accordingly:
-   - "biggest valuation" / "price to absolute limit" / "maximum" → "maximum"
-   - "leave money on table" / "clean aftermarket" → "conservative"
-   - Default → "moderate"
+CRITICAL PARSING RULES - READ CAREFULLY:
 
-SECTOR DETECTION:
-- "AI infrastructure" / "GPU cloud" / "compute" → "ai_infrastructure" (expect 80-120% pops)
-- "biotech" / "clinical-stage" / "drug" → "biotech" (expect 50-80% pops)
-- "SaaS" / "software" / "enterprise" → "saas" (expect 20-40% pops)
+1. PEER MEDIAN: If prompt says "Median 58×" or "median 46×", set peerMedianEVRevenue = 58 or 46 EXACTLY. Never calculate or estimate.
 
-Return a JSON object with the following structure:
+2. NTM REVENUE: This is the NEXT TWELVE MONTHS revenue for valuation. If filing in Dec 2025, NTM = 2026 revenue. Parse the 2026 revenue number.
+
+3. ORDER BOOK: Parse EVERY threshold exactly:
+   - "$105+: 42×" means { priceLevel: 105, oversubscription: 42 }
+   - "$100+: 68×" means { priceLevel: 100, oversubscription: 68 }
+   - "$95+: 91×" means { priceLevel: 95, oversubscription: 91 }
+   Include ALL thresholds mentioned, not just one.
+
+4. GREENSHOE: If "15% = 6.75M shares", set greenshoeShares = 6.75, greenshoePercent = 0.15
+
+5. CEO/BOARD GUIDANCE: Parse exact quotes:
+   - "biggest valuation ever" / "price to limit" → pricingAggressiveness = "maximum"
+   - "clean aftermarket" → pricingAggressiveness = "conservative"
+
+6. HISTORICAL POP: Parse exactly. "+176% average" means historicalFirstDayPop = 1.76
+
+7. SECTOR: 
+   - "defense-tech" / "national security" → "defense_tech"
+   - "AI infrastructure" / "GPU cloud" → "ai_infrastructure"
+   - "biotech" / "clinical" → "biotech"
+   - "SaaS" / "enterprise software" → "saas"
+
+Return JSON:
 {
-  "companyName": "Company Name",
+  "companyName": "string",
   "filingDate": "YYYY-MM-DD",
-  "sector": "ai_infrastructure" | "biotech" | "saas" | "fintech" | "consumer" | "tech",
+  "sector": "defense_tech" | "ai_infrastructure" | "biotech" | "saas" | "tech",
   
-  "sharesOutstandingPreIPO": number (in millions),
-  "primarySharesOffered": number (in millions),
-  "secondarySharesOffered": number (in millions, default 0),
-  "greenshoeShares": number (in millions, explicit shares if mentioned),
-  "greenshoePercent": number (as decimal, e.g., 0.15 for 15%),
+  "sharesOutstandingPreIPO": number (millions),
+  "primarySharesOffered": number (millions),
+  "secondarySharesOffered": number (millions, default 0),
+  "greenshoeShares": number (millions, explicit if given),
+  "greenshoePercent": number (decimal),
   
-  "targetGrossProceeds": number (in millions),
+  "targetGrossProceeds": number (millions),
   "indicatedPriceRangeLow": number,
   "indicatedPriceRangeHigh": number,
   
-  "currentYearRevenue": number (in millions),
-  "nextYearRevenue": number (in millions - THIS IS THE NTM REVENUE FOR VALUATION),
-  "nextYearRevenueGrowth": number (as decimal, e.g., 1.08 for 108%),
-  "nextYearEBITDA": number (in millions),
-  "nextYearEBITDAMargin": number (as decimal),
-  
-  "riskAdjustedRevenue2030": number (for biotech only),
+  "currentYearRevenue": number (millions - current/filing year),
+  "ntmRevenue": number (millions - NEXT year, for NTM valuation),
+  "ntmRevenueGrowth": number (decimal),
+  "ntmEBITDA": number (millions),
+  "ntmEBITDAMargin": number (decimal),
   
   "dcfValuePerShare": number,
   
-  "peerMedianEVRevenue": number (PARSE EXACTLY FROM PROMPT - if "Median 46×" then 46),
+  "peerMedianEVRevenue": number (PARSE EXACTLY FROM PROMPT),
   
   "orderBook": [
     { "priceLevel": number, "oversubscription": number }
   ],
   
-  "historicalFirstDayPop": number (PARSE EXACTLY - if "+102%" then 1.02),
-  "sectorAverageFirstDayPop": number (same as historicalFirstDayPop unless different),
+  "historicalFirstDayPop": number (decimal, 1.76 for 176%),
+  "sectorAverageFirstDayPop": number,
   
-  "foundersEmployeesOwnership": number (as decimal),
-  "vcPeOwnership": number (as decimal),
+  "foundersEmployeesOwnership": number (decimal),
+  "vcPeOwnership": number (decimal),
   
   "underwritingFeePercent": number (default 0.07),
   
-  "ceoGuidance": "exact quote from CEO if mentioned",
-  "boardGuidance": "exact quote from board if mentioned",
+  "ceoGuidance": "exact quote",
+  "boardGuidance": "exact quote",
   "pricingAggressiveness": "conservative" | "moderate" | "aggressive" | "maximum"
 }
 
-IMPORTANT: Return ONLY the JSON object, no markdown, no explanation.`;
+Return ONLY JSON, no markdown.`;
 
 export async function parseIPODescription(
   description: string,
@@ -137,7 +142,7 @@ export async function parseIPODescription(
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [{ role: "user", content: fullPrompt }],
-      temperature: 0.1, // Lower temperature for more literal parsing
+      temperature: 0.05,
     });
     responseText = response.choices[0]?.message?.content || "";
     providerUsed = "ZHI 1";
@@ -158,7 +163,7 @@ export async function parseIPODescription(
     const response = await deepseek.chat.completions.create({
       model: "deepseek-chat",
       messages: [{ role: "user", content: fullPrompt }],
-      temperature: 0.1,
+      temperature: 0.05,
     });
     responseText = response.choices[0]?.message?.content || "";
     providerUsed = "ZHI 3";
@@ -172,7 +177,7 @@ export async function parseIPODescription(
       body: JSON.stringify({
         model: "sonar-pro",
         messages: [{ role: "user", content: fullPrompt }],
-        temperature: 0.1,
+        temperature: 0.05,
       }),
     });
     const data = await response.json();
@@ -186,21 +191,16 @@ export async function parseIPODescription(
     const response = await grok.chat.completions.create({
       model: "grok-3",
       messages: [{ role: "user", content: fullPrompt }],
-      temperature: 0.1,
+      temperature: 0.05,
     });
     responseText = response.choices[0]?.message?.content || "";
     providerUsed = "ZHI 5";
   }
 
   let jsonStr = responseText.trim();
-  if (jsonStr.startsWith("```json")) {
-    jsonStr = jsonStr.slice(7);
-  } else if (jsonStr.startsWith("```")) {
-    jsonStr = jsonStr.slice(3);
-  }
-  if (jsonStr.endsWith("```")) {
-    jsonStr = jsonStr.slice(0, -3);
-  }
+  if (jsonStr.startsWith("```json")) jsonStr = jsonStr.slice(7);
+  else if (jsonStr.startsWith("```")) jsonStr = jsonStr.slice(3);
+  if (jsonStr.endsWith("```")) jsonStr = jsonStr.slice(0, -3);
   
   if (!jsonStr.startsWith("{")) {
     const startIdx = jsonStr.indexOf("{");
@@ -211,25 +211,14 @@ export async function parseIPODescription(
   }
   
   jsonStr = jsonStr.trim();
-
   const assumptions: IPOAssumptions = JSON.parse(jsonStr);
   
-  // Set defaults and derive pricingAggressiveness if not set
-  if (!assumptions.sector) {
-    assumptions.sector = "tech";
-  }
-  
-  // Derive aggressiveness from CEO/board guidance
+  // Derive aggressiveness from guidance if not set
   if (!assumptions.pricingAggressiveness) {
     const ceoLower = (assumptions.ceoGuidance || "").toLowerCase();
-    const boardLower = (assumptions.boardGuidance || "").toLowerCase();
-    
     if (ceoLower.includes("biggest") || ceoLower.includes("maximum") || 
         ceoLower.includes("absolute limit") || ceoLower.includes("history")) {
       assumptions.pricingAggressiveness = "maximum";
-    } else if (boardLower.includes("clean") || boardLower.includes("orderly") || 
-               boardLower.includes("leave money")) {
-      assumptions.pricingAggressiveness = "conservative";
     } else {
       assumptions.pricingAggressiveness = "moderate";
     }
@@ -240,15 +229,16 @@ export async function parseIPODescription(
 
 interface PricingRow {
   offerPrice: number;
-  marketCap: number;
-  enterpriseValue: number;
-  ntmEVRevenue: number; // Always calculate this correctly
-  vsPeerMedianDiscount: number;
-  dcfSupport: number; // offer price as % of DCF
-  grossProceeds: number;
+  fdSharesPostIPO: number;
+  marketCapM: number; // in millions
+  enterpriseValueM: number; // in millions
+  ntmEVRevenue: number;
+  vsPeerMedian: number; // percentage vs peer (negative = discount)
+  dcfSupport: number;
+  grossProceedsM: number; // in millions
   oversubscription: number;
   impliedFirstDayPop: number;
-  founderEmployeeOwnershipPost: number;
+  founderOwnershipPost: number;
 }
 
 export function calculateIPOPricing(assumptions: IPOAssumptions): {
@@ -268,38 +258,33 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     secondarySharesOffered = 0,
     greenshoeShares,
     greenshoePercent,
-    targetGrossProceeds,
-    nextYearRevenue,
+    ntmRevenue, // THIS is the revenue for NTM EV/Revenue calculation
     dcfValuePerShare,
-    peerMedianEVRevenue,
+    peerMedianEVRevenue, // MUST use this exactly
     orderBook,
     historicalFirstDayPop,
-    sectorAverageFirstDayPop,
     foundersEmployeesOwnership,
     pricingAggressiveness,
     ceoGuidance,
   } = assumptions;
 
-  // Calculate greenshoe shares (use explicit if provided, otherwise calculate)
+  // Calculate greenshoe (use explicit if provided)
   const actualGreenshoeShares = greenshoeShares || (primarySharesOffered * greenshoePercent);
   
-  // Total shares in offering (primary + secondary + greenshoe)
-  const totalSharesOffered = primarySharesOffered + secondarySharesOffered + actualGreenshoeShares;
+  // Total shares for gross proceeds = primary + secondary + greenshoe
+  const totalSharesForProceeds = primarySharesOffered + secondarySharesOffered + actualGreenshoeShares;
   
-  // Fully-diluted shares post-IPO
+  // Fully-diluted shares post-IPO = pre-IPO + primary + greenshoe (secondary doesn't add new shares)
   const fdSharesPostIPO = sharesOutstandingPreIPO + primarySharesOffered + actualGreenshoeShares;
   
-  // Calculate mid-price from target if order book not clear
-  const midPrice = targetGrossProceeds / (primarySharesOffered + secondarySharesOffered);
-  
   // Determine price range from order book
-  let minPrice = midPrice - 10;
-  let maxPrice = midPrice + 10;
+  let minPrice = 80;
+  let maxPrice = 120;
   
   if (orderBook && orderBook.length > 0) {
     const bookPrices = orderBook.map(ob => ob.priceLevel);
-    minPrice = Math.min(...bookPrices) - 4;
-    maxPrice = Math.max(...bookPrices) + 4;
+    minPrice = Math.min(...bookPrices) - 5;
+    maxPrice = Math.max(...bookPrices) + 5;
   }
   
   const pricePoints: number[] = [];
@@ -307,166 +292,127 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     if (p > 0) pricePoints.push(p);
   }
   
-  // Sector-specific expected pop ranges
-  const sectorPopExpectation: Record<string, number> = {
-    "ai_infrastructure": 1.00, // 100% expected pop
-    "biotech": 0.76, // 76% expected pop
-    "saas": 0.25, // 25% expected pop
-    "fintech": 0.30,
-    "consumer": 0.20,
-    "tech": 0.35,
-  };
-  
-  const expectedSectorPop = sectorAverageFirstDayPop || sectorPopExpectation[sector] || historicalFirstDayPop || 0.30;
+  // Sort order book by price DESCENDING for proper lookup
+  const sortedOrderBook = orderBook ? [...orderBook].sort((a, b) => b.priceLevel - a.priceLevel) : [];
   
   const pricingMatrix: PricingRow[] = pricePoints.map(offerPrice => {
     // GROSS PROCEEDS = price × total shares (primary + secondary + greenshoe)
-    const grossProceeds = offerPrice * totalSharesOffered;
+    const grossProceedsM = offerPrice * totalSharesForProceeds;
     
-    // Market cap = FD shares × offer price
-    const marketCap = fdSharesPostIPO * offerPrice;
+    // MARKET CAP = FD shares × offer price (in millions)
+    const marketCapM = fdSharesPostIPO * offerPrice;
     
-    // Enterprise value (simplified - could subtract expected post-IPO cash)
-    const enterpriseValue = marketCap;
+    // ENTERPRISE VALUE = Market cap (simplified - could adjust for cash)
+    const enterpriseValueM = marketCapM;
     
-    // NTM EV/Revenue - CRITICAL: Use nextYearRevenue directly from parsed assumptions
-    const ntmEVRevenue = enterpriseValue / nextYearRevenue;
+    // NTM EV/REVENUE = Enterprise Value / NTM Revenue
+    // This MUST match peer median when correctly priced
+    const ntmEVRevenue = enterpriseValueM / ntmRevenue;
     
-    // Discount vs peer median (negative = discount, positive = premium)
-    const vsPeerMedianDiscount = (ntmEVRevenue - peerMedianEVRevenue) / peerMedianEVRevenue;
+    // VS PEER MEDIAN = (our multiple - peer median) / peer median
+    const vsPeerMedian = (ntmEVRevenue - peerMedianEVRevenue) / peerMedianEVRevenue;
     
-    // DCF support = offer price as % of DCF value
+    // DCF SUPPORT = offer price / DCF value
     const dcfSupport = offerPrice / dcfValuePerShare;
     
-    // Order book lookup - EXACT values, no smoothing
+    // ORDER BOOK LOOKUP - use exact thresholds
     let oversubscription = 1;
-    if (orderBook && orderBook.length > 0) {
-      // Sort by price descending
-      const sortedBook = [...orderBook].sort((a, b) => b.priceLevel - a.priceLevel);
-      
-      // Find applicable oversubscription (at or above this price)
-      for (const entry of sortedBook) {
+    if (sortedOrderBook.length > 0) {
+      // Find the FIRST entry where offerPrice >= priceLevel
+      for (const entry of sortedOrderBook) {
         if (offerPrice >= entry.priceLevel) {
           oversubscription = entry.oversubscription;
           break;
         }
       }
-      
-      // If below all entries, extrapolate higher demand
+      // If below all thresholds, use highest oversubscription + extrapolation
       if (oversubscription === 1) {
-        const lowestEntry = sortedBook[sortedBook.length - 1];
-        if (offerPrice < lowestEntry.priceLevel) {
-          const priceDiff = lowestEntry.priceLevel - offerPrice;
-          oversubscription = Math.round(lowestEntry.oversubscription * (1 + priceDiff * 0.1));
-        }
+        const lowestEntry = sortedOrderBook[sortedOrderBook.length - 1];
+        const priceDiff = lowestEntry.priceLevel - offerPrice;
+        oversubscription = Math.round(lowestEntry.oversubscription * (1 + priceDiff * 0.05));
       }
     }
     
-    // IMPLIED FIRST-DAY POP - based on discount to DCF and peer comparison
-    // Key insight: If priced BELOW fair value, expect a pop
-    // Pop = (Fair Value - Offer Price) / Offer Price
-    // Use sector historical average as baseline, adjust based on discount
-    const discountToDCF = 1 - dcfSupport;
-    const discountToPeers = -vsPeerMedianDiscount; // Convert to positive discount
+    // IMPLIED FIRST-DAY POP
+    // Based on discount to peer median and historical sector average
+    // If priced at discount to peers, expect pop to close that gap + historical premium
+    const discountToPeers = -vsPeerMedian; // positive = we're cheap vs peers
+    const historicalPop = historicalFirstDayPop || 0.50;
     
-    // Pop scales with discount - bigger discount = bigger pop
-    // Use historical sector average as the expected pop for typical discount
-    let impliedFirstDayPop = expectedSectorPop;
-    
-    // If priced at deeper discount than typical, expect higher pop
-    // If priced at premium to peers, expect lower pop
+    // If we're trading at peer median, expect historical pop
+    // If we're at 10% discount, expect more pop
+    // If we're at premium, expect less pop
+    let impliedFirstDayPop = historicalPop;
     if (discountToPeers > 0) {
-      // At a discount to peers - expect at least historical pop
-      impliedFirstDayPop = expectedSectorPop * (1 + discountToPeers);
+      // We're cheap - expect historical pop + some of the discount gap to close
+      impliedFirstDayPop = historicalPop + (discountToPeers * 0.5);
     } else {
-      // At a premium to peers - expect lower pop
-      impliedFirstDayPop = expectedSectorPop * Math.max(0.3, 1 + discountToPeers);
+      // We're expensive - expect less pop
+      impliedFirstDayPop = Math.max(0.10, historicalPop * (1 + discountToPeers));
     }
     
-    // Cap at reasonable bounds
-    impliedFirstDayPop = Math.min(2.0, Math.max(0.05, impliedFirstDayPop));
-    
-    // Founder/employee ownership post-IPO
-    // They own foundersEmployeesOwnership of pre-IPO shares
-    // Post-IPO: (pre-IPO shares × ownership) / post-IPO shares
-    const founderEmployeeOwnershipPost = (foundersEmployeesOwnership * sharesOutstandingPreIPO) / fdSharesPostIPO;
+    // FOUNDER OWNERSHIP POST-IPO
+    // Pre-IPO ownership × (pre-IPO shares / post-IPO shares)
+    const founderOwnershipPost = foundersEmployeesOwnership * (sharesOutstandingPreIPO / fdSharesPostIPO);
     
     return {
       offerPrice,
-      marketCap,
-      enterpriseValue,
+      fdSharesPostIPO,
+      marketCapM,
+      enterpriseValueM,
       ntmEVRevenue,
-      vsPeerMedianDiscount,
+      vsPeerMedian,
       dcfSupport,
-      grossProceeds,
+      grossProceedsM,
       oversubscription,
       impliedFirstDayPop,
-      founderEmployeeOwnershipPost,
+      founderOwnershipPost,
     };
   });
   
-  // RECOMMENDATION LOGIC - depends on pricingAggressiveness
-  let recommendedPrice = midPrice;
+  // RECOMMENDATION LOGIC
+  let recommendedPrice = pricingMatrix[Math.floor(pricingMatrix.length / 2)].offerPrice;
   let recommendedRow: PricingRow | undefined;
   
-  // Sort by price descending (we want HIGHEST acceptable price)
+  // Sort by price descending (want HIGHEST acceptable price)
   const sortedMatrix = [...pricingMatrix].sort((a, b) => b.offerPrice - a.offerPrice);
   
   if (pricingAggressiveness === "maximum") {
-    // CEO wants MAXIMUM valuation - price at absolute top of book
-    // Find highest price that still has meaningful demand (>=20×)
+    // CEO wants MAXIMUM - price at or near peer median, highest price with good demand
     for (const row of sortedMatrix) {
-      if (row.oversubscription >= 20 && row.offerPrice <= dcfValuePerShare) {
-        recommendedPrice = row.offerPrice;
-        recommendedRow = row;
-        break;
-      }
-    }
-    
-    // If no row found with 20×, find highest with any meaningful demand
-    if (!recommendedRow) {
-      for (const row of sortedMatrix) {
-        if (row.oversubscription >= 10) {
+      // Must have strong demand (>=30×) and be at or below DCF
+      if (row.oversubscription >= 30 && row.offerPrice <= dcfValuePerShare * 1.05) {
+        // Prefer price where we're close to peer median (within 10%)
+        if (Math.abs(row.vsPeerMedian) <= 0.15) {
           recommendedPrice = row.offerPrice;
           recommendedRow = row;
           break;
         }
       }
     }
-  } else if (pricingAggressiveness === "aggressive") {
-    // Price high but leave some room
-    for (const row of sortedMatrix) {
-      if (row.oversubscription >= 25 && row.impliedFirstDayPop >= 0.30) {
-        recommendedPrice = row.offerPrice;
-        recommendedRow = row;
-        break;
+    // Fallback: highest price with 30×+ demand
+    if (!recommendedRow) {
+      for (const row of sortedMatrix) {
+        if (row.oversubscription >= 30) {
+          recommendedPrice = row.offerPrice;
+          recommendedRow = row;
+          break;
+        }
       }
     }
   } else if (pricingAggressiveness === "conservative") {
-    // Leave money on table for clean aftermarket
+    // Leave money on table
     for (const row of sortedMatrix) {
-      if (row.oversubscription >= 40 && row.impliedFirstDayPop >= 0.50) {
+      if (row.oversubscription >= 50 && row.impliedFirstDayPop >= 0.60) {
         recommendedPrice = row.offerPrice;
         recommendedRow = row;
         break;
       }
     }
   } else {
-    // Moderate - balance between value and aftermarket
+    // Moderate
     for (const row of sortedMatrix) {
-      if (row.oversubscription >= 30 && row.impliedFirstDayPop >= 0.40 && row.impliedFirstDayPop <= 0.80) {
-        recommendedPrice = row.offerPrice;
-        recommendedRow = row;
-        break;
-      }
-    }
-  }
-  
-  // Fallback
-  if (!recommendedRow) {
-    // Find highest price with at least 20× demand
-    for (const row of sortedMatrix) {
-      if (row.oversubscription >= 20) {
+      if (row.oversubscription >= 35 && row.impliedFirstDayPop >= 0.40) {
         recommendedPrice = row.offerPrice;
         recommendedRow = row;
         break;
@@ -475,49 +421,39 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
   }
   
   if (!recommendedRow) {
-    recommendedRow = pricingMatrix[Math.floor(pricingMatrix.length / 2)];
+    recommendedRow = pricingMatrix.find(r => r.offerPrice === recommendedPrice) || pricingMatrix[Math.floor(pricingMatrix.length / 2)];
     recommendedPrice = recommendedRow.offerPrice;
   }
   
-  // Filing range
   const recommendedRangeLow = recommendedPrice - 2;
   const recommendedRangeHigh = recommendedPrice;
   
-  // Generate rationale based on aggressiveness
+  // RATIONALE
   const rationale: string[] = [];
-  
   const popPercent = (recommendedRow.impliedFirstDayPop * 100).toFixed(0);
   const dcfPercent = (recommendedRow.dcfSupport * 100).toFixed(0);
-  const peerDiscountPercent = Math.abs(recommendedRow.vsPeerMedianDiscount * 100).toFixed(0);
-  const peerDirection = recommendedRow.vsPeerMedianDiscount < 0 ? "below" : "above";
+  const peerDiffPercent = Math.abs(recommendedRow.vsPeerMedian * 100).toFixed(0);
+  const peerDirection = recommendedRow.vsPeerMedian < 0 ? "below" : "above";
+  const evMultiple = recommendedRow.ntmEVRevenue.toFixed(1);
   
   if (pricingAggressiveness === "maximum") {
-    rationale.push(`$${recommendedPrice.toFixed(2)} is the ABSOLUTE MAXIMUM price the book will bear — CEO demanded "biggest valuation in history"`);
-    rationale.push(`Book clears at ${recommendedRow.oversubscription}× with only the most aggressive growth investors maxed out`);
-    rationale.push(`Expected ${popPercent}%+ first-day pop — in line with recent ${sector === "ai_infrastructure" ? "AI infrastructure" : sector} precedent`);
-    rationale.push(`Still ${peerDiscountPercent}% ${peerDirection} peer median (${peerMedianEVRevenue.toFixed(1)}×) → THIS WILL BE THE BIGGEST ${sector.toUpperCase()} IPO EVER`);
-  } else if (pricingAggressiveness === "conservative") {
-    rationale.push(`$${recommendedPrice.toFixed(2)} leaves room for clean, orderly aftermarket as board requested`);
-    rationale.push(`Expected ${popPercent}% day-one pop satisfies long-only demand`);
-    rationale.push(`${peerDiscountPercent}% ${peerDirection} peer median → generous but responsible`);
+    rationale.push(`$${recommendedPrice} is the MAXIMUM price the book will bear at ${recommendedRow.oversubscription}× oversubscribed`);
+    rationale.push(`NTM EV/Revenue of ${evMultiple}× is ${peerDiffPercent}% ${peerDirection} peer median (${peerMedianEVRevenue.toFixed(1)}×)`);
+    rationale.push(`Expected ${popPercent}%+ first-day pop based on sector precedent`);
+    if (ceoGuidance) {
+      rationale.push(`CEO demanded: "${ceoGuidance}" — delivering maximum valuation`);
+    }
+    rationale.push(`THIS WILL BE THE BIGGEST ${sector.toUpperCase().replace("_", " ")} IPO EVER`);
   } else {
-    rationale.push(`$${recommendedPrice.toFixed(2)} balances valuation with aftermarket performance`);
-    rationale.push(`Expected ${popPercent}% first-day pop — appropriate for sector`);
-    rationale.push(`${peerDiscountPercent}% ${peerDirection} peer median → fair pricing`);
+    rationale.push(`$${recommendedPrice} at ${evMultiple}× NTM EV/Revenue (${peerDiffPercent}% ${peerDirection} peer median)`);
+    rationale.push(`Expected ${popPercent}% first-day pop`);
   }
   
-  rationale.push(`${dcfPercent}% of DCF value ($${dcfValuePerShare.toFixed(2)}) → ${recommendedRow.dcfSupport < 1 ? 'discount to intrinsic value' : 'premium reflects growth'}`);
-  rationale.push(`Founders/employees retain ${(recommendedRow.founderEmployeeOwnershipPost * 100).toFixed(1)}% ownership`);
-  rationale.push(`Raises $${Math.round(recommendedRow.grossProceeds)}M gross proceeds`);
+  rationale.push(`${dcfPercent}% of DCF value ($${dcfValuePerShare.toFixed(2)})`);
+  rationale.push(`Founders retain ${(recommendedRow.founderOwnershipPost * 100).toFixed(1)}% post-IPO`);
+  rationale.push(`Gross proceeds: $${Math.round(recommendedRow.grossProceedsM)}M`);
   
-  const memoText = formatIPOMemo(
-    assumptions,
-    pricingMatrix,
-    recommendedRangeLow,
-    recommendedRangeHigh,
-    recommendedPrice,
-    rationale
-  );
+  const memoText = formatIPOMemo(assumptions, pricingMatrix, recommendedRangeLow, recommendedRangeHigh, recommendedPrice, rationale);
 
   return {
     assumptions,
@@ -543,86 +479,66 @@ function formatIPOMemo(
     sector,
     dcfValuePerShare,
     peerMedianEVRevenue,
-    targetGrossProceeds,
+    ntmRevenue,
     historicalFirstDayPop,
     pricingAggressiveness,
-    ceoGuidance,
   } = assumptions;
 
   const companyNameUpper = companyName.toUpperCase();
-  const isAggressive = pricingAggressiveness === "maximum" || pricingAggressiveness === "aggressive";
+  const isAggressive = pricingAggressiveness === "maximum";
   
   const recommendedRow = pricingMatrix.find(r => Math.abs(r.offerPrice - recommendedPrice) < 0.5);
-  const impliedPop = recommendedRow ? (recommendedRow.impliedFirstDayPop * 100).toFixed(0) : "50";
-  const grossProceeds = recommendedRow ? Math.round(recommendedRow.grossProceeds) : Math.round(targetGrossProceeds);
-  const marketCap = recommendedRow ? (recommendedRow.marketCap / 1000).toFixed(1) : "N/A";
-  const ntmMultiple = recommendedRow ? recommendedRow.ntmEVRevenue.toFixed(1) : "N/A";
+  if (!recommendedRow) return "Error: Could not find recommended row";
+  
+  const popPercent = (recommendedRow.impliedFirstDayPop * 100).toFixed(0);
+  const grossProceeds = Math.round(recommendedRow.grossProceedsM);
+  const marketCapB = (recommendedRow.marketCapM / 1000).toFixed(1);
+  const ntmMultiple = recommendedRow.ntmEVRevenue.toFixed(1);
   
   let memo = `${companyNameUpper} – FINAL IPO PRICING RECOMMENDATION\n\n`;
   memo += `Recommended range to file amendment:      $${rangeLow.toFixed(2)} – $${rangeHigh.toFixed(2)}\n`;
   
   if (isAggressive) {
-    memo += `Recommended final offer price:             $${recommendedPrice.toFixed(2)}   ← MAXIMUM PRICE THE BOOK WILL BEAR, raises $${grossProceeds}M, expected ${impliedPop}%+ day-one pop\n\n`;
+    memo += `Recommended final offer price:             $${recommendedPrice.toFixed(2)}   ← MAXIMUM PRICE, raises $${grossProceeds}M, expected ${popPercent}%+ day-one pop\n\n`;
   } else {
-    memo += `Recommended final offer price:             $${recommendedPrice.toFixed(2)}   ← raises $${grossProceeds}M, expected ${impliedPop}% day-one pop\n\n`;
+    memo += `Recommended final offer price:             $${recommendedPrice.toFixed(2)}   ← raises $${grossProceeds}M, expected ${popPercent}% day-one pop\n\n`;
   }
   
-  memo += `Market Cap: ~$${marketCap}B post-greenshoe\n`;
-  memo += `NTM EV/Revenue: ${ntmMultiple}× (peer median: ${peerMedianEVRevenue.toFixed(1)}×)\n\n`;
+  memo += `Market Cap: ~$${marketCapB}B post-greenshoe\n`;
+  memo += `NTM EV/Revenue: ${ntmMultiple}× (NTM Revenue: $${ntmRevenue.toFixed(0)}M, Peer Median: ${peerMedianEVRevenue.toFixed(1)}×)\n\n`;
   
-  memo += `Pricing Matrix (fully-diluted post-greenshoe basis, in millions except per-share data)\n\n`;
+  memo += `Pricing Matrix (in millions except per-share)\n\n`;
   
   // Select rows around recommendation
   const recIndex = pricingMatrix.findIndex(r => Math.abs(r.offerPrice - recommendedPrice) < 0.5);
-  const startIdx = Math.max(0, recIndex - 2);
-  const endIdx = Math.min(pricingMatrix.length, startIdx + 5);
+  const startIdx = Math.max(0, recIndex - 3);
+  const endIdx = Math.min(pricingMatrix.length, startIdx + 7);
   const rows = pricingMatrix.slice(startIdx, endIdx);
   
-  const priceHeader = "Offer Price          " + rows.map(r => `$${r.offerPrice.toFixed(2)}`).map(s => s.padStart(10)).join("  ");
-  memo += priceHeader + "\n";
+  const pad = (s: string, n: number) => s.padStart(n);
   
-  const marketCapRow = "Market Cap            " + rows.map(r => `$${Math.round(r.marketCap).toLocaleString()}`).map(s => s.padStart(10)).join("  ");
-  memo += marketCapRow + "\n";
+  memo += "Offer Price            " + rows.map(r => pad(`$${r.offerPrice}`, 10)).join("") + "\n";
+  memo += "Market Cap             " + rows.map(r => pad(`$${Math.round(r.marketCapM).toLocaleString()}`, 10)).join("") + "\n";
+  memo += "NTM EV/Revenue         " + rows.map(r => pad(`${r.ntmEVRevenue.toFixed(1)}×`, 10)).join("") + "\n";
+  memo += `vs peer median ${peerMedianEVRevenue.toFixed(1)}×   ` + rows.map(r => {
+    const pct = r.vsPeerMedian * 100;
+    return pad(`${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`, 10);
+  }).join("") + "\n";
+  memo += `DCF $${dcfValuePerShare.toFixed(2)} support     ` + rows.map(r => pad(`${(r.dcfSupport * 100).toFixed(0)}%`, 10)).join("") + "\n";
+  memo += "Gross proceeds         " + rows.map(r => pad(`$${Math.round(r.grossProceedsM)}`, 10)).join("") + "\n";
+  memo += "Oversubscription       " + rows.map(r => pad(`${r.oversubscription}×`, 10)).join("") + "\n";
+  memo += `Implied pop (hist ${(historicalFirstDayPop * 100).toFixed(0)}%)` + rows.map(r => pad(`${(r.impliedFirstDayPop * 100).toFixed(0)}%`, 10)).join("") + "\n";
+  memo += "Founder ownership      " + rows.map(r => pad(`${(r.founderOwnershipPost * 100).toFixed(1)}%`, 10)).join("") + "\n";
   
-  const evRow = "EV (post-IPO cash)    " + rows.map(r => `$${Math.round(r.enterpriseValue).toLocaleString()}`).map(s => s.padStart(10)).join("  ");
-  memo += evRow + "\n";
-  
-  const multipleRow = "NTM EV/Revenue        " + rows.map(r => `${r.ntmEVRevenue.toFixed(1)}×`).map(s => s.padStart(10)).join("  ");
-  memo += multipleRow + "\n";
-  
-  const vsPeerRow = `vs. peer median ${peerMedianEVRevenue.toFixed(1)}× discount` + rows.map(r => {
-    const pct = r.vsPeerMedianDiscount * 100;
-    return `${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`;
-  }).map(s => s.padStart(10)).join("  ");
-  memo += vsPeerRow + "\n";
-  
-  const dcfRow = `DCF midpoint $${dcfValuePerShare.toFixed(2)} support` + rows.map(r => `${(r.dcfSupport * 100).toFixed(0)}%`).map(s => s.padStart(10)).join("  ");
-  memo += dcfRow + "\n";
-  
-  const proceedsRow = "Gross proceeds        " + rows.map(r => `$${Math.round(r.grossProceeds)}`).map(s => s.padStart(10)).join("  ");
-  memo += proceedsRow + "\n";
-  
-  const oversubRow = "Oversubscription      " + rows.map(r => `${r.oversubscription}×`).map(s => s.padStart(10)).join("  ");
-  memo += oversubRow + "\n";
-  
-  const avgPop = (historicalFirstDayPop || 0.50) * 100;
-  const popRow = `Implied first-day pop (hist. ${avgPop.toFixed(0)}%)` + rows.map(r => `${(r.impliedFirstDayPop * 100).toFixed(0)}%`).map(s => s.padStart(10)).join("  ");
-  memo += popRow + "\n";
-  
-  const ownershipRow = "Founder + employee post-IPO" + rows.map(r => `${(r.founderEmployeeOwnershipPost * 100).toFixed(1)}%`).map(s => s.padStart(10)).join("  ");
-  memo += ownershipRow + "\n";
-  
-  memo += "\nRecommendation rationale\n";
+  memo += "\nRecommendation Rationale:\n";
   for (const r of rationale) {
-    memo += `- ${r}\n`;
+    memo += `• ${r}\n`;
   }
   
   memo += `\nFile amendment at $${rangeLow.toFixed(0)}–$${rangeHigh.toFixed(0)} tonight, price at $${recommendedPrice.toFixed(0)} tomorrow morning.\n`;
   
-  if (pricingAggressiveness === "maximum" && sector === "ai_infrastructure") {
-    memo += `\n🚀 THIS WILL BE THE BIGGEST AI IPO IN HISTORY. STRAP IN.\n`;
-  } else if (sector === "biotech") {
-    memo += `Congrats — this one is going to trade like CG Oncology.\n`;
+  if (isAggressive) {
+    memo += `\n🚀 STRAP IN — THIS IS THE ${sector.toUpperCase().replace("_", "-")} IPO OF THE DECADE.\n`;
   }
 
   return memo;
