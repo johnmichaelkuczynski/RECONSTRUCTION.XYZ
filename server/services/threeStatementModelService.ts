@@ -525,15 +525,31 @@ IMPORTANT: Return ONLY valid JSON, no markdown, no explanations.`;
     throw new Error(`Unknown LLM provider: ${llmProvider}`);
   }
 
+  // Clean up potential markdown code blocks and extract JSON from conversational responses
   let cleanedText = responseText.trim();
-  if (cleanedText.startsWith('```json')) {
-    cleanedText = cleanedText.slice(7);
-  } else if (cleanedText.startsWith('```')) {
-    cleanedText = cleanedText.slice(3);
+  
+  // First try: extract JSON from markdown code blocks
+  if (cleanedText.includes('```json')) {
+    const match = cleanedText.match(/```json\s*([\s\S]*?)\s*```/);
+    if (match) {
+      cleanedText = match[1].trim();
+    }
+  } else if (cleanedText.includes('```')) {
+    const match = cleanedText.match(/```\s*([\s\S]*?)\s*```/);
+    if (match) {
+      cleanedText = match[1].trim();
+    }
   }
-  if (cleanedText.endsWith('```')) {
-    cleanedText = cleanedText.slice(0, -3);
+  
+  // Second try: find JSON object by looking for opening/closing braces
+  if (!cleanedText.startsWith('{')) {
+    const startIdx = cleanedText.indexOf('{');
+    const endIdx = cleanedText.lastIndexOf('}');
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      cleanedText = cleanedText.slice(startIdx, endIdx + 1);
+    }
   }
+  
   cleanedText = cleanedText.trim();
 
   const parsed = JSON.parse(cleanedText);

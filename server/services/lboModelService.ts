@@ -172,17 +172,31 @@ export async function parseLBODescription(
     providerUsed = "Grok";
   }
 
-  // Parse JSON from response
+  // Parse JSON from response - handle various response formats including conversational text
   let jsonStr = responseText.trim();
-  if (jsonStr.startsWith("```json")) {
-    jsonStr = jsonStr.slice(7);
+  
+  // First try: extract JSON from markdown code blocks
+  if (jsonStr.includes("```json")) {
+    const match = jsonStr.match(/```json\s*([\s\S]*?)\s*```/);
+    if (match) {
+      jsonStr = match[1].trim();
+    }
+  } else if (jsonStr.includes("```")) {
+    const match = jsonStr.match(/```\s*([\s\S]*?)\s*```/);
+    if (match) {
+      jsonStr = match[1].trim();
+    }
   }
-  if (jsonStr.startsWith("```")) {
-    jsonStr = jsonStr.slice(3);
+  
+  // Second try: find JSON object by looking for opening/closing braces
+  if (!jsonStr.startsWith("{")) {
+    const startIdx = jsonStr.indexOf("{");
+    const endIdx = jsonStr.lastIndexOf("}");
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      jsonStr = jsonStr.slice(startIdx, endIdx + 1);
+    }
   }
-  if (jsonStr.endsWith("```")) {
-    jsonStr = jsonStr.slice(0, -3);
-  }
+  
   jsonStr = jsonStr.trim();
 
   const assumptions: LBOAssumptions = JSON.parse(jsonStr);
