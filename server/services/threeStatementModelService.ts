@@ -324,11 +324,11 @@ export async function parseThreeStatementDescription(
   llmProvider: FinanceLLMProvider = 'zhi5'
 ): Promise<{ assumptions: ThreeStatementAssumptions; providerUsed: string }> {
   const providerNames: Record<FinanceLLMProvider, string> = {
-    'zhi1': 'Zhi 1 (GPT-4o)',
-    'zhi2': 'Zhi 2 (Claude)',
-    'zhi3': 'Zhi 3 (DeepSeek)',
-    'zhi4': 'Zhi 4 (Perplexity)',
-    'zhi5': 'Zhi 5 (Grok)'
+    'zhi1': 'ZHI 1',
+    'zhi2': 'ZHI 2',
+    'zhi3': 'ZHI 3',
+    'zhi4': 'ZHI 4',
+    'zhi5': 'ZHI 5'
   };
 
   const systemPrompt = `You are a financial analyst expert at extracting 3-statement financial model assumptions from natural language descriptions.

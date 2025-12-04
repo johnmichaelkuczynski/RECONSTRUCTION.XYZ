@@ -190,14 +190,14 @@ export async function parsePredictiveDescription(description: string): Promise<P
   // Try Grok first (ZHI 5 - default for data science)
   params = await parseWithGrok(description);
   if (params) {
-    providerUsed = "ZHI 5 (Grok)";
+    providerUsed = "ZHI 5";
   }
 
   // Fallback to OpenAI
   if (!params) {
     params = await parseWithOpenAI(description);
     if (params) {
-      providerUsed = "ZHI 1 (OpenAI)";
+      providerUsed = "ZHI 1";
     }
   }
 
@@ -205,7 +205,7 @@ export async function parsePredictiveDescription(description: string): Promise<P
   if (!params) {
     params = await parseWithAnthropic(description);
     if (params) {
-      providerUsed = "ZHI 2 (Anthropic)";
+      providerUsed = "ZHI 2";
     }
   }
 

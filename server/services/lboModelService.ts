@@ -120,7 +120,7 @@ export async function parseLBODescription(
       temperature: 0.3,
     });
     responseText = response.choices[0]?.message?.content || "";
-    providerUsed = "OpenAI GPT-4";
+    providerUsed = "ZHI 1";
   } else if (provider === "zhi2") {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await anthropic.messages.create({
@@ -129,7 +129,7 @@ export async function parseLBODescription(
       messages: [{ role: "user", content: fullPrompt }],
     });
     responseText = response.content[0].type === "text" ? response.content[0].text : "";
-    providerUsed = "Anthropic Claude";
+    providerUsed = "ZHI 2";
   } else if (provider === "zhi3") {
     const deepseek = new OpenAI({
       baseURL: "https://api.deepseek.com",
@@ -141,7 +141,7 @@ export async function parseLBODescription(
       temperature: 0.3,
     });
     responseText = response.choices[0]?.message?.content || "";
-    providerUsed = "DeepSeek";
+    providerUsed = "ZHI 3";
   } else if (provider === "zhi4") {
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
@@ -157,7 +157,7 @@ export async function parseLBODescription(
     });
     const data = await response.json();
     responseText = data.choices?.[0]?.message?.content || "";
-    providerUsed = "Perplexity";
+    providerUsed = "ZHI 4";
   } else if (provider === "zhi5") {
     const grok = new OpenAI({
       baseURL: "https://api.x.ai/v1",
@@ -169,7 +169,7 @@ export async function parseLBODescription(
       temperature: 0.3,
     });
     responseText = response.choices[0]?.message?.content || "";
-    providerUsed = "Grok";
+    providerUsed = "ZHI 5";
   }
 
   // Parse JSON from response - handle various response formats including conversational text

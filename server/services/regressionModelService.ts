@@ -218,28 +218,28 @@ export async function parseRegressionDescription(
       case 'openai':
       case 'zhi1':
         response = await callOpenAI(fullPrompt);
-        providerUsed = 'ZHI 1 (GPT-4o)';
+        providerUsed = 'ZHI 1';
         break;
       case 'anthropic':
       case 'zhi2':
         response = await callAnthropic(fullPrompt);
-        providerUsed = 'ZHI 2 (Claude)';
+        providerUsed = 'ZHI 2';
         break;
       case 'deepseek':
       case 'zhi3':
         response = await callDeepSeek(fullPrompt);
-        providerUsed = 'ZHI 3 (DeepSeek)';
+        providerUsed = 'ZHI 3';
         break;
       case 'perplexity':
       case 'zhi4':
         response = await callPerplexity(fullPrompt);
-        providerUsed = 'ZHI 4 (Perplexity)';
+        providerUsed = 'ZHI 4';
         break;
       case 'grok':
       case 'zhi5':
       default:
         response = await callGrok(fullPrompt);
-        providerUsed = 'ZHI 5 (Grok)';
+        providerUsed = 'ZHI 5';
         break;
     }
     

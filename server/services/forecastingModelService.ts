@@ -105,7 +105,7 @@ export async function parseForecastingDescription(
         max_tokens: 2000
       });
       response = result.choices[0]?.message?.content || '';
-      providerUsed = 'Zhi 5 (Grok)';
+      providerUsed = 'ZHI 5';
     } else if (llmProvider === 'openai' && process.env.OPENAI_API_KEY) {
       const result = await openai.chat.completions.create({
         model: 'gpt-4o',
@@ -114,7 +114,7 @@ export async function parseForecastingDescription(
         max_tokens: 2000
       });
       response = result.choices[0]?.message?.content || '';
-      providerUsed = 'Zhi 1 (GPT-4o)';
+      providerUsed = 'ZHI 1';
     } else if (llmProvider === 'anthropic' && anthropicApiKey) {
       const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -131,7 +131,7 @@ export async function parseForecastingDescription(
       });
       const data = await anthropicResponse.json();
       response = data.content?.[0]?.text || '';
-      providerUsed = 'Zhi 2 (Claude)';
+      providerUsed = 'ZHI 2';
     } else if (llmProvider === 'deepseek' && deepseekApiKey) {
       const deepseekClient = new OpenAI({
         apiKey: deepseekApiKey,
@@ -144,7 +144,7 @@ export async function parseForecastingDescription(
         max_tokens: 2000
       });
       response = result.choices[0]?.message?.content || '';
-      providerUsed = 'Zhi 3 (DeepSeek)';
+      providerUsed = 'ZHI 3';
     } else {
       if (grokApiKey) {
         const grokClient = new OpenAI({
@@ -158,7 +158,7 @@ export async function parseForecastingDescription(
           max_tokens: 2000
         });
         response = result.choices[0]?.message?.content || '';
-        providerUsed = 'Zhi 5 (Grok)';
+        providerUsed = 'ZHI 5';
       } else {
         throw new Error('No LLM provider available');
       }
