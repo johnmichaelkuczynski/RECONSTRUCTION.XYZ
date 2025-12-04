@@ -887,9 +887,20 @@ export function calculateThreeStatementModel(
   if (Math.abs(equityGap) > 0.01) {
     // Adjust retained earnings to force balance
     retainedEarnings[0] += equityGap;
-    totalEquity[0] += equityGap;
+    totalEquity[0] = commonStock[0] + apic[0] + retainedEarnings[0] - treasuryStock[0] + aoci[0];
     
     console.log(`[3-Statement Model] Adjusted retained earnings by ${equityGap.toFixed(2)}M to force A=L+E (${originalRetainedEarnings0.toFixed(2)}M -> ${retainedEarnings[0].toFixed(2)}M)`);
+    
+    // CRITICAL FIX: Propagate the adjustment through ALL forward periods
+    // Since retainedEarnings[i] depends on retainedEarnings[i-1], we must recompute the entire chain
+    for (let i = 1; i <= years; i++) {
+      // Recalculate retained earnings: RE[i] = RE[i-1] + Net Income[i] - Dividends[i]
+      retainedEarnings[i] = retainedEarnings[i - 1] + netIncome[i] - dividendsPaid[i];
+      // Recalculate total equity
+      totalEquity[i] = commonStock[i] + apic[i] + retainedEarnings[i] - treasuryStock[i] + aoci[i];
+    }
+    
+    console.log(`[3-Statement Model] Propagated retained earnings adjustment through periods 1-${years}`);
   }
   
   // Step 3: Recompute totalLiabilitiesEquity and balanceCheck for ALL periods after adjustments
