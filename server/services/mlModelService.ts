@@ -70,6 +70,7 @@ CLASSIFICATION MODELS:
 - "gradient boosting" → "gradient_boosting"
 - "knn", "k-nearest", "nearest neighbors" → "knn"
 - "naive bayes", "probabilistic" → "naive_bayes"
+- "logistic regression", "logistic" → "logistic_regression"
 - "compare", "best model", "which algorithm" → "auto"
 
 CLUSTERING MODELS:
@@ -241,6 +242,7 @@ warnings.filterwarnings('ignore')
   const classificationImports = `
 # Classification imports
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
 from sklearn.neighbors import KNeighborsClassifier
@@ -667,6 +669,7 @@ print("-" * 70)
 print("\\nComparing multiple classification models...")
 
 models_to_compare = {
+    'Logistic Regression': LogisticRegression(max_iter=1000, random_state=${params.randomState}),
     'Random Forest': RandomForestClassifier(n_estimators=100, random_state=${params.randomState}),
     'Gradient Boosting': GradientBoostingClassifier(n_estimators=100, random_state=${params.randomState}),
     'SVM': SVC(kernel='rbf', probability=True, random_state=${params.randomState}),
@@ -714,6 +717,90 @@ print(comparison_df.to_string(index=False))
 best_model_name = comparison_df.iloc[0]['Model']
 model = models_to_compare[best_model_name]
 print(f"\\n*** Best Model: {best_model_name} (F1 Score: {comparison_df.iloc[0]['F1 Score']:.4f}) ***")
+
+${params.hyperparameterTuning === 'grid' || params.hyperparameterTuning === 'random' ? `
+# ==============================================================================
+# HYPERPARAMETER TUNING ON BEST MODEL
+# ==============================================================================
+print("\\n" + "-" * 70)
+print("HYPERPARAMETER TUNING ON BEST MODEL")
+print("-" * 70)
+
+# Define param grids for each model type
+param_grids = {
+    'Logistic Regression': {
+        'C': [0.001, 0.01, 0.1, 1, 10, 100],
+        'penalty': ['l1', 'l2'],
+        'solver': ['liblinear', 'saga']
+    },
+    'Random Forest': {
+        'n_estimators': [50, 100, 200, 300],
+        'max_depth': [None, 10, 20, 30],
+        'min_samples_split': [2, 5, 10],
+        'min_samples_leaf': [1, 2, 4]
+    },
+    'Gradient Boosting': {
+        'n_estimators': [50, 100, 200],
+        'max_depth': [3, 5, 7],
+        'learning_rate': [0.01, 0.05, 0.1, 0.2],
+        'min_samples_split': [2, 5, 10]
+    },
+    'SVM': {
+        'C': [0.1, 1, 10, 100],
+        'kernel': ['rbf', 'poly', 'linear'],
+        'gamma': ['scale', 'auto', 0.01, 0.1]
+    },
+    'MLP Neural Network': {
+        'hidden_layer_sizes': [(50,), (100,), (100, 50), (100, 50, 25)],
+        'alpha': [0.0001, 0.001, 0.01],
+        'learning_rate': ['constant', 'adaptive']
+    },
+    'KNN': {
+        'n_neighbors': [3, 5, 7, 9, 11],
+        'weights': ['uniform', 'distance'],
+        'metric': ['euclidean', 'manhattan']
+    },
+    'Naive Bayes': {
+        'var_smoothing': [1e-10, 1e-9, 1e-8, 1e-7, 1e-6]
+    },
+    'XGBoost': {
+        'n_estimators': [50, 100, 200],
+        'max_depth': [3, 5, 7, 10],
+        'learning_rate': [0.01, 0.05, 0.1, 0.2],
+        'subsample': [0.6, 0.8, 1.0],
+        'colsample_bytree': [0.6, 0.8, 1.0]
+    }
+}
+
+if best_model_name in param_grids:
+    print(f"\\nTuning hyperparameters for {best_model_name}...")
+    param_grid = param_grids[best_model_name]
+    
+    # Re-initialize the model for tuning
+    best_model_class = type(model)
+    base_model = best_model_class()
+    
+    # Use GridSearchCV or RandomizedSearchCV based on user preference
+    ${params.hyperparameterTuning === 'grid' ? `search = GridSearchCV(
+        base_model, param_grid, cv=${params.cvFolds},
+        scoring='f1_weighted', n_jobs=-1, verbose=1
+    )` : `search = RandomizedSearchCV(
+        base_model, param_grid, n_iter=${params.tuningIterations}, cv=${params.cvFolds},
+        scoring='f1_weighted', n_jobs=-1, verbose=1, random_state=${params.randomState}
+    )`}
+    
+    search.fit(X_train_processed, y_train)
+    model = search.best_estimator_
+    
+    print(f"\\nBest Parameters: {search.best_params_}")
+    print(f"Best CV Score: {search.best_score_:.4f}")
+    
+    # Re-evaluate on test set
+    y_pred_tuned = model.predict(X_test_processed)
+    print(f"\\nTuned Model Test F1: {f1_score(y_test, y_pred_tuned, average='weighted'):.4f}")
+else:
+    print(f"\\nNo hyperparameter grid defined for {best_model_name}, using default params")
+` : ''}
 `;
   } else {
     const modelCode = getClassificationModelCode(params.modelType, params);
@@ -938,6 +1025,39 @@ search = RandomizedSearchCV(
     model, param_grid, n_iter=${params.tuningIterations}, cv=${params.cvFolds},
     scoring='f1_weighted', n_jobs=-1, verbose=1, random_state=${params.randomState}
 )
+search.fit(X_train_processed, y_train)
+model = search.best_estimator_
+print(f"\\nBest Parameters: {search.best_params_}")
+print(f"Best CV Score: {search.best_score_:.4f}")
+` : `
+# Train model
+model.fit(X_train_processed, y_train)
+print("Model training complete.")
+`}`,
+    'logistic_regression': `
+# Initialize Logistic Regression
+model = LogisticRegression(
+    max_iter=1000,
+    solver='lbfgs',
+    random_state=${params.randomState}${classWeightParam}
+)
+
+${params.hyperparameterTuning !== 'none' ? `
+# Hyperparameter tuning
+param_grid = {
+    'C': [0.001, 0.01, 0.1, 1, 10, 100],
+    'penalty': ['l2'],
+    'solver': ['lbfgs', 'newton-cg', 'sag']
+}
+
+print("Performing hyperparameter tuning...")
+${params.hyperparameterTuning === 'grid' ? `search = GridSearchCV(
+    model, param_grid, cv=${params.cvFolds},
+    scoring='f1_weighted', n_jobs=-1, verbose=1
+)` : `search = RandomizedSearchCV(
+    model, param_grid, n_iter=${params.tuningIterations}, cv=${params.cvFolds},
+    scoring='f1_weighted', n_jobs=-1, verbose=1, random_state=${params.randomState}
+)`}
 search.fit(X_train_processed, y_train)
 model = search.best_estimator_
 print(f"\\nBest Parameters: {search.best_params_}")
