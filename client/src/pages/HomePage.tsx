@@ -2756,11 +2756,11 @@ Generated on: ${new Date().toLocaleString()}`;
                 <SelectValue placeholder="Select AI Model" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="zhi5">ZHI 5 (Grok) - Default</SelectItem>
-                <SelectItem value="zhi1">ZHI 1 (GPT-4o)</SelectItem>
-                <SelectItem value="zhi2">ZHI 2 (Claude)</SelectItem>
-                <SelectItem value="zhi3">ZHI 3 (DeepSeek)</SelectItem>
-                <SelectItem value="zhi4">ZHI 4 (Perplexity)</SelectItem>
+                <SelectItem value="zhi5">ZHI 5 - Default</SelectItem>
+                <SelectItem value="zhi1">ZHI 1</SelectItem>
+                <SelectItem value="zhi2">ZHI 2</SelectItem>
+                <SelectItem value="zhi3">ZHI 3</SelectItem>
+                <SelectItem value="zhi4">ZHI 4</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
@@ -2863,11 +2863,11 @@ Generated on: ${new Date().toLocaleString()}`;
                     <SelectValue placeholder="Select AI Model" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="zhi5" data-testid="select-item-zhi5">ZHI 5 (Grok) - Default</SelectItem>
-                    <SelectItem value="zhi1" data-testid="select-item-zhi1">ZHI 1 (GPT-4o)</SelectItem>
-                    <SelectItem value="zhi2" data-testid="select-item-zhi2">ZHI 2 (Claude)</SelectItem>
-                    <SelectItem value="zhi3" data-testid="select-item-zhi3">ZHI 3 (DeepSeek)</SelectItem>
-                    <SelectItem value="zhi4" data-testid="select-item-zhi4">ZHI 4 (Perplexity)</SelectItem>
+                    <SelectItem value="zhi5" data-testid="select-item-zhi5">ZHI 5 - Default</SelectItem>
+                    <SelectItem value="zhi1" data-testid="select-item-zhi1">ZHI 1</SelectItem>
+                    <SelectItem value="zhi2" data-testid="select-item-zhi2">ZHI 2</SelectItem>
+                    <SelectItem value="zhi3" data-testid="select-item-zhi3">ZHI 3</SelectItem>
+                    <SelectItem value="zhi4" data-testid="select-item-zhi4">ZHI 4</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -4046,11 +4046,11 @@ Generated on: ${new Date().toLocaleString()}`;
                 className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
                 data-testid="select-datascience-llm"
               >
-                <option value="zhi5">ZHI 5 (Grok) - Default</option>
-                <option value="zhi1">ZHI 1 (GPT-4o)</option>
-                <option value="zhi2">ZHI 2 (Claude)</option>
-                <option value="zhi3">ZHI 3 (DeepSeek)</option>
-                <option value="zhi4">ZHI 4 (Perplexity)</option>
+                <option value="zhi5">ZHI 5 - Default</option>
+                <option value="zhi1">ZHI 1</option>
+                <option value="zhi2">ZHI 2</option>
+                <option value="zhi3">ZHI 3</option>
+                <option value="zhi4">ZHI 4</option>
               </select>
             </div>
           </div>
@@ -4604,11 +4604,11 @@ Examples:
                 <SelectValue placeholder="Select AI Model" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="zhi5">ZHI 5 (Grok) - Default</SelectItem>
-                <SelectItem value="zhi1">ZHI 1 (GPT-4o)</SelectItem>
-                <SelectItem value="zhi2">ZHI 2 (Claude)</SelectItem>
-                <SelectItem value="zhi3">ZHI 3 (DeepSeek)</SelectItem>
-                <SelectItem value="zhi4">ZHI 4 (Perplexity)</SelectItem>
+                <SelectItem value="zhi5">ZHI 5 - Default</SelectItem>
+                <SelectItem value="zhi1">ZHI 1</SelectItem>
+                <SelectItem value="zhi2">ZHI 2</SelectItem>
+                <SelectItem value="zhi3">ZHI 3</SelectItem>
+                <SelectItem value="zhi4">ZHI 4</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
@@ -5824,7 +5824,7 @@ Examples:
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="zhi2">🎯 ZHI 2 (Default)</SelectItem>
+                    <SelectItem value="zhi2">ZHI 2 - Default</SelectItem>
                     <SelectItem value="zhi1">ZHI 1</SelectItem>
                     <SelectItem value="zhi3">ZHI 3</SelectItem>
                     <SelectItem value="zhi4">ZHI 4</SelectItem>
