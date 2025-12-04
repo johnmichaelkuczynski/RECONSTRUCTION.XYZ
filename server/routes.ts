@@ -2594,64 +2594,63 @@ Structural understanding is always understanding of relationships. Observational
       if (mode === "reconstruction") {
         // DRAMATICALLY different prompts based on fidelity level
         if (fidelityLevel === 'conservative') {
-          systemPrompt = `You are an expert philosophical interpreter and expositor. Your task is to produce a SELF-CONTAINED, COHERENT interpretation of a text - a unified explanation of what the author is arguing, written as flowing prose.
+          systemPrompt = `You are a LOGICAL RECONSTRUCTOR. Your job is to REBUILD arguments from the ground up.
 
-CORE PRINCIPLE: CHARITABLE INTERPRETATION
-- ASSUME the text is coherent and contains a unified argument
-- Your job is to EXTRACT and ARTICULATE that argument clearly
-- Resolve apparent tensions or ambiguities charitably, showing how they fit together
-- Present the author's thesis and supporting reasoning as a unified whole
+WHAT "RECONSTRUCT" MEANS:
+This is NOT paraphrasing. NOT rewriting. NOT "making it sound better."
+RECONSTRUCT = Find whatever kernel of a defensible claim exists in the text, then BUILD A COMPLETELY NEW, RIGOROUS ARGUMENT that:
+1. States a claim that is EXPLICITLY TRUE and MEANINGFUL
+2. Defends that claim with UTTERLY COGENT arguments
+3. Uses REAL evidence, REAL examples, REAL logical steps
+4. Contains ZERO filler, ZERO hand-waving, ZERO circular reasoning
 
-WHAT YOU ARE PRODUCING:
-A self-contained essay that explains, in clear prose, what the text is saying. Someone who has NEVER read the original should be able to understand the author's complete argument just by reading YOUR interpretation.
+YOUR PROCESS:
+1. IDENTIFY THE KERNEL: What is the author TRYING to argue? Strip away the bad reasoning.
+2. FORMULATE A TRUE CLAIM: State a version of that claim that is actually defensible and explicitly true.
+3. BUILD COGENT SUPPORT: Construct 2-4 arguments that ACTUALLY prove the claim using logic, evidence, examples.
+4. ELIMINATE WEAKNESS: Every sentence must do work. No repetition. No hedging. No filler.
 
-STRICT REQUIREMENTS:
-1. Write in CONTINUOUS PROSE - flowing paragraphs, not fragments
-2. NO BULLETS, NO LISTS, NO FRAGMENTS - full sentences in connected paragraphs only
-3. Structure: Opening context → Core thesis → Supporting arguments → How they connect → Synthesis
-4. 3-7 substantive paragraphs (not one giant block, not scattered notes)
-5. SELF-CONTAINED: Do not say "the text argues" or "the author claims" - instead, PRESENT the argument directly as if explaining it to someone
-6. Use natural academic prose - clear, precise, but not jargon-heavy
+WHAT MAKES AN ARGUMENT COGENT:
+- Premises are TRUE (not just plausible-sounding)
+- Logic is VALID (premises actually lead to conclusion)
+- Evidence is CONCRETE (specific examples, not vague gestures)
+- No logical fallacies (no circular reasoning, no false equivalence, no appeal to authority without substance)
 
-ABSOLUTELY FORBIDDEN:
-- Bullet points or numbered lists
-- Sentence fragments
-- Headers or section markers
-- Meta-commentary ("this text is about...", "the author seems to...")
-- Scattered quotes without integration
-- Leaving loose ends or unresolved tensions`;
+OUTPUT REQUIREMENTS:
+- Continuous prose, 2-5 tight paragraphs
+- SHORTER than input if possible (strength, not length)
+- Plain, direct language
+- Every claim supported; every support actually proves something
+- NO meta-commentary, NO explaining what you did
 
-          userPrompt = `CONSERVATIVE RECONSTRUCTION: Charitable Interpretation
+FORBIDDEN:
+- Paraphrasing the original's weak arguments in fancier words
+- Adding length without adding substance
+- Vague claims ("many people believe", "it is often said")
+- Academic bloat ("utilize", "facilitate", "in terms of")
+- Any sentence that doesn't advance the argument`;
+
+          userPrompt = `RECONSTRUCT THIS TEXT INTO A RIGOROUS ARGUMENT
 
 ================================
-TEXT TO INTERPRET
+ORIGINAL TEXT (contains a kernel worth saving, but poorly argued):
 ================================
 ${text}
 
-${targetDomain ? `Context/domain: ${targetDomain}` : ''}
-${customInstructions ? `\nAdditional instructions: ${customInstructions}` : ''}
+${targetDomain ? `Domain/context: ${targetDomain}` : ''}
+${customInstructions ? `\nCustom instructions from user: ${customInstructions}` : ''}
 
 ================================
 YOUR TASK
 ================================
-Produce a SELF-CONTAINED, COHERENT interpretation of this text.
+1. Find the KERNEL: What true/meaningful claim is buried in this text?
+2. State it EXPLICITLY: Formulate a clear, defensible thesis.
+3. Build COGENT support: 2-4 arguments with real logic and evidence.
+4. Make it TIGHT: Shorter is better. Every sentence must earn its place.
 
-Assume the text is coherent. Your job is to articulate the unified argument it contains.
+The output should be a completely rebuilt argument that someone would actually find convincing—not because it "sounds smart" but because the reasoning is actually sound.
 
-Write a 3-7 paragraph essay in continuous prose that:
-1. Opens with the context/problem the author is addressing
-2. States the author's core thesis or central claim
-3. Explains the supporting arguments and reasoning
-4. Shows how the parts connect into a unified whole
-5. Concludes with the upshot or significance
-
-REMEMBER:
-- NO bullets, NO lists, NO fragments - continuous prose only
-- Self-contained: someone unfamiliar with the original should understand the complete argument
-- Charitable: resolve tensions by showing how apparent contradictions actually cohere
-- Direct: present the argument, don't describe or summarize it from a distance
-
-OUTPUT: Just the interpretation itself - no headers, no meta-commentary, no explanation of what you did. Pure flowing prose that articulates the text's unified argument.`;
+OUTPUT: Just the reconstructed argument. No commentary. No explanation. Pure cogent prose.`;
 
         } else {
           // AGGRESSIVE MODE - maximum transformation

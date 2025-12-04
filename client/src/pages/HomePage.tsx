@@ -153,6 +153,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [validatorRigorLevel, setValidatorRigorLevel] = useState<"sketch" | "semi-formal" | "proof-ready">("semi-formal");
   const [showValidatorCustomization, setShowValidatorCustomization] = useState(false);
   const [validatorCustomInstructions, setValidatorCustomInstructions] = useState("");
+  const [showRedoModal, setShowRedoModal] = useState(false);
+  const [redoCustomInstructions, setRedoCustomInstructions] = useState("");
   const [validatorTruthMapping, setValidatorTruthMapping] = useState<"false-to-true" | "true-to-true" | "true-to-false">("false-to-true");
   const [validatorMathTruthMapping, setValidatorMathTruthMapping] = useState<"make-true" | "keep-true" | "make-false">("make-true");
   const [validatorLiteralTruth, setValidatorLiteralTruth] = useState(false);
@@ -4894,11 +4896,8 @@ Examples:
                   <CopyButton text={validatorOutput} />
                   <Button
                     onClick={() => {
-                      setShowValidatorCustomization(true);
-                      toast({
-                        title: "Redo Mode",
-                        description: "Modify your instructions and click Generate to re-run with the same text"
-                      });
+                      setRedoCustomInstructions("");
+                      setShowRedoModal(true);
                     }}
                     variant="outline"
                     size="sm"
@@ -4941,6 +4940,96 @@ Examples:
               <p className="text-gray-600 dark:text-gray-400">Processing text validation...</p>
             </div>
           )}
+
+          {/* Redo Modal with Custom Instructions */}
+          <Dialog open={showRedoModal} onOpenChange={setShowRedoModal}>
+            <DialogContent className="sm:max-w-[600px]">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5 text-amber-600" />
+                  Redo with Custom Instructions
+                </DialogTitle>
+                <DialogDescription>
+                  Enter specific instructions to guide the reconstruction. Leave blank for default behavior.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                <Textarea
+                  value={redoCustomInstructions}
+                  onChange={(e) => setRedoCustomInstructions(e.target.value)}
+                  placeholder="e.g., 'Focus on the economic arguments' or 'Make the thesis about evolutionary biology' or 'Add specific scientific studies as evidence' or 'Make it more concise - half the length'"
+                  className="min-h-[150px] text-sm"
+                  data-testid="textarea-redo-custom-instructions"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  Examples: "Add real statistics" / "Focus only on the strongest argument" / "Make it half as long" / "Frame it as a philosophical argument"
+                </p>
+              </div>
+              <DialogFooter className="gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowRedoModal(false)}
+                  data-testid="button-cancel-redo"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={async () => {
+                    setShowRedoModal(false);
+                    setValidatorCustomInstructions(redoCustomInstructions);
+                    setValidatorLoading(true);
+                    try {
+                      const response = await fetch("/api/text-model-validator", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          text: validatorInputText,
+                          mode: validatorMode,
+                          targetDomain: validatorTargetDomain,
+                          fidelityLevel: validatorFidelityLevel,
+                          mathFramework: validatorMathFramework,
+                          constraintType: validatorConstraintType,
+                          rigorLevel: validatorRigorLevel,
+                          customInstructions: redoCustomInstructions,
+                          truthMapping: validatorTruthMapping,
+                          mathTruthMapping: validatorMathTruthMapping,
+                          literalTruth: validatorLiteralTruth,
+                          llmProvider: validatorLLMProvider,
+                        }),
+                      });
+                      const data = await response.json();
+                      if (data.success) {
+                        setValidatorOutput(data.output);
+                        toast({
+                          title: "Reconstruction Complete",
+                          description: redoCustomInstructions ? "Regenerated with your custom instructions" : "Regenerated with default settings",
+                        });
+                      } else {
+                        toast({
+                          title: "Error",
+                          description: data.message || "Failed to process",
+                          variant: "destructive",
+                        });
+                      }
+                    } catch (error: any) {
+                      toast({
+                        title: "Error",
+                        description: error.message || "Failed to process",
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setValidatorLoading(false);
+                    }
+                  }}
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                  data-testid="button-confirm-redo"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Regenerate
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
