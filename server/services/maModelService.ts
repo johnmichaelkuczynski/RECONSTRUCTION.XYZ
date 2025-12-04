@@ -751,6 +751,11 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   const results = calculateMAMetrics(assumptions);
   const { acquirerProjections, targetProjections, transactionMetrics, synergies, sourcesAndUses, proFormaProjections, accretionDilution } = results;
   
+  const acquirerSharesOutstanding = assumptions.acquirerSharesOutstanding || 100;
+  const targetNetDebt = assumptions.targetNetDebt || 0;
+  const targetRevenue = assumptions.targetRevenue || 500;
+  const targetEBITDAMargin = assumptions.targetEBITDAMargin || 0.20;
+  
   const currencyFormat = '"$"#,##0';
   const percentFormat = "0.0%";
   const multipleFormat = "0.0x";
@@ -1657,11 +1662,12 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   const synergyMultipliers = [0.5, 0.75, 1.0, 1.25];
   const y1EpsBase = proFormaProjections.eps[1];
   const y1AcquirerEps = acquirerProjections.eps[1];
+  const proFormaSharesCount = transactionMetrics.proFormaShares;
   
   sensSheet.getCell("A5").value = "Pro Forma EPS";
   synergyMultipliers.forEach((mult, idx) => {
     // Rough estimate: EPS scales with synergy changes
-    const synergyDelta = baseSynergy * (mult - 1) * 0.3 / proFormaShares; // 30% flows to EPS after tax
+    const synergyDelta = baseSynergy * (mult - 1) * 0.3 / proFormaSharesCount; // 30% flows to EPS after tax
     const adjustedEps = y1EpsBase + synergyDelta;
     sensSheet.getCell(5, idx + 2).value = adjustedEps;
     sensSheet.getCell(5, idx + 2).numFmt = epsFormat;
@@ -1669,7 +1675,7 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
 
   sensSheet.getCell("A6").value = "Accretion/(Dilution)";
   synergyMultipliers.forEach((mult, idx) => {
-    const synergyDelta = baseSynergy * (mult - 1) * 0.3 / proFormaShares;
+    const synergyDelta = baseSynergy * (mult - 1) * 0.3 / proFormaSharesCount;
     const adjustedEps = y1EpsBase + synergyDelta;
     const accDil = (adjustedEps / y1AcquirerEps) - 1;
     sensSheet.getCell(6, idx + 2).value = accDil;
@@ -1717,7 +1723,7 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
     const priceDelta = (m - baseMultiple) * targetEBITDA;
     // Extra stock issuance from higher price
     const extraShares = priceDelta / assumptions.acquirerStockPrice;
-    const newProFormaShares = proFormaShares + extraShares;
+    const newProFormaShares = proFormaSharesCount + extraShares;
     const adjustedEps = proFormaProjections.netIncome[1] / newProFormaShares;
     const accDil = (adjustedEps / y1AcquirerEps) - 1;
     sensSheet.getCell(12, idx + 2).value = accDil;
@@ -1754,7 +1760,7 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
     // Extra integration cost reduces net income
     const extraCost = baseIntegrationY1 * (m - 1) * (1 - assumptions.acquirerTaxRate);
     const adjustedNI = proFormaProjections.netIncome[1] - extraCost;
-    const adjustedEps = adjustedNI / proFormaShares;
+    const adjustedEps = adjustedNI / proFormaSharesCount;
     const accDil = (adjustedEps / y1AcquirerEps) - 1;
     sensSheet.getCell(18, idx + 2).value = accDil;
     sensSheet.getCell(18, idx + 2).numFmt = percentFormat;
@@ -2074,10 +2080,10 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
 
   contribSheet.getCell("A7").value = "Shares Outstanding (M)";
   contribSheet.getCell("B7").value = acquirerSharesOutstanding;
-  contribSheet.getCell("C7").value = acquirerSharesOutstanding / proFormaShares;
+  contribSheet.getCell("C7").value = acquirerSharesOutstanding / transactionMetrics.proFormaShares;
   contribSheet.getCell("D7").value = transactionMetrics.newSharesIssued;
-  contribSheet.getCell("E7").value = transactionMetrics.newSharesIssued / proFormaShares;
-  contribSheet.getCell("F7").value = proFormaShares;
+  contribSheet.getCell("E7").value = transactionMetrics.newSharesIssued / transactionMetrics.proFormaShares;
+  contribSheet.getCell("F7").value = transactionMetrics.proFormaShares;
   contribSheet.getCell("G7").value = 1;
   contribSheet.getCell("B7").numFmt = "0.0";
   contribSheet.getCell("C7").numFmt = percentFormat;
