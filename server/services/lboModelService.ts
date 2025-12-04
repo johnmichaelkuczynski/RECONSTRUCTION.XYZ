@@ -27,7 +27,6 @@ export interface LBOAssumptions {
   // Financing Structure
   seniorDebtAmount: number;
   seniorDebtRate: number;
-  seniorDebtAmortization: number;
   subDebtAmount: number;
   subDebtRate: number;
   subDebtPIK: number;
@@ -70,7 +69,6 @@ Return a JSON object with the following structure:
   
   "seniorDebtAmount": number (in millions),
   "seniorDebtRate": number (as decimal, e.g., 0.06 for 6%),
-  "seniorDebtAmortization": number (annual mandatory repayment as decimal of original),
   "subDebtAmount": number (in millions),
   "subDebtRate": number (as decimal),
   "subDebtPIK": number (PIK interest as decimal, 0 if cash pay),
@@ -227,7 +225,6 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
     managementRollover,
     seniorDebtAmount,
     seniorDebtRate,
-    seniorDebtAmortization,
     subDebtAmount,
     subDebtRate,
     subDebtPIK,
@@ -657,11 +654,48 @@ export async function generateLBOExcel(assumptions: LBOAssumptions): Promise<Buf
   // ============ DEBT SCHEDULE ============
   const debtSheet = workbook.addWorksheet("Debt_Schedule");
   debtSheet.columns = [
-    { width: 25 },
+    { width: 30 },
     { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 },
   ];
 
   let debtRow = 1;
+  
+  // FCF SWEEP METHODOLOGY NOTE
+  const sweepPct = assumptions.cashFlowSweepPercent || 0.75;
+  debtSheet.addRow([`DEBT REPAYMENT: ${(sweepPct * 100).toFixed(0)}% FCF SWEEP (Senior First, then Sub)`]);
+  debtSheet.getRow(debtRow).font = { bold: true, italic: true, color: { argb: "FF0066CC" } };
+  debtSheet.mergeCells(`A${debtRow}:G${debtRow}`);
+  debtRow++;
+  
+  debtSheet.addRow(["Paydown = min(FCF x Sweep%, Beginning Balance) - NO fixed amortization"]);
+  debtSheet.getRow(debtRow).font = { italic: true, size: 10 };
+  debtSheet.mergeCells(`A${debtRow}:G${debtRow}`);
+  debtRow++;
+  
+  debtSheet.addRow([""]);
+  debtRow++;
+  
+  // FCF SWEEP DETAIL SECTION
+  debtSheet.addRow(["FCF SWEEP CALCULATION", "Year 0", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5"]);
+  debtSheet.getRow(debtRow).font = { bold: true };
+  debtSheet.getRow(debtRow).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD4EDDA" } }; // Light green
+  debtRow++;
+  
+  debtSheet.addRow(["Free Cash Flow ($M)", ...projections.freeCashFlow]);
+  for (let i = 2; i <= 7; i++) debtSheet.getCell(debtRow, i).numFmt = currencyFormat;
+  debtRow++;
+  
+  const sweepCash = projections.freeCashFlow.map(fcf => Math.max(0, fcf) * sweepPct);
+  debtSheet.addRow([`Cash Available for Sweep (${(sweepPct * 100).toFixed(0)}%)`, ...sweepCash]);
+  for (let i = 2; i <= 7; i++) debtSheet.getCell(debtRow, i).numFmt = currencyFormat;
+  debtRow++;
+  
+  debtSheet.addRow(["Total Debt Paydown ($M)", ...projections.cashSweep]);
+  for (let i = 2; i <= 7; i++) debtSheet.getCell(debtRow, i).numFmt = currencyFormat;
+  debtRow++;
+  
+  debtSheet.addRow([""]);
+  debtRow++;
   
   // SENIOR DEBT SECTION
   debtSheet.addRow(["SENIOR DEBT", "Year 0", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5"]);
