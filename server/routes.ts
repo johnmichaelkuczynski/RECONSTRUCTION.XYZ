@@ -21,6 +21,7 @@ import { parseIPODescription, calculateIPOPricing } from "./services/ipoPricingS
 import { parseRegressionDescription, generateRegressionPythonCode } from "./services/regressionModelService";
 import { parseForecastingDescription, generateForecastingPythonCode } from "./services/forecastingModelService";
 import { parsePredictiveDescription } from "./services/predictiveAnalyticsService";
+import { parseDataFile } from "./services/dataFileParser";
 
 
 // Configure multer for file uploads
@@ -3932,6 +3933,39 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
       res.status(500).json({
         success: false,
         message: error.message || "Failed to generate Python file"
+      });
+    }
+  });
+
+  // Data Science Panel - Upload and parse data files (CSV, Excel, JSON, Parquet, SQLite, Jupyter)
+  app.post("/api/datascience/upload-data", upload.single('file'), async (req: Request, res: Response) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "No file uploaded"
+        });
+      }
+
+      const { originalname, buffer, mimetype } = req.file;
+      console.log(`Parsing data file: ${originalname} (${mimetype})`);
+
+      const result = await parseDataFile(buffer, originalname, mimetype);
+
+      if (!result.success) {
+        return res.status(400).json({
+          success: false,
+          message: result.error || "Failed to parse data file"
+        });
+      }
+
+      res.json(result);
+
+    } catch (error: any) {
+      console.error("Data file upload error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to process data file"
       });
     }
   });
