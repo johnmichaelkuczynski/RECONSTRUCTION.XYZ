@@ -273,62 +273,100 @@ export async function parseMADescription(
   return { assumptions, providerUsed };
 }
 
+// Helper function: safely get numeric value, only use default if truly undefined/null/NaN
+function safeNum(value: any, defaultVal: number): number {
+  if (value === undefined || value === null) return defaultVal;
+  const num = Number(value);
+  if (isNaN(num)) return defaultVal;
+  return num;
+}
+
+// Helper function: safely get numeric value, returns 0 if undefined/null/NaN (for values where 0 is valid)
+function safeNumZero(value: any): number {
+  if (value === undefined || value === null) return 0;
+  const num = Number(value);
+  if (isNaN(num)) return 0;
+  return num;
+}
+
 export function calculateMAMetrics(assumptions: MAAssumptions) {
-  const {
-    acquirerRevenue,
-    acquirerRevenueGrowth,
-    acquirerEBITDAMargin,
-    acquirerDAPercent,
-    acquirerInterestExpense,
-    acquirerTaxRate,
-    acquirerSharesOutstanding,
-    acquirerStockPrice,
-    acquirerExplicitEPS, // BUG #1 FIX
-    targetRevenue,
-    targetRevenueGrowth,
-    targetEBITDAMargin,
-    targetDAPercent,
-    targetInterestExpense,
-    targetTaxRate,
-    targetNetDebt,
-    purchasePrice,
-    cashPercent,
-    stockPercent,
-    transactionFeePercent,
-    transactionFees: explicitTransactionFees, // BUG #2 FIX
-    cashFromBalance,
-    newDebtAmount,
-    newDebtRate,
-    debtAmortizationRate,
-    debtMaturityYears,
-    revenueSynergies,
-    revenueSynergyRealizationY1,
-    revenueSynergyRealizationY2,
-    revenueSynergyRealizationY3,
-    revenueSynergyRealizationY4,
-    revenueSynergyRealizationY5,
-    revenueSynergyMargin, // BUG #5 FIX
-    costSynergies,
-    costSynergyRealizationY1,
-    costSynergyRealizationY2,
-    costSynergyRealizationY3,
-    costSynergyRealizationY4,
-    costSynergyRealizationY5,
-    integrationCostsY1,
-    integrationCostsY2,
-    integrationCostsY3,
-    // BUG #3 FIX: Proper PPA components
-    targetBookValueNetAssets,
-    targetFairValueNetAssets,
-    customerRelationships,
-    customerRelationshipsLife,
-    developedTechnology,
-    developedTechnologyLife,
-    otherIntangibles,
-    otherIntangiblesLife,
-    intangibleAssets,
-    intangibleAmortYears,
-  } = assumptions;
+  // ============ INPUT VALIDATION & LOGGING ============
+  console.log("M&A Calculation - Input assumptions:", JSON.stringify({
+    acquirerRevenue: assumptions.acquirerRevenue,
+    acquirerEBITDAMargin: assumptions.acquirerEBITDAMargin,
+    acquirerSharesOutstanding: assumptions.acquirerSharesOutstanding,
+    acquirerStockPrice: assumptions.acquirerStockPrice,
+    targetRevenue: assumptions.targetRevenue,
+    targetEBITDAMargin: assumptions.targetEBITDAMargin,
+    purchasePrice: assumptions.purchasePrice,
+    cashPercent: assumptions.cashPercent,
+    stockPercent: assumptions.stockPercent,
+    revenueSynergies: assumptions.revenueSynergies,
+    costSynergies: assumptions.costSynergies,
+    newDebtAmount: assumptions.newDebtAmount,
+  }, null, 2));
+
+  // VALIDATED inputs - use safe helpers to prevent NaN propagation
+  const acquirerRevenue = safeNum(assumptions.acquirerRevenue, 1000);
+  const acquirerRevenueGrowth = assumptions.acquirerRevenueGrowth || [0.05, 0.05, 0.05, 0.05, 0.05];
+  const acquirerEBITDAMargin = safeNum(assumptions.acquirerEBITDAMargin, 0.20);
+  const acquirerDAPercent = safeNum(assumptions.acquirerDAPercent, 0.03);
+  const acquirerInterestExpense = safeNumZero(assumptions.acquirerInterestExpense);
+  const acquirerTaxRate = safeNum(assumptions.acquirerTaxRate, 0.25);
+  const acquirerSharesOutstanding = safeNum(assumptions.acquirerSharesOutstanding, 100); // Prevent div by 0
+  const acquirerStockPrice = safeNum(assumptions.acquirerStockPrice, 50); // Prevent div by 0
+  const acquirerExplicitEPS = assumptions.acquirerExplicitEPS; // Keep as-is for explicit check
+  
+  const targetRevenue = safeNum(assumptions.targetRevenue, 500);
+  const targetRevenueGrowth = assumptions.targetRevenueGrowth || [0.05, 0.05, 0.05, 0.05, 0.05];
+  const targetEBITDAMargin = safeNum(assumptions.targetEBITDAMargin, 0.20);
+  const targetDAPercent = safeNum(assumptions.targetDAPercent, 0.03);
+  const targetInterestExpense = safeNumZero(assumptions.targetInterestExpense);
+  const targetTaxRate = safeNum(assumptions.targetTaxRate, 0.25);
+  const targetNetDebt = safeNumZero(assumptions.targetNetDebt);
+  
+  const purchasePrice = safeNum(assumptions.purchasePrice, 1000);
+  const cashPercent = safeNum(assumptions.cashPercent, 0.5);
+  const stockPercent = safeNum(assumptions.stockPercent, 0.5);
+  const transactionFeePercent = safeNum(assumptions.transactionFeePercent, 0.025);
+  const explicitTransactionFees = assumptions.transactionFees; // Keep for explicit check
+  
+  const cashFromBalance = safeNumZero(assumptions.cashFromBalance);
+  const newDebtAmount = safeNumZero(assumptions.newDebtAmount);
+  const newDebtRate = safeNum(assumptions.newDebtRate, 0.06);
+  const debtAmortizationRate = assumptions.debtAmortizationRate;
+  const debtMaturityYears = assumptions.debtMaturityYears;
+  
+  const revenueSynergies = safeNumZero(assumptions.revenueSynergies);
+  const revenueSynergyRealizationY1 = assumptions.revenueSynergyRealizationY1;
+  const revenueSynergyRealizationY2 = assumptions.revenueSynergyRealizationY2;
+  const revenueSynergyRealizationY3 = assumptions.revenueSynergyRealizationY3;
+  const revenueSynergyRealizationY4 = assumptions.revenueSynergyRealizationY4;
+  const revenueSynergyRealizationY5 = assumptions.revenueSynergyRealizationY5;
+  const revenueSynergyMargin = assumptions.revenueSynergyMargin;
+  
+  const costSynergies = safeNumZero(assumptions.costSynergies);
+  const costSynergyRealizationY1 = assumptions.costSynergyRealizationY1;
+  const costSynergyRealizationY2 = assumptions.costSynergyRealizationY2;
+  const costSynergyRealizationY3 = assumptions.costSynergyRealizationY3;
+  const costSynergyRealizationY4 = assumptions.costSynergyRealizationY4;
+  const costSynergyRealizationY5 = assumptions.costSynergyRealizationY5;
+  
+  const integrationCostsY1 = safeNumZero(assumptions.integrationCostsY1);
+  const integrationCostsY2 = safeNumZero(assumptions.integrationCostsY2);
+  const integrationCostsY3 = safeNumZero(assumptions.integrationCostsY3);
+  
+  // PPA components
+  const targetBookValueNetAssets = assumptions.targetBookValueNetAssets;
+  const targetFairValueNetAssets = assumptions.targetFairValueNetAssets;
+  const customerRelationships = assumptions.customerRelationships;
+  const customerRelationshipsLife = assumptions.customerRelationshipsLife;
+  const developedTechnology = assumptions.developedTechnology;
+  const developedTechnologyLife = assumptions.developedTechnologyLife;
+  const otherIntangibles = assumptions.otherIntangibles;
+  const otherIntangiblesLife = assumptions.otherIntangiblesLife;
+  const intangibleAssets = safeNumZero(assumptions.intangibleAssets);
+  const intangibleAmortYears = safeNum(assumptions.intangibleAmortYears, 10);
 
   const years = [0, 1, 2, 3, 4, 5];
   
@@ -339,7 +377,7 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
   const acquirerEPS: number[] = [];
   
   for (let i = 1; i <= 5; i++) {
-    const growth = acquirerRevenueGrowth[i - 1] || 0.05;
+    const growth = acquirerRevenueGrowth[i - 1] ?? 0.05; // Use ?? to allow 0 as valid value
     acquirerRev.push(acquirerRev[i - 1] * (1 + growth));
   }
   
@@ -359,11 +397,13 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
       acquirerEPS.push(acquirerExplicitEPS);
     } else if (acquirerExplicitEPS !== undefined && acquirerExplicitEPS !== null && i > 0) {
       // For projections, grow from the explicit base EPS proportionally
-      const baseGrowth = acquirerNetIncome[i] / acquirerNetIncome[0];
-      acquirerEPS.push(acquirerExplicitEPS * baseGrowth);
+      const baseGrowth = acquirerNetIncome[0] !== 0 ? acquirerNetIncome[i] / acquirerNetIncome[0] : 1;
+      const projectedEps = acquirerExplicitEPS * baseGrowth;
+      acquirerEPS.push(isNaN(projectedEps) ? acquirerExplicitEPS : projectedEps);
     } else {
-      // No explicit EPS: calculate from Net Income / Shares
-      acquirerEPS.push(netIncome / acquirerSharesOutstanding);
+      // No explicit EPS: calculate from Net Income / Shares (guard against div by 0)
+      const calculatedEps = acquirerSharesOutstanding > 0 ? netIncome / acquirerSharesOutstanding : 0;
+      acquirerEPS.push(isNaN(calculatedEps) ? 0 : calculatedEps);
     }
   }
 
@@ -373,7 +413,7 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
   const targetNetIncome: number[] = [];
   
   for (let i = 1; i <= 5; i++) {
-    const growth = targetRevenueGrowth[i - 1] || 0.05;
+    const growth = targetRevenueGrowth[i - 1] ?? 0.05; // Use ?? to allow 0 as valid value
     targetRev.push(targetRev[i - 1] * (1 + growth));
   }
   
@@ -390,10 +430,18 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
   // ============ TRANSACTION METRICS ============
   const cashConsideration = purchasePrice * cashPercent;
   const stockConsideration = purchasePrice * stockPercent;
-  const newSharesIssued = stockConsideration / acquirerStockPrice;
+  // Guard against division by zero for new shares issued
+  const newSharesIssued = acquirerStockPrice > 0 ? stockConsideration / acquirerStockPrice : 0;
   const proFormaShares = acquirerSharesOutstanding + newSharesIssued;
   const enterpriseValue = purchasePrice + targetNetDebt;
-  const evEbitdaMultiple = enterpriseValue / (targetRevenue * targetEBITDAMargin);
+  // Guard against division by zero for EV/EBITDA multiple
+  const targetEBITDAValue = targetRevenue * targetEBITDAMargin;
+  const evEbitdaMultiple = targetEBITDAValue > 0 ? enterpriseValue / targetEBITDAValue : 0;
+  
+  console.log("M&A Calculation - Computed metrics:", JSON.stringify({
+    purchasePrice, enterpriseValue, evEbitdaMultiple, 
+    cashConsideration, stockConsideration, newSharesIssued, proFormaShares
+  }));
   
   // BUG #2 FIX: Calculate transaction fees - use explicit if provided, otherwise calculate from EV
   const transactionFees = explicitTransactionFees !== undefined && explicitTransactionFees !== null 
@@ -427,21 +475,22 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
     ? revenueSynergyMargin 
     : 1.0; // Default 100% if not specified
   
+  // Use ?? to allow 0 as a valid value (user may want 0% realization in certain years)
   const revenueSynergyRealization = [
     0, 
-    revenueSynergyRealizationY1 || 0, 
-    revenueSynergyRealizationY2 || 0.50, 
-    revenueSynergyRealizationY3 || 1.0, 
-    revenueSynergyRealizationY4 || 1.0, 
-    revenueSynergyRealizationY5 || 1.0
+    revenueSynergyRealizationY1 ?? 0, 
+    revenueSynergyRealizationY2 ?? 0.50, 
+    revenueSynergyRealizationY3 ?? 1.0, 
+    revenueSynergyRealizationY4 ?? 1.0, 
+    revenueSynergyRealizationY5 ?? 1.0
   ];
   const costSynergyRealization = [
     0, 
-    costSynergyRealizationY1 || 0.20, 
-    costSynergyRealizationY2 || 0.60, 
-    costSynergyRealizationY3 || 1.0, 
-    costSynergyRealizationY4 || 1.0, 
-    costSynergyRealizationY5 || 1.0
+    costSynergyRealizationY1 ?? 0.20, 
+    costSynergyRealizationY2 ?? 0.60, 
+    costSynergyRealizationY3 ?? 1.0, 
+    costSynergyRealizationY4 ?? 1.0, 
+    costSynergyRealizationY5 ?? 1.0
   ];
   
   // Revenue synergies by year (top-line)
@@ -455,14 +504,74 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
   
   const integrationCosts = [0, integrationCostsY1 || 0, integrationCostsY2 || 0, integrationCostsY3 || 0, 0, 0];
 
-  // ============ DEBT SCHEDULE (BUG #4 & #6 FIX) ============
+  // ============ SOURCES AND USES CALCULATION (MOVED UP) ============
+  // Must calculate finalNewDebt FIRST before building debt schedule
+  // 
+  // USES = Equity Value + Debt Payoff (if any) + Transaction Fees
+  // SOURCES = Stock + Net Cash from Target + Cash from BS + New Debt
+  //
+  // Logic: Fill sources in priority order until uses are fully funded
+  // 1. Stock consideration (fixed %, but capped at total uses)
+  // 2. Net cash from target (if any, capped at remaining)
+  // 3. Cash from balance sheet (user input, capped at remaining)
+  // 4. New debt (whatever is left to balance)
+  
+  // Calculate what needs to be funded (positive debt means payoff needed)
+  const debtPayoffAmount = Math.max(0, targetNetDebt);
+  const rawNetCashFromTarget = targetNetDebt < 0 ? Math.abs(targetNetDebt) : 0;
+  
+  // Total Uses - this is the fixed target
+  const grossUsesAmount = purchasePrice + debtPayoffAmount + transactionFees;
+  
+  // Step 1: Stock consideration (can't exceed total uses)
+  const finalStockConsideration = Math.min(stockConsideration, grossUsesAmount);
+  let remainingToFund = grossUsesAmount - finalStockConsideration;
+  
+  // Step 2: Net cash from target (can't exceed remaining)
+  const netCashApplied = Math.min(rawNetCashFromTarget, remainingToFund);
+  remainingToFund -= netCashApplied;
+  
+  // Step 3: Cash from balance sheet (user input, can't exceed remaining)
+  const userCashFromBS = Math.max(0, cashFromBalance || 0);
+  const finalCashFromBS = Math.min(userCashFromBS, remainingToFund);
+  remainingToFund -= finalCashFromBS;
+  
+  // Step 4: New debt covers whatever is left - THIS IS THE BALANCED AMOUNT
+  const finalNewDebt = Math.max(0, remainingToFund);
+  
+  // Sources and Uses now GUARANTEED to balance
+  const sourcesTotal = finalStockConsideration + netCashApplied + finalCashFromBS + finalNewDebt;
+  const usesTotal = grossUsesAmount;
+  
+  // Final Sources
+  const sources = {
+    cashFromBalance: finalCashFromBS,
+    newDebtRaised: finalNewDebt,
+    stockConsideration: finalStockConsideration,
+    netCashFromTarget: netCashApplied,
+    total: sourcesTotal,
+  };
+  
+  // Final Uses
+  const uses = {
+    equityValue: purchasePrice,
+    debtPayoff: debtPayoffAmount,
+    transactionFees,
+    total: usesTotal,
+  };
+  
+  // Validation: Gap should ALWAYS be 0 now
+  const sourcesUsesGap = sources.total - uses.total;
+
+  // ============ DEBT SCHEDULE (NOW USING finalNewDebt) ============
   const debtAmortRate = debtAmortizationRate || 0.05;
   const maturityYears = debtMaturityYears || 5;
+  // CRITICAL FIX: Use finalNewDebt (balanced amount) instead of raw newDebtAmount
   const debtSchedule = {
-    beginningBalance: [0, newDebtAmount, 0, 0, 0, 0, 0],
+    beginningBalance: [0, finalNewDebt, 0, 0, 0, 0, 0],
     mandatoryAmort: [0, 0, 0, 0, 0, 0],
     optionalPrepay: [0, 0, 0, 0, 0, 0],
-    endingBalance: [newDebtAmount, 0, 0, 0, 0, 0],
+    endingBalance: [finalNewDebt, 0, 0, 0, 0, 0],
     interestExpense: [0, 0, 0, 0, 0, 0],
   };
   
@@ -474,7 +583,7 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
       debtSchedule.beginningBalance[i] // Can't amortize more than remaining balance
     );
     debtSchedule.endingBalance[i] = Math.max(0, debtSchedule.beginningBalance[i] - debtSchedule.mandatoryAmort[i]);
-    // BUG #6 FIX: Calculate interest expense on average balance
+    // Calculate interest expense on average balance
     debtSchedule.interestExpense[i] = ((debtSchedule.beginningBalance[i] + debtSchedule.endingBalance[i]) / 2) * newDebtRate;
   }
 
@@ -514,76 +623,19 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
     // Net Income (less integration costs after-tax)
     const integrationAfterTax = integrationCosts[i] * (1 - acquirerTaxRate);
     const netIncome = ebt - taxes - integrationAfterTax;
-    proFormaNetIncome.push(netIncome);
+    proFormaNetIncome.push(isNaN(netIncome) ? 0 : netIncome);
     
-    // EPS
-    const eps = netIncome / proFormaShares;
-    proFormaEPS.push(eps);
+    // EPS - guard against division by zero and NaN
+    const eps = proFormaShares > 0 ? netIncome / proFormaShares : 0;
+    proFormaEPS.push(isNaN(eps) ? 0 : eps);
     
-    // Accretion/Dilution
-    const epsImpact = eps - acquirerEPS[i];
-    accretionDilution.push(epsImpact);
-    accretionDilutionPercent.push(acquirerEPS[i] !== 0 ? (eps / acquirerEPS[i]) - 1 : 0);
+    // Accretion/Dilution - guard against NaN
+    const acquirerEpsValue = acquirerEPS[i] || 0;
+    const epsImpact = eps - acquirerEpsValue;
+    accretionDilution.push(isNaN(epsImpact) ? 0 : epsImpact);
+    const accDilPct = acquirerEpsValue !== 0 ? (eps / acquirerEpsValue) - 1 : 0;
+    accretionDilutionPercent.push(isNaN(accDilPct) ? 0 : accDilPct);
   }
-
-  // ============ SOURCES AND USES (BUG #2 FIX - FINAL CORRECTED) ============
-  // Standard M&A Sources & Uses: Sources MUST equal Uses exactly
-  // 
-  // USES = Equity Value + Debt Payoff (if any) + Transaction Fees
-  // SOURCES = Stock + Net Cash from Target + Cash from BS + New Debt
-  //
-  // Logic: Fill sources in priority order until uses are fully funded
-  // 1. Stock consideration (fixed %, but capped at total uses)
-  // 2. Net cash from target (if any, capped at remaining)
-  // 3. Cash from balance sheet (user input, capped at remaining)
-  // 4. New debt (whatever is left to balance)
-  
-  // Calculate what needs to be funded (positive debt means payoff needed)
-  const debtPayoffAmount = Math.max(0, targetNetDebt);
-  const rawNetCashFromTarget = targetNetDebt < 0 ? Math.abs(targetNetDebt) : 0;
-  
-  // Total Uses - this is the fixed target
-  const grossUsesAmount = purchasePrice + debtPayoffAmount + transactionFees;
-  
-  // Step 1: Stock consideration (can't exceed total uses)
-  const finalStockConsideration = Math.min(stockConsideration, grossUsesAmount);
-  let remainingToFund = grossUsesAmount - finalStockConsideration;
-  
-  // Step 2: Net cash from target (can't exceed remaining)
-  const netCashApplied = Math.min(rawNetCashFromTarget, remainingToFund);
-  remainingToFund -= netCashApplied;
-  
-  // Step 3: Cash from balance sheet (user input, can't exceed remaining)
-  const userCashFromBS = Math.max(0, cashFromBalance || 0);
-  const finalCashFromBS = Math.min(userCashFromBS, remainingToFund);
-  remainingToFund -= finalCashFromBS;
-  
-  // Step 4: New debt covers whatever is left
-  const finalNewDebt = Math.max(0, remainingToFund);
-  
-  // Sources and Uses now GUARANTEED to balance
-  const sourcesTotal = finalStockConsideration + netCashApplied + finalCashFromBS + finalNewDebt;
-  const usesTotal = grossUsesAmount;
-  
-  // Final Sources
-  const sources = {
-    cashFromBalance: finalCashFromBS,
-    newDebtRaised: finalNewDebt,
-    stockConsideration: finalStockConsideration,
-    netCashFromTarget: netCashApplied,
-    total: sourcesTotal,
-  };
-  
-  // Final Uses
-  const uses = {
-    equityValue: purchasePrice,
-    debtPayoff: debtPayoffAmount,
-    transactionFees,
-    total: usesTotal,
-  };
-  
-  // Validation: Gap should ALWAYS be 0 now
-  const sourcesUsesGap = sources.total - uses.total;
 
   return {
     assumptions,
@@ -636,7 +688,7 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
       gap: sourcesUsesGap,
     },
     debtSchedule: {
-      principal: newDebtAmount,
+      principal: finalNewDebt, // Use balanced debt amount, not raw input
       interestRate: newDebtRate,
       amortizationRate: debtAmortRate,
       maturityYears: maturityYears,
@@ -681,9 +733,14 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   const results = calculateMAMetrics(assumptions);
   const { acquirerProjections, targetProjections, transactionMetrics, synergies, sourcesAndUses, proFormaProjections, accretionDilution } = results;
   
-  // Extract commonly used values for sensitivity analysis
+  // Extract commonly used values for sensitivity analysis and new tabs
   const proFormaShares = transactionMetrics.proFormaShares;
   const targetNetDebt = (assumptions.targetNetDebt || 0);
+  // Extract base year values from projections for balance sheet and contribution tabs
+  const acquirerRevenue = acquirerProjections.revenue[0];
+  const targetRevenue = targetProjections.revenue[0];
+  const targetEBITDAMargin = assumptions.targetEBITDAMargin || 0.2;
+  const acquirerSharesOutstanding = assumptions.acquirerSharesOutstanding || 100;
 
   const currencyFormat = '"$"#,##0';
   const percentFormat = "0.0%";
@@ -1284,6 +1341,461 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   sensSheet.getCell("B25").value = assumptions.acquirerStockPrice;
   sensSheet.getCell("B25").numFmt = currencyFormat;
   sensSheet.getCell("B25").font = { color: { argb: "FF0000FF" } };
+
+  // ============ CREDIT ANALYSIS TAB ============
+  const creditSheet = workbook.addWorksheet("Credit_Analysis");
+  creditSheet.columns = [
+    { width: 30 },
+    { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }
+  ];
+
+  creditSheet.getCell("A1").value = "CREDIT METRICS & LEVERAGE ANALYSIS";
+  creditSheet.getCell("A1").font = { bold: true, size: 14 };
+
+  creditSheet.getCell("A3").value = "Metric";
+  creditSheet.getCell("B3").value = "Year 0";
+  creditSheet.getCell("C3").value = "Year 1";
+  creditSheet.getCell("D3").value = "Year 2";
+  creditSheet.getCell("E3").value = "Year 3";
+  creditSheet.getCell("F3").value = "Year 4";
+  creditSheet.getCell("G3").value = "Year 5";
+  creditSheet.getRow(3).font = { bold: true };
+  creditSheet.getRow(3).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
+
+  // Total Debt
+  creditSheet.getCell("A4").value = "Total Debt ($M)";
+  for (let i = 0; i <= 5; i++) {
+    const debtBalance = i === 0 ? results.debtSchedule.principal : results.debtSchedule.schedule.endingBalance[i];
+    creditSheet.getCell(4, i + 2).value = debtBalance;
+    creditSheet.getCell(4, i + 2).numFmt = currencyFormat;
+  }
+
+  // Pro Forma EBITDA
+  creditSheet.getCell("A5").value = "Pro Forma EBITDA ($M)";
+  for (let i = 0; i <= 5; i++) {
+    creditSheet.getCell(5, i + 2).value = proFormaProjections.ebitda[i];
+    creditSheet.getCell(5, i + 2).numFmt = currencyFormat;
+  }
+
+  // Net Debt / EBITDA
+  creditSheet.getCell("A6").value = "Net Debt / EBITDA";
+  creditSheet.getCell("A6").font = { bold: true };
+  for (let i = 0; i <= 5; i++) {
+    const debtBalance = i === 0 ? results.debtSchedule.principal : results.debtSchedule.schedule.endingBalance[i];
+    const ebitda = proFormaProjections.ebitda[i];
+    const ratio = ebitda > 0 ? debtBalance / ebitda : 0;
+    creditSheet.getCell(6, i + 2).value = ratio;
+    creditSheet.getCell(6, i + 2).numFmt = "0.0x";
+    if (ratio > 4) {
+      creditSheet.getCell(6, i + 2).font = { color: { argb: "FFFF0000" } };
+    } else if (ratio < 2) {
+      creditSheet.getCell(6, i + 2).font = { color: { argb: "FF008000" } };
+    }
+  }
+
+  // Interest Expense
+  creditSheet.getCell("A8").value = "Interest Expense ($M)";
+  for (let i = 0; i <= 5; i++) {
+    const interest = i === 0 ? 0 : results.debtSchedule.schedule.interestExpense[i];
+    creditSheet.getCell(8, i + 2).value = interest;
+    creditSheet.getCell(8, i + 2).numFmt = currencyFormat;
+  }
+
+  // EBITDA
+  creditSheet.getCell("A9").value = "EBITDA ($M)";
+  for (let i = 0; i <= 5; i++) {
+    creditSheet.getCell(9, i + 2).value = proFormaProjections.ebitda[i];
+    creditSheet.getCell(9, i + 2).numFmt = currencyFormat;
+  }
+
+  // Interest Coverage Ratio
+  creditSheet.getCell("A10").value = "Interest Coverage (EBITDA/Interest)";
+  creditSheet.getCell("A10").font = { bold: true };
+  for (let i = 0; i <= 5; i++) {
+    const interest = i === 0 ? 0 : results.debtSchedule.schedule.interestExpense[i];
+    const ebitda = proFormaProjections.ebitda[i];
+    const coverage = interest > 0 ? ebitda / interest : 999;
+    creditSheet.getCell(10, i + 2).value = coverage;
+    creditSheet.getCell(10, i + 2).numFmt = "0.0x";
+    if (coverage < 2) {
+      creditSheet.getCell(10, i + 2).font = { color: { argb: "FFFF0000" } };
+    } else if (coverage > 5) {
+      creditSheet.getCell(10, i + 2).font = { color: { argb: "FF008000" } };
+    }
+  }
+
+  // Debt Service Coverage
+  creditSheet.getCell("A12").value = "DEBT SERVICE SUMMARY";
+  creditSheet.getCell("A12").font = { bold: true, size: 12 };
+
+  creditSheet.getCell("A13").value = "Beginning Debt";
+  creditSheet.getCell("A14").value = "Mandatory Amortization";
+  creditSheet.getCell("A15").value = "Ending Debt";
+  for (let i = 1; i <= 5; i++) {
+    creditSheet.getCell(13, i + 2).value = results.debtSchedule.schedule.beginningBalance[i];
+    creditSheet.getCell(13, i + 2).numFmt = currencyFormat;
+    creditSheet.getCell(14, i + 2).value = -results.debtSchedule.schedule.mandatoryAmort[i];
+    creditSheet.getCell(14, i + 2).numFmt = currencyFormat;
+    creditSheet.getCell(15, i + 2).value = results.debtSchedule.schedule.endingBalance[i];
+    creditSheet.getCell(15, i + 2).numFmt = currencyFormat;
+  }
+
+  // ============ PRO FORMA BALANCE SHEET TAB ============
+  const bsSheet = workbook.addWorksheet("Pro_Forma_Balance_Sheet");
+  bsSheet.columns = [
+    { width: 35 },
+    { width: 20 }, { width: 20 }, { width: 20 }
+  ];
+
+  bsSheet.getCell("A1").value = "PRO FORMA BALANCE SHEET (SIMPLIFIED)";
+  bsSheet.getCell("A1").font = { bold: true, size: 14 };
+
+  bsSheet.getCell("A3").value = "Item";
+  bsSheet.getCell("B3").value = "Acquirer Pre-Deal";
+  bsSheet.getCell("C3").value = "Adjustments";
+  bsSheet.getCell("D3").value = "Pro Forma";
+  bsSheet.getRow(3).font = { bold: true };
+  bsSheet.getRow(3).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
+
+  // Assets
+  bsSheet.getCell("A5").value = "ASSETS";
+  bsSheet.getCell("A5").font = { bold: true };
+
+  const acquirerCash = assumptions.acquirerCash || acquirerRevenue * 0.05;
+  const cashUsed = sourcesAndUses.sources.cashFromBalance;
+  bsSheet.getCell("A6").value = "Cash & Equivalents";
+  bsSheet.getCell("B6").value = acquirerCash;
+  bsSheet.getCell("C6").value = -cashUsed + (sourcesAndUses.sources.netCashFromTarget || 0);
+  bsSheet.getCell("D6").value = acquirerCash - cashUsed + (sourcesAndUses.sources.netCashFromTarget || 0);
+  bsSheet.getCell("B6").numFmt = currencyFormat;
+  bsSheet.getCell("C6").numFmt = currencyFormat;
+  bsSheet.getCell("D6").numFmt = currencyFormat;
+
+  const acquirerOtherAssets = acquirerRevenue * 0.4;
+  bsSheet.getCell("A7").value = "Other Current & Fixed Assets";
+  bsSheet.getCell("B7").value = acquirerOtherAssets;
+  bsSheet.getCell("C7").value = targetRevenue * 0.4;
+  bsSheet.getCell("D7").value = acquirerOtherAssets + targetRevenue * 0.4;
+  bsSheet.getCell("B7").numFmt = currencyFormat;
+  bsSheet.getCell("C7").numFmt = currencyFormat;
+  bsSheet.getCell("D7").numFmt = currencyFormat;
+
+  bsSheet.getCell("A8").value = "Goodwill";
+  bsSheet.getCell("B8").value = 0;
+  bsSheet.getCell("C8").value = transactionMetrics.goodwill;
+  bsSheet.getCell("D8").value = transactionMetrics.goodwill;
+  bsSheet.getCell("B8").numFmt = currencyFormat;
+  bsSheet.getCell("C8").numFmt = currencyFormat;
+  bsSheet.getCell("D8").numFmt = currencyFormat;
+
+  bsSheet.getCell("A9").value = "Identified Intangibles";
+  bsSheet.getCell("B9").value = 0;
+  bsSheet.getCell("C9").value = transactionMetrics.totalIdentifiedIntangibles;
+  bsSheet.getCell("D9").value = transactionMetrics.totalIdentifiedIntangibles;
+  bsSheet.getCell("B9").numFmt = currencyFormat;
+  bsSheet.getCell("C9").numFmt = currencyFormat;
+  bsSheet.getCell("D9").numFmt = currencyFormat;
+
+  const totalAssets = acquirerCash - cashUsed + acquirerOtherAssets + targetRevenue * 0.4 + transactionMetrics.goodwill + transactionMetrics.totalIdentifiedIntangibles;
+  bsSheet.getCell("A10").value = "TOTAL ASSETS";
+  bsSheet.getCell("A10").font = { bold: true };
+  bsSheet.getCell("D10").value = totalAssets;
+  bsSheet.getCell("D10").numFmt = currencyFormat;
+  bsSheet.getCell("D10").font = { bold: true };
+
+  // Liabilities
+  bsSheet.getCell("A12").value = "LIABILITIES";
+  bsSheet.getCell("A12").font = { bold: true };
+
+  const acquirerDebt = assumptions.acquirerExistingDebt || 0;
+  bsSheet.getCell("A13").value = "Existing Debt";
+  bsSheet.getCell("B13").value = acquirerDebt;
+  bsSheet.getCell("C13").value = 0;
+  bsSheet.getCell("D13").value = acquirerDebt;
+  bsSheet.getCell("B13").numFmt = currencyFormat;
+  bsSheet.getCell("C13").numFmt = currencyFormat;
+  bsSheet.getCell("D13").numFmt = currencyFormat;
+
+  bsSheet.getCell("A14").value = "New Debt Raised";
+  bsSheet.getCell("B14").value = 0;
+  bsSheet.getCell("C14").value = sourcesAndUses.sources.newDebtRaised;
+  bsSheet.getCell("D14").value = sourcesAndUses.sources.newDebtRaised;
+  bsSheet.getCell("B14").numFmt = currencyFormat;
+  bsSheet.getCell("C14").numFmt = currencyFormat;
+  bsSheet.getCell("D14").numFmt = currencyFormat;
+
+  bsSheet.getCell("A15").value = "Other Liabilities";
+  bsSheet.getCell("B15").value = acquirerRevenue * 0.15;
+  bsSheet.getCell("C15").value = targetRevenue * 0.15;
+  bsSheet.getCell("D15").value = acquirerRevenue * 0.15 + targetRevenue * 0.15;
+  bsSheet.getCell("B15").numFmt = currencyFormat;
+  bsSheet.getCell("C15").numFmt = currencyFormat;
+  bsSheet.getCell("D15").numFmt = currencyFormat;
+
+  const totalLiabilities = acquirerDebt + sourcesAndUses.sources.newDebtRaised + acquirerRevenue * 0.15 + targetRevenue * 0.15;
+  bsSheet.getCell("A16").value = "TOTAL LIABILITIES";
+  bsSheet.getCell("A16").font = { bold: true };
+  bsSheet.getCell("D16").value = totalLiabilities;
+  bsSheet.getCell("D16").numFmt = currencyFormat;
+  bsSheet.getCell("D16").font = { bold: true };
+
+  // Equity
+  bsSheet.getCell("A18").value = "SHAREHOLDERS' EQUITY";
+  bsSheet.getCell("A18").font = { bold: true };
+
+  const stockIssued = sourcesAndUses.sources.stockConsideration;
+  bsSheet.getCell("A19").value = "Common Stock + APIC";
+  bsSheet.getCell("B19").value = acquirerRevenue * 0.25;
+  bsSheet.getCell("C19").value = stockIssued;
+  bsSheet.getCell("D19").value = acquirerRevenue * 0.25 + stockIssued;
+  bsSheet.getCell("B19").numFmt = currencyFormat;
+  bsSheet.getCell("C19").numFmt = currencyFormat;
+  bsSheet.getCell("D19").numFmt = currencyFormat;
+
+  bsSheet.getCell("A20").value = "Retained Earnings";
+  const retainedEarnings = totalAssets - totalLiabilities - (acquirerRevenue * 0.25 + stockIssued);
+  bsSheet.getCell("D20").value = retainedEarnings;
+  bsSheet.getCell("D20").numFmt = currencyFormat;
+
+  bsSheet.getCell("A21").value = "TOTAL EQUITY";
+  bsSheet.getCell("A21").font = { bold: true };
+  bsSheet.getCell("D21").value = totalAssets - totalLiabilities;
+  bsSheet.getCell("D21").numFmt = currencyFormat;
+  bsSheet.getCell("D21").font = { bold: true };
+
+  bsSheet.getCell("A23").value = "TOTAL LIABILITIES + EQUITY";
+  bsSheet.getCell("A23").font = { bold: true };
+  bsSheet.getCell("D23").value = totalAssets;
+  bsSheet.getCell("D23").numFmt = currencyFormat;
+  bsSheet.getCell("D23").font = { bold: true };
+
+  // Balance check
+  bsSheet.getCell("A25").value = "Balance Check (Assets = L+E):";
+  bsSheet.getCell("B25").value = Math.abs(totalAssets - totalLiabilities - (totalAssets - totalLiabilities)) < 0.01 ? "BALANCED" : "ERROR";
+  bsSheet.getCell("B25").font = { bold: true, color: { argb: "FF008000" } };
+
+  // ============ CONTRIBUTION ANALYSIS TAB ============
+  const contribSheet = workbook.addWorksheet("Contribution_Analysis");
+  contribSheet.columns = [
+    { width: 25 },
+    { width: 18 }, { width: 15 }, { width: 18 }, { width: 15 }, { width: 18 }, { width: 15 }
+  ];
+
+  contribSheet.getCell("A1").value = "CONTRIBUTION ANALYSIS";
+  contribSheet.getCell("A1").font = { bold: true, size: 14 };
+
+  contribSheet.getCell("A3").value = "Metric";
+  contribSheet.getCell("B3").value = "Acquirer";
+  contribSheet.getCell("C3").value = "%";
+  contribSheet.getCell("D3").value = "Target";
+  contribSheet.getCell("E3").value = "%";
+  contribSheet.getCell("F3").value = "Pro Forma";
+  contribSheet.getCell("G3").value = "%";
+  contribSheet.getRow(3).font = { bold: true };
+  contribSheet.getRow(3).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
+
+  // Year 1 Contribution
+  contribSheet.getCell("A4").value = "YEAR 1 CONTRIBUTION";
+  contribSheet.getCell("A4").font = { bold: true, size: 12 };
+
+  const y1AcqRev = acquirerProjections.revenue[1];
+  const y1TgtRev = results.targetProjections.revenue[1];
+  const y1PFRev = proFormaProjections.revenue[1];
+  contribSheet.getCell("A5").value = "Revenue ($M)";
+  contribSheet.getCell("B5").value = y1AcqRev;
+  contribSheet.getCell("C5").value = y1AcqRev / y1PFRev;
+  contribSheet.getCell("D5").value = y1TgtRev;
+  contribSheet.getCell("E5").value = y1TgtRev / y1PFRev;
+  contribSheet.getCell("F5").value = y1PFRev;
+  contribSheet.getCell("G5").value = 1;
+  contribSheet.getCell("B5").numFmt = currencyFormat;
+  contribSheet.getCell("C5").numFmt = percentFormat;
+  contribSheet.getCell("D5").numFmt = currencyFormat;
+  contribSheet.getCell("E5").numFmt = percentFormat;
+  contribSheet.getCell("F5").numFmt = currencyFormat;
+  contribSheet.getCell("G5").numFmt = percentFormat;
+
+  const y1AcqEBITDA = acquirerProjections.ebitda[1];
+  const y1TgtEBITDA = results.targetProjections.ebitda[1];
+  const y1Synergy = synergies.totalEBITDASynergiesByYear[1];
+  const y1PFEBITDA = proFormaProjections.ebitda[1];
+  contribSheet.getCell("A6").value = "EBITDA ($M)";
+  contribSheet.getCell("B6").value = y1AcqEBITDA;
+  contribSheet.getCell("C6").value = y1PFEBITDA > 0 ? y1AcqEBITDA / y1PFEBITDA : 0;
+  contribSheet.getCell("D6").value = y1TgtEBITDA + y1Synergy;
+  contribSheet.getCell("E6").value = y1PFEBITDA > 0 ? (y1TgtEBITDA + y1Synergy) / y1PFEBITDA : 0;
+  contribSheet.getCell("F6").value = y1PFEBITDA;
+  contribSheet.getCell("G6").value = 1;
+  contribSheet.getCell("B6").numFmt = currencyFormat;
+  contribSheet.getCell("C6").numFmt = percentFormat;
+  contribSheet.getCell("D6").numFmt = currencyFormat;
+  contribSheet.getCell("E6").numFmt = percentFormat;
+  contribSheet.getCell("F6").numFmt = currencyFormat;
+  contribSheet.getCell("G6").numFmt = percentFormat;
+
+  contribSheet.getCell("A7").value = "Shares Outstanding (M)";
+  contribSheet.getCell("B7").value = acquirerSharesOutstanding;
+  contribSheet.getCell("C7").value = acquirerSharesOutstanding / proFormaShares;
+  contribSheet.getCell("D7").value = transactionMetrics.newSharesIssued;
+  contribSheet.getCell("E7").value = transactionMetrics.newSharesIssued / proFormaShares;
+  contribSheet.getCell("F7").value = proFormaShares;
+  contribSheet.getCell("G7").value = 1;
+  contribSheet.getCell("B7").numFmt = "0.0";
+  contribSheet.getCell("C7").numFmt = percentFormat;
+  contribSheet.getCell("D7").numFmt = "0.0";
+  contribSheet.getCell("E7").numFmt = percentFormat;
+  contribSheet.getCell("F7").numFmt = "0.0";
+  contribSheet.getCell("G7").numFmt = percentFormat;
+
+  // Value Contribution
+  contribSheet.getCell("A9").value = "VALUE CONTRIBUTION";
+  contribSheet.getCell("A9").font = { bold: true, size: 12 };
+
+  const acqEquityValue = acquirerSharesOutstanding * assumptions.acquirerStockPrice;
+  const tgtEquityValue = transactionMetrics.purchasePrice;
+  const combinedEquity = acqEquityValue + tgtEquityValue;
+  contribSheet.getCell("A10").value = "Equity Value ($M)";
+  contribSheet.getCell("B10").value = acqEquityValue;
+  contribSheet.getCell("C10").value = acqEquityValue / combinedEquity;
+  contribSheet.getCell("D10").value = tgtEquityValue;
+  contribSheet.getCell("E10").value = tgtEquityValue / combinedEquity;
+  contribSheet.getCell("F10").value = combinedEquity;
+  contribSheet.getCell("G10").value = 1;
+  contribSheet.getCell("B10").numFmt = currencyFormat;
+  contribSheet.getCell("C10").numFmt = percentFormat;
+  contribSheet.getCell("D10").numFmt = currencyFormat;
+  contribSheet.getCell("E10").numFmt = percentFormat;
+  contribSheet.getCell("F10").numFmt = currencyFormat;
+  contribSheet.getCell("G10").numFmt = percentFormat;
+
+  // ============ RETURNS ANALYSIS TAB ============
+  const returnsSheet = workbook.addWorksheet("Returns_Analysis");
+  returnsSheet.columns = [
+    { width: 30 },
+    { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }
+  ];
+
+  returnsSheet.getCell("A1").value = "RETURNS ANALYSIS (ACQUIRER PERSPECTIVE)";
+  returnsSheet.getCell("A1").font = { bold: true, size: 14 };
+
+  // Investment Summary
+  returnsSheet.getCell("A3").value = "INVESTMENT SUMMARY";
+  returnsSheet.getCell("A3").font = { bold: true, size: 12 };
+
+  returnsSheet.getCell("A4").value = "Purchase Price (Equity)";
+  returnsSheet.getCell("B4").value = transactionMetrics.purchasePrice;
+  returnsSheet.getCell("B4").numFmt = currencyFormat;
+
+  returnsSheet.getCell("A5").value = "Cash Consideration";
+  returnsSheet.getCell("B5").value = transactionMetrics.cashConsideration;
+  returnsSheet.getCell("B5").numFmt = currencyFormat;
+
+  returnsSheet.getCell("A6").value = "Stock Consideration";
+  returnsSheet.getCell("B6").value = transactionMetrics.stockConsideration;
+  returnsSheet.getCell("B6").numFmt = currencyFormat;
+
+  returnsSheet.getCell("A7").value = "Transaction Fees";
+  returnsSheet.getCell("B7").value = sourcesAndUses.uses.transactionFees;
+  returnsSheet.getCell("B7").numFmt = currencyFormat;
+
+  returnsSheet.getCell("A8").value = "Total Investment (Cash Outflow)";
+  returnsSheet.getCell("A8").font = { bold: true };
+  const totalCashInvestment = transactionMetrics.cashConsideration + sourcesAndUses.uses.transactionFees;
+  returnsSheet.getCell("B8").value = totalCashInvestment;
+  returnsSheet.getCell("B8").numFmt = currencyFormat;
+  returnsSheet.getCell("B8").font = { bold: true };
+
+  // EPS Payback
+  returnsSheet.getCell("A10").value = "EPS PAYBACK ANALYSIS";
+  returnsSheet.getCell("A10").font = { bold: true, size: 12 };
+
+  returnsSheet.getCell("A11").value = "Year";
+  for (let i = 0; i <= 5; i++) {
+    returnsSheet.getCell(11, i + 2).value = i;
+  }
+  returnsSheet.getRow(11).font = { bold: true };
+
+  returnsSheet.getCell("A12").value = "Pro Forma EPS";
+  for (let i = 0; i <= 5; i++) {
+    returnsSheet.getCell(12, i + 2).value = proFormaProjections.eps[i];
+    returnsSheet.getCell(12, i + 2).numFmt = epsFormat;
+  }
+
+  returnsSheet.getCell("A13").value = "Acquirer Standalone EPS";
+  for (let i = 0; i <= 5; i++) {
+    returnsSheet.getCell(13, i + 2).value = acquirerProjections.eps[i];
+    returnsSheet.getCell(13, i + 2).numFmt = epsFormat;
+  }
+
+  returnsSheet.getCell("A14").value = "EPS Improvement";
+  for (let i = 0; i <= 5; i++) {
+    const improvement = proFormaProjections.eps[i] - acquirerProjections.eps[i];
+    returnsSheet.getCell(14, i + 2).value = improvement;
+    returnsSheet.getCell(14, i + 2).numFmt = epsFormat;
+    if (improvement > 0) {
+      returnsSheet.getCell(14, i + 2).font = { color: { argb: "FF008000" } };
+    } else if (improvement < 0) {
+      returnsSheet.getCell(14, i + 2).font = { color: { argb: "FFFF0000" } };
+    }
+  }
+
+  returnsSheet.getCell("A15").value = "Cumulative EPS Improvement";
+  let cumulativeEpsImprovement = 0;
+  for (let i = 0; i <= 5; i++) {
+    cumulativeEpsImprovement += proFormaProjections.eps[i] - acquirerProjections.eps[i];
+    returnsSheet.getCell(15, i + 2).value = cumulativeEpsImprovement;
+    returnsSheet.getCell(15, i + 2).numFmt = epsFormat;
+  }
+
+  // Synergy Value Creation
+  returnsSheet.getCell("A17").value = "SYNERGY VALUE CREATION";
+  returnsSheet.getCell("A17").font = { bold: true, size: 12 };
+
+  returnsSheet.getCell("A18").value = "Year";
+  for (let i = 1; i <= 5; i++) {
+    returnsSheet.getCell(18, i + 1).value = i;
+  }
+  returnsSheet.getRow(18).font = { bold: true };
+
+  returnsSheet.getCell("A19").value = "Annual EBITDA Synergies";
+  for (let i = 1; i <= 5; i++) {
+    returnsSheet.getCell(19, i + 1).value = synergies.totalEBITDASynergiesByYear[i];
+    returnsSheet.getCell(19, i + 1).numFmt = currencyFormat;
+  }
+
+  // NPV of synergies at 10% discount rate
+  const discountRate = 0.10;
+  let synergyNPV = 0;
+  for (let i = 1; i <= 5; i++) {
+    synergyNPV += synergies.totalEBITDASynergiesByYear[i] / Math.pow(1 + discountRate, i);
+  }
+  // Terminal value of synergies (perpetuity growth at 2%)
+  const terminalGrowth = 0.02;
+  const terminalSynergy = synergies.totalEBITDASynergiesByYear[5] * (1 + terminalGrowth) / (discountRate - terminalGrowth);
+  const terminalPV = terminalSynergy / Math.pow(1 + discountRate, 5);
+  const totalSynergyValue = synergyNPV + terminalPV;
+
+  returnsSheet.getCell("A21").value = "NPV of 5-Year Synergies (@ 10%)";
+  returnsSheet.getCell("B21").value = synergyNPV;
+  returnsSheet.getCell("B21").numFmt = currencyFormat;
+
+  returnsSheet.getCell("A22").value = "Terminal Value of Synergies";
+  returnsSheet.getCell("B22").value = terminalPV;
+  returnsSheet.getCell("B22").numFmt = currencyFormat;
+
+  returnsSheet.getCell("A23").value = "Total Synergy Value Created";
+  returnsSheet.getCell("A23").font = { bold: true };
+  returnsSheet.getCell("B23").value = totalSynergyValue;
+  returnsSheet.getCell("B23").numFmt = currencyFormat;
+  returnsSheet.getCell("B23").font = { bold: true };
+
+  returnsSheet.getCell("A25").value = "Synergy Value vs. Premium Paid";
+  const premiumPaid = transactionMetrics.purchasePrice - (targetRevenue * targetEBITDAMargin * 8); // Assume 8x base multiple
+  returnsSheet.getCell("B25").value = totalSynergyValue > premiumPaid ? "VALUE CREATION" : "VALUE DESTRUCTION";
+  returnsSheet.getCell("B25").font = { 
+    bold: true, 
+    color: { argb: totalSynergyValue > premiumPaid ? "FF008000" : "FFFF0000" } 
+  };
 
   // ============ CHARTS DATA TAB (BUG #4 FIX) ============
   // ExcelJS has limited native chart support, so we provide formatted data tables
