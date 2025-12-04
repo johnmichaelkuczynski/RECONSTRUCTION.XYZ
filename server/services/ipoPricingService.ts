@@ -40,6 +40,14 @@ export interface IPOAssumptions {
     oversubscription: number;
   }[];
   
+  // BUG FIX #4: Notable orders with max price constraints
+  notableOrders?: {
+    investorName: string;
+    indicatedSizeM: number;
+    maxPrice?: number;
+    isDefending?: boolean; // Underwater investor defending position
+  }[];
+  
   // Sector-specific historical benchmarks
   historicalFirstDayPop: number;
   sectorAverageFirstDayPop: number;
@@ -67,6 +75,24 @@ export interface IPOAssumptions {
   
   // Secondary component
   secondaryOptics?: "neutral" | "negative" | "positive";
+  
+  // BUG FIX #1: Down-round detection
+  lastPrivateRoundPrice?: number;
+  downRoundOptics?: boolean;
+  downRoundIpoPenalty?: number; // Historical avg additional discount (e.g., 0.22)
+  
+  // BUG FIX #2: Dual-class governance
+  dualClass?: boolean;
+  dualClassDiscount?: number; // Historical avg governance discount (e.g., 0.06)
+  
+  // BUG FIX #5: Growth trajectory
+  growthRates?: {
+    fy2024to2025Growth?: number;
+    fy2025to2026Growth?: number;
+  };
+  
+  // BUG FIX #6: Customer concentration
+  customerConcentrationTop5?: number; // e.g., 0.47 for 47%
 }
 
 const IPO_PARSING_PROMPT = `You are an investment banking expert. Parse the IPO description and extract ALL parameters with precision.
@@ -117,6 +143,28 @@ CRITICAL PARSING RULES:
    - For pre-revenue biotech, ntmRevenue = 0
    - Parse FY2026 guidance if present
 
+10. DOWN-ROUND DETECTION (CRITICAL):
+   - Parse "last_private_round.price_per_share" or "Series E price" → lastPrivateRoundPrice
+   - Parse "risk_factors.down_round_optics" → downRoundOptics (true if mentioned)
+   - Parse "down_round_ipo_penalty.avg_additional_discount" → downRoundIpoPenalty (default 0.22)
+
+11. DUAL-CLASS STRUCTURE:
+   - If "dual_class" or "Class A/B shares" mentioned → dualClass = true
+   - Parse "dual_class_discount.avg_governance_discount" → dualClassDiscount (default 0.05)
+
+12. NOTABLE INVESTORS WITH MAX PRICE:
+   - Parse order_book.notable_orders[] with { investorName, indicatedSizeM, maxPrice }
+   - Example: "Fidelity: $75M, max $42" → { investorName: "Fidelity", indicatedSizeM: 75, maxPrice: 42 }
+   - If investor is "underwater" or "defending" → isDefending: true
+
+13. GROWTH TRAJECTORY:
+   - Parse growth rates as decimals: 63% → 0.63
+   - "fy2024_to_fy2025_growth" → growthRates.fy2024to2025Growth
+   - "fy2025_to_fy2026_growth" → growthRates.fy2025to2026Growth
+
+14. CUSTOMER CONCENTRATION:
+   - Parse "top_5_customers_pct" or "customer_concentration" → customerConcentrationTop5 (as decimal, e.g., 0.47)
+
 Return JSON:
 {
   "companyName": "string",
@@ -151,6 +199,9 @@ Return JSON:
   "orderBook": [
     { "priceLevel": number, "oversubscription": number }
   ],
+  "notableOrders": [
+    { "investorName": string, "indicatedSizeM": number, "maxPrice": number, "isDefending": boolean }
+  ],
   
   "historicalFirstDayPop": number (decimal),
   "sectorAverageFirstDayPop": number (decimal, can be negative),
@@ -171,7 +222,21 @@ Return JSON:
   "monthsToCatalyst": number,
   "catalystDescription": "string",
   
-  "secondaryOptics": "neutral" | "negative" | "positive"
+  "secondaryOptics": "neutral" | "negative" | "positive",
+  
+  "lastPrivateRoundPrice": number (price per share of last private round),
+  "downRoundOptics": boolean (true if down-round is a concern),
+  "downRoundIpoPenalty": number (historical penalty, default 0.22),
+  
+  "dualClass": boolean,
+  "dualClassDiscount": number (default 0.05),
+  
+  "growthRates": {
+    "fy2024to2025Growth": number (decimal),
+    "fy2025to2026Growth": number (decimal)
+  },
+  
+  "customerConcentrationTop5": number (decimal, e.g., 0.47 for 47%)
 }
 
 Return ONLY JSON, no markdown.`;
@@ -304,20 +369,35 @@ interface PricingRow {
   
   ntmEVRevenue: number;
   evRaNPV: number;
+  growthAdjustedMultiple: number; // BUG FIX #5: peer multiple adjusted for deceleration
   
   vsPeerMedianRevenue: number;
   vsPeerMedianRaNPV: number;
   
   fairValueSupport: number;
   grossProceedsM: number;
+  primaryProceedsM: number; // BUG FIX #7: proceeds to company
+  secondaryProceedsM: number; // BUG FIX #7: proceeds to sellers
+  
   oversubscription: number;
-  orderBookTier: string; // e.g., "$24+", "$22+", "<$18"
+  effectiveOversubscription: number; // BUG FIX #4: after price-sensitive drop-off
+  orderBookTier: string;
+  investorsDropping: string[]; // BUG FIX #4: names of investors dropping at this price
+  demandLostM: number; // BUG FIX #4: demand lost from max price constraints
+  
+  // Down-round analysis - BUG FIX #1
+  downRoundPercent: number;
+  isDownRound: boolean;
+  downRoundDiscount: number;
   
   baseImpliedPop: number;
   bookQualityAdjustment: number;
   valuationPenalty: number;
   secondaryDiscount: number;
   catalystDiscount: number;
+  dualClassDiscount: number; // BUG FIX #2
+  customerConcentrationDiscount: number; // BUG FIX #6
+  growthDecelPenalty: number; // BUG FIX #5
   adjustedImpliedPop: number;
   
   founderOwnershipPost: number;
@@ -351,6 +431,7 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     peerMedianEVRevenue,
     peerMedianEVRaNPV = 0,
     orderBook,
+    notableOrders = [],
     sectorMedianFirstDayPop,
     sectorAverageFirstDayPop,
     historicalFirstDayPop,
@@ -364,6 +445,17 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     secondaryOptics = "neutral",
     indicatedPriceRangeLow,
     indicatedPriceRangeHigh,
+    // BUG FIX #1: Down-round detection
+    lastPrivateRoundPrice,
+    downRoundOptics = false,
+    downRoundIpoPenalty = 0.22,
+    // BUG FIX #2: Dual-class governance
+    dualClass = false,
+    dualClassDiscount: dualClassDiscountRate = 0.05,
+    // BUG FIX #5: Growth trajectory
+    growthRates,
+    // BUG FIX #6: Customer concentration
+    customerConcentrationTop5 = 0,
   } = assumptions;
 
   const isBiotech = sector === "biotech";
@@ -371,6 +463,17 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
   const useRaNPVValuation = isBiotech || isPreRevenue;
   
   const warnings: string[] = [];
+  
+  // BUG FIX #5: Calculate growth deceleration penalty for peer multiple
+  let growthDecelPenalty = 0;
+  let growthAdjustedPeerMultiple = peerMedianEVRevenue;
+  if (growthRates && growthRates.fy2024to2025Growth && growthRates.fy2025to2026Growth) {
+    const decelRate = 1 - (growthRates.fy2025to2026Growth / growthRates.fy2024to2025Growth);
+    if (decelRate > 0) {
+      growthDecelPenalty = decelRate * 0.15; // 15% multiple compression per 10% decel
+      growthAdjustedPeerMultiple = peerMedianEVRevenue * (1 - growthDecelPenalty);
+    }
+  }
 
   // Calculate greenshoe
   const actualGreenshoeShares = greenshoeShares || (primarySharesOffered * greenshoePercent);
@@ -401,15 +504,16 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
   const pricingMatrix: PricingRow[] = pricePoints.map(offerPrice => {
     const rowWarnings: string[] = [];
     
-    // Gross Proceeds
-    const grossProceedsM = offerPrice * totalSharesForProceeds;
+    // BUG FIX #7: Separate primary and secondary proceeds
+    const primaryProceedsM = offerPrice * (primarySharesOffered + actualGreenshoeShares);
+    const secondaryProceedsM = offerPrice * secondarySharesOffered;
+    const grossProceedsM = primaryProceedsM + secondaryProceedsM;
     
     // Market Cap
     const marketCapM = fdSharesPostIPO * offerPrice;
     
     // Post-IPO Cash = Current Cash + Primary Proceeds (secondary goes to sellers)
-    const primaryProceeds = offerPrice * (primarySharesOffered + actualGreenshoeShares);
-    const postIPOCashM = currentCash + primaryProceeds;
+    const postIPOCashM = currentCash + primaryProceedsM;
     
     // Enterprise Value = Market Cap - Post-IPO Cash
     const enterpriseValueM = marketCapM - postIPOCashM;
@@ -420,8 +524,8 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     // EV/raNPV for biotech
     const evRaNPV = totalRaNPV > 0 ? enterpriseValueM / totalRaNPV : 0;
     
-    // vs Peer Median comparisons
-    const vsPeerMedianRevenue = isPreRevenue ? Infinity : (ntmEVRevenue - peerMedianEVRevenue) / peerMedianEVRevenue;
+    // vs Peer Median comparisons (using growth-adjusted multiple for revenue comps)
+    const vsPeerMedianRevenue = isPreRevenue ? Infinity : (ntmEVRevenue - growthAdjustedPeerMultiple) / growthAdjustedPeerMultiple;
     const vsPeerMedianRaNPV = (totalRaNPV > 0 && peerMedianEVRaNPV > 0) 
       ? (evRaNPV - peerMedianEVRaNPV) / peerMedianEVRaNPV 
       : 0;
@@ -429,22 +533,67 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     // Fair value support
     const fairValueSupport = offerPrice / fairValuePerShare;
     
-    // Order book lookup with tier tracking
+    // BUG FIX #3: Order book lookup with EXTRAPOLATION above highest tier
     let oversubscription = 1;
     let orderBookTier = "";
     if (sortedOrderBook.length > 0) {
-      for (const entry of sortedOrderBook) {
-        if (offerPrice >= entry.priceLevel) {
-          oversubscription = entry.oversubscription;
-          orderBookTier = `$${entry.priceLevel}+`;
-          break;
+      const highestTier = sortedOrderBook[0]; // Highest price tier
+      
+      if (offerPrice > highestTier.priceLevel) {
+        // EXTRAPOLATE above highest tier - coverage DECLINES
+        const priceGap = offerPrice - highestTier.priceLevel;
+        const decayRate = 0.15; // ~15% coverage loss per $1 above top tier
+        oversubscription = highestTier.oversubscription * Math.pow((1 - decayRate), priceGap);
+        oversubscription = Math.max(0.5, oversubscription); // Floor at 0.5×
+        orderBookTier = `>${highestTier.priceLevel} (extrapolated)`;
+      } else {
+        // Find matching tier
+        for (const entry of sortedOrderBook) {
+          if (offerPrice >= entry.priceLevel) {
+            oversubscription = entry.oversubscription;
+            orderBookTier = `$${entry.priceLevel}+`;
+            break;
+          }
+        }
+        if (!orderBookTier) {
+          const lowestEntry = sortedOrderBook[sortedOrderBook.length - 1];
+          const priceDiff = lowestEntry.priceLevel - offerPrice;
+          oversubscription = lowestEntry.oversubscription * (1 + priceDiff * 0.05);
+          orderBookTier = `<$${lowestEntry.priceLevel}`;
         }
       }
-      if (oversubscription === 1) {
-        const lowestEntry = sortedOrderBook[sortedOrderBook.length - 1];
-        const priceDiff = lowestEntry.priceLevel - offerPrice;
-        oversubscription = Math.round(lowestEntry.oversubscription * (1 + priceDiff * 0.05));
-        orderBookTier = `<$${lowestEntry.priceLevel}`;
+    }
+    
+    // BUG FIX #4: Price-sensitive investor drop-off
+    const investorsDropping: string[] = [];
+    let demandLostM = 0;
+    if (notableOrders && notableOrders.length > 0) {
+      for (const investor of notableOrders) {
+        if (investor.maxPrice && offerPrice > investor.maxPrice) {
+          investorsDropping.push(investor.investorName);
+          demandLostM += investor.indicatedSizeM;
+        }
+      }
+    }
+    
+    // Calculate effective oversubscription after drop-off
+    let effectiveOversubscription = oversubscription;
+    if (demandLostM > 0 && grossProceedsM > 0) {
+      const demandLostRatio = demandLostM / (grossProceedsM * oversubscription);
+      effectiveOversubscription = oversubscription * (1 - demandLostRatio);
+      effectiveOversubscription = Math.max(0.5, effectiveOversubscription);
+    }
+    
+    // BUG FIX #1: Down-round detection and discount
+    let downRoundPercent = 0;
+    let isDownRound = false;
+    let downRoundDiscount = 0;
+    if (lastPrivateRoundPrice && lastPrivateRoundPrice > 0) {
+      downRoundPercent = (offerPrice - lastPrivateRoundPrice) / lastPrivateRoundPrice;
+      isDownRound = downRoundPercent < 0;
+      if (isDownRound && downRoundOptics) {
+        // 50% pass-through of down-round to pop penalty
+        downRoundDiscount = Math.abs(downRoundPercent) * 0.5;
       }
     }
     
@@ -453,24 +602,23 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     // Base implied pop from sector historical
     let baseImpliedPop = baseExpectedReturn;
     
-    // BUG FIX #3: Book quality adjustment - weak book = lower pop
+    // Book quality adjustment - weak book = lower pop (use effective oversubscription)
     let bookQualityAdjustment = 0;
-    if (oversubscription < 5) {
+    if (effectiveOversubscription < 5) {
       // -3% per turn under 5×
-      bookQualityAdjustment = (5 - oversubscription) * -0.03;
-    } else if (oversubscription > 20) {
+      bookQualityAdjustment = (5 - effectiveOversubscription) * -0.03;
+    } else if (effectiveOversubscription > 20) {
       // Bonus for very strong book
-      bookQualityAdjustment = Math.min(0.10, (oversubscription - 20) * 0.005);
+      bookQualityAdjustment = Math.min(0.10, (effectiveOversubscription - 20) * 0.005);
     }
     
-    // BUG FIX #3: Valuation penalty - pricing above fair value hurts pop
+    // Valuation penalty - pricing above fair value hurts pop
     let valuationPenalty = 0;
     if (fairValueSupport > 1) {
-      // Premium to fair value penalizes expected return
       valuationPenalty = (fairValueSupport - 1) * -0.15;
     }
     
-    // BUG FIX #5: Secondary selling discount
+    // Secondary selling discount
     let secondaryDiscount = 0;
     if (secondarySharesOffered > 0) {
       const secondaryPct = secondarySharesOffered / totalSharesForProceeds;
@@ -481,7 +629,7 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
       }
     }
     
-    // BUG FIX #6: Binary catalyst risk discount
+    // Binary catalyst risk discount
     let catalystDiscount = 0;
     if (hasBinaryCatalyst) {
       if (monthsToCatalyst < 6) {
@@ -491,8 +639,24 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
       }
     }
     
-    // Total adjusted implied pop
-    const adjustedImpliedPop = baseImpliedPop + bookQualityAdjustment + valuationPenalty - secondaryDiscount - catalystDiscount;
+    // BUG FIX #2: Dual-class governance discount
+    const dualClassDiscount = dualClass ? dualClassDiscountRate : 0;
+    
+    // BUG FIX #6: Customer concentration discount
+    let customerConcentrationDiscount = 0;
+    if (customerConcentrationTop5 > 0.40) {
+      customerConcentrationDiscount = (customerConcentrationTop5 - 0.40) * 0.5;
+    }
+    
+    // Total adjusted implied pop with all discounts
+    const adjustedImpliedPop = baseImpliedPop 
+      + bookQualityAdjustment 
+      + valuationPenalty 
+      - secondaryDiscount 
+      - catalystDiscount
+      - downRoundDiscount      // BUG FIX #1
+      - dualClassDiscount      // BUG FIX #2
+      - customerConcentrationDiscount; // BUG FIX #6
     
     // Founder ownership post-IPO
     const founderOwnershipPost = foundersEmployeesOwnership * (sharesOutstandingPreIPO / fdSharesPostIPO);
@@ -501,11 +665,17 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     if (fairValueSupport > 2) {
       rowWarnings.push(`WARNING: ${(fairValueSupport * 100).toFixed(0)}% of fair value`);
     }
-    if (oversubscription < 3) {
-      rowWarnings.push(`WARNING: Weak book coverage (${oversubscription}×)`);
+    if (effectiveOversubscription < 3) {
+      rowWarnings.push(`WARNING: Weak book coverage (${effectiveOversubscription.toFixed(1)}×)`);
     }
-    if (adjustedImpliedPop < -0.20) {
+    if (adjustedImpliedPop < -0.10) {
       rowWarnings.push(`WARNING: High probability of negative Day-1 return`);
+    }
+    if (isDownRound) {
+      rowWarnings.push(`DOWN-ROUND: ${(downRoundPercent * 100).toFixed(1)}% vs Series E`);
+    }
+    if (investorsDropping.length > 0) {
+      rowWarnings.push(`INVESTOR DROP-OFF: ${investorsDropping.join(", ")} ($${demandLostM}M lost)`);
     }
     
     return {
@@ -516,17 +686,29 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
       enterpriseValueM,
       ntmEVRevenue,
       evRaNPV,
+      growthAdjustedMultiple: growthAdjustedPeerMultiple,
       vsPeerMedianRevenue,
       vsPeerMedianRaNPV,
       fairValueSupport,
       grossProceedsM,
+      primaryProceedsM,
+      secondaryProceedsM,
       oversubscription,
+      effectiveOversubscription,
       orderBookTier,
+      investorsDropping,
+      demandLostM,
+      downRoundPercent,
+      isDownRound,
+      downRoundDiscount,
       baseImpliedPop,
       bookQualityAdjustment,
       valuationPenalty,
       secondaryDiscount,
       catalystDiscount,
+      dualClassDiscount,
+      customerConcentrationDiscount,
+      growthDecelPenalty,
       adjustedImpliedPop,
       founderOwnershipPost,
       warnings: rowWarnings,
@@ -538,18 +720,18 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
   let recommendedPrice = indicatedPriceRangeLow || pricingMatrix[Math.floor(pricingMatrix.length / 2)].offerPrice;
   let recommendedRow: PricingRow | undefined;
   
-  // BUG FIX #4: Respect CEO directive when book is weak
+  // Use effectiveOversubscription for recommendation (includes investor drop-off)
   const topOfRangeRow = pricingMatrix.find(r => r.offerPrice === indicatedPriceRangeHigh);
-  const topOfRangeOversubscription = topOfRangeRow?.oversubscription || 0;
+  const topOfRangeEffectiveOversubscription = topOfRangeRow?.effectiveOversubscription || 0;
   
-  if (managementPriority === "runway_extension" && topOfRangeOversubscription < 5) {
+  if (managementPriority === "runway_extension" && topOfRangeEffectiveOversubscription < 5) {
     // CEO wants deal certainty and book is weak at top - find comfortable coverage price
     warnings.push("CEO priority is runway extension with weak book at top of range");
     
-    // Find price where book is comfortably covered (>5×)
+    // Find price where effective book is comfortably covered (>5×)
     const sortedByPrice = [...pricingMatrix].sort((a, b) => b.offerPrice - a.offerPrice);
     for (const row of sortedByPrice) {
-      if (row.oversubscription >= 5) {
+      if (row.effectiveOversubscription >= 5) {
         recommendedPrice = row.offerPrice;
         recommendedRow = row;
         break;
@@ -569,30 +751,30 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
       recommendedRow = pricingMatrix.find(r => r.offerPrice === recommendedPrice);
     }
   } else if (pricingAggressiveness === "maximum") {
-    // CEO wants maximum - highest price with acceptable book
+    // CEO wants maximum - highest price with acceptable effective book
     const sortedByPrice = [...pricingMatrix].sort((a, b) => b.offerPrice - a.offerPrice);
     for (const row of sortedByPrice) {
-      if (row.oversubscription >= 3) {
+      if (row.effectiveOversubscription >= 3) {
         recommendedPrice = row.offerPrice;
         recommendedRow = row;
         break;
       }
     }
   } else if (pricingAggressiveness === "conservative") {
-    // Conservative - strong book coverage required
+    // Conservative - strong effective book coverage required
     const sortedByPrice = [...pricingMatrix].sort((a, b) => b.offerPrice - a.offerPrice);
     for (const row of sortedByPrice) {
-      if (row.oversubscription >= 10 && row.adjustedImpliedPop >= 0.10) {
+      if (row.effectiveOversubscription >= 10 && row.adjustedImpliedPop >= 0.10) {
         recommendedPrice = row.offerPrice;
         recommendedRow = row;
         break;
       }
     }
   } else {
-    // Moderate - balanced approach
+    // Moderate - balanced approach with effective oversubscription
     const sortedByPrice = [...pricingMatrix].sort((a, b) => b.offerPrice - a.offerPrice);
     for (const row of sortedByPrice) {
-      if (row.oversubscription >= 5 && row.adjustedImpliedPop >= 0) {
+      if (row.effectiveOversubscription >= 5 && row.adjustedImpliedPop >= 0) {
         recommendedPrice = row.offerPrice;
         recommendedRow = row;
         break;
@@ -607,6 +789,36 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
   
   const recommendedRangeLow = Math.max(minAcceptablePrice || (recommendedPrice - 2), recommendedPrice - 2);
   const recommendedRangeHigh = recommendedPrice + 1;
+  
+  // BUG FIX #1: Add down-round alert to warnings
+  if (recommendedRow.isDownRound && lastPrivateRoundPrice) {
+    warnings.push(`DOWN-ROUND ALERT: Offer $${recommendedPrice} is ${(Math.abs(recommendedRow.downRoundPercent) * 100).toFixed(1)}% below Series E price $${lastPrivateRoundPrice.toFixed(2)}`);
+  }
+  
+  // BUG FIX #2: Add dual-class warning
+  if (dualClass) {
+    warnings.push(`Dual-class governance discount applied: -${(dualClassDiscountRate * 100).toFixed(0)}%`);
+  }
+  
+  // BUG FIX #6: Add customer concentration warning
+  if (customerConcentrationTop5 > 0.40) {
+    warnings.push(`Customer concentration risk: Top 5 = ${(customerConcentrationTop5 * 100).toFixed(0)}% of revenue`);
+  }
+  
+  // BUG FIX #5: Add growth deceleration warning
+  if (growthDecelPenalty > 0) {
+    warnings.push(`Growth deceleration penalty: -${(growthDecelPenalty * 100).toFixed(1)}% multiple compression`);
+  }
+  
+  // BUG FIX #8: CEO directive contradiction - check if down-round persists
+  if (lastPrivateRoundPrice && minAcceptablePrice && ceoGuidance) {
+    const ceoLower = ceoGuidance.toLowerCase();
+    if (ceoLower.includes("narrative") || ceoLower.includes("control") || ceoLower.includes("down round")) {
+      if (recommendedPrice < lastPrivateRoundPrice) {
+        warnings.push(`CEO DIRECTIVE CONTRADICTION: CEO wants to "control the narrative" but $${recommendedPrice} is still a down-round vs Series E $${lastPrivateRoundPrice.toFixed(2)}. Down-round headline risk PERSISTS.`);
+      }
+    }
+  }
   
   // === RATIONALE ===
   const rationale: string[] = [];
@@ -627,7 +839,12 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     rationale.push(`$${recommendedPrice} at ${evMultiple}× NTM EV/Revenue (${peerDiffPercent}% ${peerDirection} peer median)`);
   }
   
-  rationale.push(`Book coverage: ${recommendedRow.oversubscription}× oversubscribed`);
+  // BUG FIX #4: Show effective book coverage after investor drop-off
+  if (recommendedRow.effectiveOversubscription !== recommendedRow.oversubscription) {
+    rationale.push(`Book coverage: ${recommendedRow.oversubscription.toFixed(1)}× raw, ${recommendedRow.effectiveOversubscription.toFixed(1)}× effective (after drop-off)`);
+  } else {
+    rationale.push(`Book coverage: ${recommendedRow.effectiveOversubscription.toFixed(1)}× oversubscribed`);
+  }
   rationale.push(`Expected Day-1 return: ${parseInt(popPercent) >= 0 ? '+' : ''}${popPercent}%`);
   
   // Add warnings about pop adjustments if significant
@@ -643,8 +860,20 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
   if (recommendedRow.catalystDiscount > 0.01) {
     rationale.push(`Binary catalyst risk discount: -${(recommendedRow.catalystDiscount * 100).toFixed(0)}%`);
   }
+  // BUG FIX #1: Add down-round discount to rationale
+  if (recommendedRow.downRoundDiscount > 0.01) {
+    rationale.push(`Down-round discount: -${(recommendedRow.downRoundDiscount * 100).toFixed(1)}%`);
+  }
+  // BUG FIX #2: Add dual-class discount to rationale
+  if (recommendedRow.dualClassDiscount > 0.01) {
+    rationale.push(`Dual-class governance discount: -${(recommendedRow.dualClassDiscount * 100).toFixed(0)}%`);
+  }
+  // BUG FIX #6: Add customer concentration discount to rationale
+  if (recommendedRow.customerConcentrationDiscount > 0.01) {
+    rationale.push(`Customer concentration discount: -${(recommendedRow.customerConcentrationDiscount * 100).toFixed(1)}%`);
+  }
   
-  // BUG FIX #4: Note CEO directive in rationale
+  // Note CEO directive in rationale
   if (managementPriority === "runway_extension") {
     rationale.push(`CEO priority: "runway extension" - pricing for deal certainty`);
     if (ceoGuidance) {
@@ -653,7 +882,8 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
   }
   
   rationale.push(`Founders retain ${(recommendedRow.founderOwnershipPost * 100).toFixed(1)}% post-IPO`);
-  rationale.push(`Gross proceeds: $${Math.round(recommendedRow.grossProceedsM)}M`);
+  // BUG FIX #7: Show primary vs secondary proceeds
+  rationale.push(`Gross proceeds: $${Math.round(recommendedRow.grossProceedsM)}M (Primary to company: $${Math.round(recommendedRow.primaryProceedsM)}M, Secondary to sellers: $${Math.round(recommendedRow.secondaryProceedsM)}M)`);
   
   // Add warnings
   for (const w of recommendedRow.warnings) {
@@ -736,7 +966,10 @@ function formatIPOMemo(
   memo += `Recommended amendment range:                $${rangeLow.toFixed(2)} – $${rangeHigh.toFixed(2)}\n\n`;
   
   memo += `Expected Day-1 Return: ${parseInt(popPercent) >= 0 ? '+' : ''}${popPercent}%\n`;
+  // BUG FIX #7: Show primary vs secondary proceeds
   memo += `Gross Proceeds: $${grossProceeds}M\n`;
+  memo += `  Primary (to company): $${Math.round(recommendedRow.primaryProceedsM)}M\n`;
+  memo += `  Secondary (to sellers): $${Math.round(recommendedRow.secondaryProceedsM)}M\n`;
   memo += `Market Cap: ~$${marketCapB}B post-greenshoe\n`;
   memo += `Enterprise Value: ~$${evB}B\n\n`;
   
@@ -792,11 +1025,24 @@ function formatIPOMemo(
   memo += `${fairValueLabel} $${fairValuePerShare.toFixed(2)} support     ` + rows.map(r => pad(`${(r.fairValueSupport * 100).toFixed(0)}%`, 10)).join("") + "\n";
   memo += "Gross proceeds         " + rows.map(r => pad(`$${Math.round(r.grossProceedsM)}`, 10)).join("") + "\n";
   
-  // BUG FIX #7: Show order book tier boundaries with tier info
+  // Show order book tier and both raw and effective oversubscription
   memo += "Order Book Tier        " + rows.map(r => pad(r.orderBookTier || "N/A", 10)).join("") + "\n";
-  memo += "Oversubscription       " + rows.map(r => pad(`${r.oversubscription.toFixed(1)}×`, 10)).join("") + "\n";
+  memo += "Raw Oversubscription   " + rows.map(r => pad(`${r.oversubscription.toFixed(1)}×`, 10)).join("") + "\n";
+  // BUG FIX #4: Show effective oversubscription after investor drop-off
+  if (rows.some(r => r.effectiveOversubscription !== r.oversubscription)) {
+    memo += "Effective Oversub      " + rows.map(r => pad(`${r.effectiveOversubscription.toFixed(1)}×`, 10)).join("") + "\n";
+    memo += "Demand Lost ($M)       " + rows.map(r => pad(r.demandLostM > 0 ? `$${r.demandLostM}` : "-", 10)).join("") + "\n";
+  }
   
-  // BUG FIX #3: Show all pop adjustments
+  // BUG FIX #1: Show down-round status
+  if (rows.some(r => r.isDownRound)) {
+    memo += "Down-Round %           " + rows.map(r => {
+      if (!r.isDownRound) return pad("-", 10);
+      return pad(`${(r.downRoundPercent * 100).toFixed(1)}%`, 10);
+    }).join("") + "\n";
+  }
+  
+  // Show all pop adjustments
   memo += `Day-1 Pop (${histPopLabel})\n`;
   memo += "  Base expected        " + rows.map(r => {
     const pct = r.baseImpliedPop * 100;
@@ -820,6 +1066,27 @@ function formatIPOMemo(
     memo += "  Catalyst risk        " + rows.map(r => {
       const pct = -r.catalystDiscount * 100;
       return pad(`${pct.toFixed(0)}%`, 10);
+    }).join("") + "\n";
+  }
+  // BUG FIX #1: Show down-round discount
+  if (rows.some(r => r.downRoundDiscount > 0)) {
+    memo += "  Down-round discount  " + rows.map(r => {
+      const pct = -r.downRoundDiscount * 100;
+      return pad(`${pct.toFixed(1)}%`, 10);
+    }).join("") + "\n";
+  }
+  // BUG FIX #2: Show dual-class discount
+  if (rows.some(r => r.dualClassDiscount > 0)) {
+    memo += "  Dual-class discount  " + rows.map(r => {
+      const pct = -r.dualClassDiscount * 100;
+      return pad(`${pct.toFixed(0)}%`, 10);
+    }).join("") + "\n";
+  }
+  // BUG FIX #6: Show customer concentration discount
+  if (rows.some(r => r.customerConcentrationDiscount > 0)) {
+    memo += "  Concentration disc   " + rows.map(r => {
+      const pct = -r.customerConcentrationDiscount * 100;
+      return pad(`${pct.toFixed(1)}%`, 10);
     }).join("") + "\n";
   }
   memo += "  ADJUSTED POP         " + rows.map(r => {
