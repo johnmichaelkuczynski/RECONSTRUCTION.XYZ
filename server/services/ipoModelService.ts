@@ -30,6 +30,11 @@ export interface IPOAssumptions {
   // Valuation Method
   valuationMethod: 'revenue' | 'ebitda' | 'blended';
   blendWeight?: number;         // Weight for revenue multiple in blended (0-1)
+  
+  // Dual-Class Share Structure (Optional)
+  founderSharesMillions?: number;     // Number of founder shares in millions
+  founderVoteMultiplier?: number;     // Votes per founder share (e.g., 10 for 10x voting)
+  controlThreshold?: number;          // Minimum voting % founders require (e.g., 0.40 for 40%)
 }
 
 export interface IPOPricingResult {
@@ -76,6 +81,19 @@ export interface IPOPricingResult {
     tentativeOfferPrice: number;
   };
   
+  // Dual-Class Share Voting Control Analysis
+  votingControlAnalysis?: {
+    founderSharesMillions: number;
+    founderVoteMultiplier: number;
+    controlThreshold: number;
+    founderVotes: number;           // Total founder votes (in millions)
+    publicVotes: number;            // Total public votes (in millions)
+    totalVotes: number;             // Total votes (in millions)
+    founderVotingPower: number;     // Founder voting % as decimal
+    controlSecured: boolean;        // true if founders maintain control
+    votingPowerShortfall?: number;  // How much below threshold (if any)
+  };
+  
   // Warnings
   warnings: string[];
   
@@ -107,7 +125,11 @@ Return a JSON object with the following structure:
   "conversionShares": number or null (Shares the debt converts into in millions, null if no convertible debt),
   
   "valuationMethod": "revenue" or "ebitda" or "blended" (default "revenue"),
-  "blendWeight": number or 0.5 (weight for revenue in blended, default 0.5)
+  "blendWeight": number or 0.5 (weight for revenue in blended, default 0.5),
+  
+  "founderSharesMillions": number or null (Founder shares with super-voting rights in millions, null if no dual-class),
+  "founderVoteMultiplier": number or null (Votes per founder share, e.g., 10 for 10x voting, null if no dual-class),
+  "controlThreshold": number or null (Minimum voting % founders require as decimal, e.g., 0.40 for 40%, null if not specified)
 }
 
 Default values if not specified:
@@ -117,6 +139,8 @@ Default values if not specified:
 - secondaryShares: 0 (no secondary if not mentioned)
 - valuationMethod: "revenue" (unless EBITDA multiple is the focus)
 - convertibleDebtAmount, conversionTriggerPrice, conversionShares: null if no convertible debt mentioned
+- founderSharesMillions, founderVoteMultiplier: null if no dual-class share structure mentioned
+- controlThreshold: 0.50 (50%) if dual-class is mentioned but no specific threshold given
 
 IMPORTANT: Return ONLY valid JSON, no markdown, no explanations.`;
 
@@ -270,6 +294,10 @@ export async function parseIPODescription(
     conversionShares: normalizeShares(parsed.conversionShares, 'conversionShares'),
     valuationMethod: parsed.valuationMethod || 'revenue',
     blendWeight: parsed.blendWeight ?? 0.5,
+    // Dual-class share structure
+    founderSharesMillions: normalizeShares(parsed.founderSharesMillions, 'founderSharesMillions'),
+    founderVoteMultiplier: parsed.founderVoteMultiplier || undefined,
+    controlThreshold: parsed.controlThreshold ?? (parsed.founderSharesMillions ? 0.50 : undefined),
   };
 }
 
@@ -292,6 +320,9 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     conversionShares,
     valuationMethod,
     blendWeight = 0.5,
+    founderSharesMillions,
+    founderVoteMultiplier,
+    controlThreshold,
   } = assumptions;
 
   const warnings: string[] = [];
@@ -441,6 +472,50 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     console.log(`[IPO Model] Convertible Debt: CONVERTED (added ${conversionShares}M shares)`);
   }
 
+  // ============ PHASE 10: Dual-Class Share Voting Control Analysis ============
+  let votingControlAnalysis: IPOPricingResult['votingControlAnalysis'] = undefined;
+  
+  if (founderSharesMillions && founderVoteMultiplier && controlThreshold) {
+    console.log(`[IPO Model] ============ DUAL-CLASS VOTING ANALYSIS ============`);
+    
+    // Calculate votes (all in millions for consistency)
+    const founderVotes = founderSharesMillions * founderVoteMultiplier;
+    const publicShares = postIpoSharesOutstanding - founderSharesMillions;
+    const publicVotes = publicShares * 1;  // Public shares always get 1 vote
+    const totalVotes = founderVotes + publicVotes;
+    const founderVotingPower = founderVotes / totalVotes;
+    const controlSecured = founderVotingPower >= controlThreshold;
+    
+    console.log(`[IPO Model] Founder Shares: ${founderSharesMillions}M × ${founderVoteMultiplier}x = ${founderVotes.toFixed(2)}M votes`);
+    console.log(`[IPO Model] Public Shares: ${publicShares.toFixed(4)}M × 1x = ${publicVotes.toFixed(2)}M votes`);
+    console.log(`[IPO Model] Total Votes: ${totalVotes.toFixed(2)}M`);
+    console.log(`[IPO Model] Founder Voting Power: ${(founderVotingPower * 100).toFixed(1)}%`);
+    console.log(`[IPO Model] Control Threshold: ${(controlThreshold * 100).toFixed(1)}%`);
+    
+    if (controlSecured) {
+      console.log(`[IPO Model] ✓ VOTING CONTROL SECURED: Founders have ${(founderVotingPower * 100).toFixed(1)}% voting power`);
+    } else {
+      const shortfall = controlThreshold - founderVotingPower;
+      console.log(`[IPO Model] ⚠️  CRITICAL WARNING: VOTING CONTROL BREACHED`);
+      console.log(`[IPO Model]    Founders will have only ${(founderVotingPower * 100).toFixed(1)}% voting power`);
+      console.log(`[IPO Model]    Required threshold: ${(controlThreshold * 100).toFixed(1)}%`);
+      console.log(`[IPO Model]    Shortfall: ${(shortfall * 100).toFixed(1)}%`);
+      warnings.push(`CRITICAL: Founders will lose voting control. Voting power (${(founderVotingPower * 100).toFixed(1)}%) is below required threshold (${(controlThreshold * 100).toFixed(1)}%).`);
+    }
+    
+    votingControlAnalysis = {
+      founderSharesMillions,
+      founderVoteMultiplier,
+      controlThreshold,
+      founderVotes,
+      publicVotes,
+      totalVotes,
+      founderVotingPower,
+      controlSecured,
+      votingPowerShortfall: controlSecured ? undefined : (controlThreshold - founderVotingPower),
+    };
+  }
+
   return {
     companyName,
     transactionDate,
@@ -470,6 +545,7 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     marketCapAtOffer,
     
     convertibleDebtTreatment,
+    votingControlAnalysis,
     
     warnings,
     assumptions,
@@ -662,6 +738,59 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
         summarySheet.getCell(`B${row}`).font = { color: { argb: 'FF666666' } };
       }
       if (unit) {
+        summarySheet.getCell(`C${row}`).value = unit as string;
+        summarySheet.getCell(`C${row}`).font = { italic: true, color: { argb: 'FF666666' } };
+      }
+      row++;
+    });
+  }
+  
+  // Voting Control Analysis Section (if applicable)
+  if (result.votingControlAnalysis) {
+    row += 1;
+    const sectionNum = result.convertibleDebtTreatment ? '6' : '5';
+    summarySheet.getCell(`A${row}`).value = `${sectionNum}. GOVERNANCE - DUAL-CLASS VOTING ANALYSIS`;
+    summarySheet.getCell(`A${row}`).style = sectionStyle;
+    summarySheet.mergeCells(`A${row}:E${row}`);
+    row++;
+    
+    const vca = result.votingControlAnalysis;
+    const votingData: [string, string | number, string?][] = [
+      ['Founder Shares', vca.founderSharesMillions, 'millions'],
+      ['Founder Vote Multiplier', `${vca.founderVoteMultiplier}x`, ''],
+      ['Founder Total Votes', vca.founderVotes, 'millions'],
+      ['Public Shares', (result.postIpoSharesOutstanding - vca.founderSharesMillions), 'millions'],
+      ['Public Total Votes (1x)', vca.publicVotes, 'millions'],
+      ['Total Votes', vca.totalVotes, 'millions'],
+      ['Founder Voting Power', vca.founderVotingPower, ''],
+      ['Required Control Threshold', vca.controlThreshold, ''],
+      ['Voting Control Status', vca.controlSecured ? 'SECURED' : 'BREACHED', ''],
+    ];
+    
+    if (!vca.controlSecured && vca.votingPowerShortfall) {
+      votingData.push(['Voting Power Shortfall', vca.votingPowerShortfall, '']);
+    }
+    
+    votingData.forEach(([label, value, unit]) => {
+      summarySheet.getCell(`A${row}`).value = label as string;
+      summarySheet.getCell(`B${row}`).value = value;
+      
+      if (typeof value === 'number') {
+        if ((unit as string) === 'millions') {
+          summarySheet.getCell(`B${row}`).numFmt = '#,##0.00"M"';
+        } else if ((label as string).includes('Power') || (label as string).includes('Threshold') || (label as string).includes('Shortfall')) {
+          summarySheet.getCell(`B${row}`).numFmt = '0.0%';
+        }
+      }
+      
+      // Status styling
+      if (value === 'SECURED') {
+        summarySheet.getCell(`B${row}`).font = { bold: true, color: { argb: 'FF006400' } };
+      } else if (value === 'BREACHED') {
+        summarySheet.getCell(`B${row}`).font = { bold: true, color: { argb: 'FFCC0000' } };
+      }
+      
+      if (unit && (unit as string) !== '') {
         summarySheet.getCell(`C${row}`).value = unit as string;
         summarySheet.getCell(`C${row}`).font = { italic: true, color: { argb: 'FF666666' } };
       }
