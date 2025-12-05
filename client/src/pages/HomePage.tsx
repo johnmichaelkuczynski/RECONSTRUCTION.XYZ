@@ -178,7 +178,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [coherenceStageProgress, setCoherenceStageProgress] = useState<string>("");
   
   // Finance Panel State
-  const [financeModelType, setFinanceModelType] = useState<"dcf" | "lbo" | "ma" | "threestatement" | null>(null);
+  const [financeModelType, setFinanceModelType] = useState<"dcf" | "lbo" | "ma" | "threestatement" | "ipo" | null>(null);
   const [financeInputText, setFinanceInputText] = useState("");
   const [financeCustomInstructions, setFinanceCustomInstructions] = useState("");
   const [financeLoading, setFinanceLoading] = useState(false);
@@ -571,7 +571,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   };
 
   // Finance Panel Handler - Two-step flow: Parse & Preview, then Download
-  const handleFinanceModelGenerate = async (modelType: "dcf" | "lbo" | "ma" | "threestatement") => {
+  const handleFinanceModelGenerate = async (modelType: "dcf" | "lbo" | "ma" | "threestatement" | "ipo") => {
     if (!financeInputText.trim()) {
       toast({
         title: "No Input",
@@ -694,6 +694,31 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           title: "3-Statement Model Complete",
           description: `Financial projections for ${result.assumptions?.companyName || 'company'} with ${result.summary?.isBalanced ? 'balanced' : 'unbalanced'} balance sheet`,
         });
+      } else if (modelType === "ipo") {
+        setFinanceLoadingPhase(`Parsing IPO with ${providerNames[financeLLMProvider]}...`);
+        
+        const response = await fetch('/api/finance/parse-ipo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description: financeInputText,
+            customInstructions: financeCustomInstructions,
+            llmProvider: financeLLMProvider,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'IPO parsing failed');
+        }
+
+        const result = await response.json();
+        setFinanceResult(result);
+        
+        toast({
+          title: "IPO Pricing Complete",
+          description: `Offer price calculated for ${result.companyName || 'company'}: $${result.offerPrice?.toFixed(2) || 'N/A'}/share`,
+        });
       } else {
         toast({
           title: "Coming Soon",
@@ -740,9 +765,12 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       } else if (financeModelType === "threestatement") {
         endpoint = '/api/finance/download-3statement';
         modelLabel = '3-Statement';
+      } else if (financeModelType === "ipo") {
+        endpoint = '/api/finance/download-ipo';
+        modelLabel = 'IPO';
       }
       
-      const requestBody = financeModelType === "threestatement" 
+      const requestBody = (financeModelType === "threestatement" || financeModelType === "ipo")
         ? { result: financeResult }
         : { assumptions: financeResult.assumptions };
       
@@ -2794,7 +2822,7 @@ Examples:
           </div>
 
           {/* Four Model Type Buttons */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
             <Button
               onClick={() => {
                 setShowFinanceCustomization(prev => financeModelType === "dcf" ? !prev : true);
@@ -2866,6 +2894,24 @@ Examples:
               <span className="font-bold text-lg">3-Statement</span>
               <span className="text-xs mt-1 text-center opacity-80">Integrated Financials</span>
             </Button>
+
+            <Button
+              onClick={() => {
+                setShowFinanceCustomization(prev => financeModelType === "ipo" ? !prev : true);
+                setFinanceModelType("ipo");
+              }}
+              className={`flex flex-col items-center justify-center p-6 h-auto ${
+                financeModelType === "ipo" 
+                  ? "bg-teal-600 hover:bg-teal-700 text-white" 
+                  : "bg-white dark:bg-gray-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 text-teal-700 dark:text-teal-300 border-2 border-teal-300"
+              }`}
+              disabled={financeLoading}
+              data-testid="button-ipo-model"
+            >
+              <TrendingUp className="w-6 h-6 mb-2" />
+              <span className="font-bold text-lg">IPO Pricing</span>
+              <span className="text-xs mt-1 text-center opacity-80">Initial Public Offering</span>
+            </Button>
           </div>
 
           {/* Customization Panel - Appears when model type is selected */}
@@ -2876,6 +2922,7 @@ Examples:
                 {financeModelType === "lbo" && "LBO Model Customization"}
                 {financeModelType === "ma" && "M&A Model Customization"}
                 {financeModelType === "threestatement" && "3-Statement Model Customization"}
+                {financeModelType === "ipo" && "IPO Pricing Customization"}
               </h3>
 
               {/* LLM Provider Selector */}
@@ -2914,6 +2961,8 @@ Examples:
                       ? "Add specific instructions for LBO model... (e.g., 'Model 5-year hold period', 'Include management equity rollover', 'Target 3x MOIC')"
                       : financeModelType === "ma"
                       ? "Add specific instructions for M&A model... (e.g., 'Model accretion/dilution analysis', 'Include synergy assumptions', 'Compare cash vs stock deal')"
+                      : financeModelType === "ipo"
+                      ? "Add specific instructions for IPO pricing... (e.g., 'Use EBITDA multiple instead of revenue', 'Apply 25% IPO discount', 'Include greenshoe option analysis')"
                       : "Add specific instructions for 3-statement model... (e.g., 'Include quarterly breakdown', 'Add working capital schedule', 'Model debt covenants')"
                   }
                   className="min-h-[100px]"
@@ -4012,6 +4061,178 @@ Examples:
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* IPO Pricing Results Display */}
+          {financeResult && financeResult.success && financeModelType === "ipo" && financeResult.offerPrice && (
+            <div className="mb-6 space-y-6">
+              {/* Header with company name and download button */}
+              <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-teal-200 dark:border-teal-700">
+                <div>
+                  <h3 className="text-xl font-bold text-teal-900 dark:text-teal-100">
+                    {financeResult.companyName} - IPO Pricing Analysis
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Transaction Date: {financeResult.transactionDate} | Analysis by {financeResult.providerUsed}
+                  </p>
+                </div>
+                <Button
+                  onClick={handleFinanceDownloadExcel}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  disabled={financeDownloadLoading}
+                  data-testid="button-download-ipo-excel"
+                >
+                  {financeDownloadLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Download IPO Excel
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Main Recommendation Box */}
+              <div className="p-6 bg-gradient-to-r from-teal-50 to-cyan-50 dark:from-teal-900/20 dark:to-cyan-900/20 rounded-lg border-2 border-teal-400 dark:border-teal-600 text-center">
+                <h4 className="text-lg font-semibold text-teal-800 dark:text-teal-200 mb-2">IPO PRICING RECOMMENDATION</h4>
+                <div className="text-5xl font-bold text-teal-700 dark:text-teal-300 mb-2">
+                  ${financeResult.offerPrice?.toFixed(2)}
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">per share</p>
+              </div>
+
+              {/* Key Metrics Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-teal-50 dark:bg-teal-900/20 rounded-lg border border-teal-200 dark:border-teal-700 text-center">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Pre-Money Valuation</div>
+                  <div className="text-2xl font-bold text-teal-700 dark:text-teal-300">
+                    ${financeResult.impliedPreMoneyAtOffer?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                  </div>
+                </div>
+                <div className="p-4 bg-cyan-50 dark:bg-cyan-900/20 rounded-lg border border-cyan-200 dark:border-cyan-700 text-center">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Post-Money Valuation</div>
+                  <div className="text-2xl font-bold text-cyan-700 dark:text-cyan-300">
+                    ${financeResult.postMoneyValuation?.toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                  </div>
+                </div>
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700 text-center">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Primary Proceeds</div>
+                  <div className="text-2xl font-bold text-green-700 dark:text-green-300">
+                    ${financeResult.grossPrimaryProceeds?.toLocaleString(undefined, {maximumFractionDigits: 1})}M
+                  </div>
+                </div>
+                <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-700 text-center">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">First-Day Pop</div>
+                  <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">
+                    {financeResult.expectedFirstDayPop?.toFixed(1)}%
+                  </div>
+                </div>
+              </div>
+
+              {/* Valuation Details */}
+              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-teal-200 dark:border-teal-700">
+                <h4 className="text-lg font-semibold text-teal-800 dark:text-teal-200 mb-4">
+                  Valuation Calculation
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-2">
+                    <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                      <span className="text-gray-600 dark:text-gray-400">LTM Revenue</span>
+                      <span className="font-semibold">${financeResult.assumptions?.ltmRevenue?.toLocaleString()}M</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                      <span className="text-gray-600 dark:text-gray-400">Industry Multiple</span>
+                      <span className="font-semibold">{financeResult.assumptions?.industryRevenueMultiple?.toFixed(1)}x</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                      <span className="text-gray-600 dark:text-gray-400">Theoretical Pre-Money</span>
+                      <span className="font-semibold">${financeResult.preMoneyValuation?.toLocaleString(undefined, {maximumFractionDigits: 0})}M</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                      <span className="text-gray-600 dark:text-gray-400">Pre-IPO Shares</span>
+                      <span className="font-semibold">{financeResult.assumptions?.preIpoShares?.toLocaleString()}M</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                      <span className="text-gray-600 dark:text-gray-400">Theoretical Price</span>
+                      <span className="font-semibold">${financeResult.theoreticalPrice?.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                      <span className="text-gray-600 dark:text-gray-400">IPO Discount Applied</span>
+                      <span className="font-semibold text-orange-600">{((financeResult.assumptions?.ipoDiscount || 0) * 100).toFixed(0)}%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Offering Structure */}
+              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-teal-200 dark:border-teal-700">
+                <h4 className="text-lg font-semibold text-teal-800 dark:text-teal-200 mb-4">
+                  Offering Structure
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div className="space-y-2">
+                    <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                      <span className="text-gray-600 dark:text-gray-400">New Shares to Issue</span>
+                      <span className="font-semibold">{(financeResult.newSharesIssued * 1000000)?.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                      <span className="text-gray-600 dark:text-gray-400">Secondary Shares</span>
+                      <span className="font-semibold">{(financeResult.secondarySharesSold * 1000000)?.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between py-2">
+                      <span className="text-gray-600 dark:text-gray-400">Greenshoe</span>
+                      <span className="font-semibold">{(financeResult.greenshoeShares * 1000000)?.toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                      <span className="text-gray-600 dark:text-gray-400">Post-IPO Shares</span>
+                      <span className="font-semibold">{(financeResult.postIpoSharesOutstanding * 1000000)?.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                      <span className="text-gray-600 dark:text-gray-400">% Company Sold</span>
+                      <span className="font-semibold text-blue-600">{financeResult.percentageSold?.toFixed(1)}%</span>
+                    </div>
+                    <div className="flex justify-between py-2">
+                      <span className="text-gray-600 dark:text-gray-400">Existing Dilution</span>
+                      <span className="font-semibold text-red-600">{financeResult.existingHoldersDilution?.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                      <span className="text-gray-600 dark:text-gray-400">Gross Proceeds</span>
+                      <span className="font-semibold">${financeResult.totalGrossProceeds?.toLocaleString(undefined, {maximumFractionDigits: 1})}M</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                      <span className="text-gray-600 dark:text-gray-400">Underwriting Fees</span>
+                      <span className="font-semibold text-red-600">${financeResult.underwritingFees?.toLocaleString(undefined, {maximumFractionDigits: 1})}M</span>
+                    </div>
+                    <div className="flex justify-between py-2">
+                      <span className="text-gray-600 dark:text-gray-400">Net to Company</span>
+                      <span className="font-semibold text-green-600">${financeResult.netPrimaryProceeds?.toLocaleString(undefined, {maximumFractionDigits: 1})}M</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Warnings */}
+              {financeResult.warnings && financeResult.warnings.length > 0 && (
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-300 dark:border-yellow-700">
+                  <h4 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">Warnings</h4>
+                  <ul className="list-disc list-inside space-y-1">
+                    {financeResult.warnings.map((warning: string, idx: number) => (
+                      <li key={idx} className="text-sm text-yellow-700 dark:text-yellow-300">{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 

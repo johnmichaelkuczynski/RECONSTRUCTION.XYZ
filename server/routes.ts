@@ -20,6 +20,7 @@ import { parseThreeStatementDescription, calculateThreeStatementModel, generateT
 import { parseRegressionDescription, generateRegressionPythonCode } from "./services/regressionModelService";
 import { parseForecastingDescription, generateForecastingPythonCode } from "./services/forecastingModelService";
 import { parsePredictiveDescription } from "./services/predictiveAnalyticsService";
+import { parseIPODescription, calculateIPOPricing, generateIPOExcel } from "./services/ipoModelService";
 
 
 // Configure multer for file uploads
@@ -3607,6 +3608,76 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
 
     } catch (error: any) {
       console.error("3-Statement Excel download error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to generate Excel file"
+      });
+    }
+  });
+
+  // Finance Panel - Parse IPO description and return pricing analysis
+  app.post("/api/finance/parse-ipo", async (req: Request, res: Response) => {
+    try {
+      const { description, customInstructions, llmProvider = "zhi5" } = req.body;
+
+      if (!description) {
+        return res.status(400).json({
+          success: false,
+          message: "Description is required"
+        });
+      }
+
+      console.log(`Parsing IPO description with ${llmProvider}...`);
+      const assumptions = await parseIPODescription(
+        description,
+        customInstructions,
+        llmProvider as "zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5"
+      );
+
+      console.log("Calculating IPO pricing...");
+      const result = calculateIPOPricing(assumptions);
+
+      res.json({
+        success: true,
+        ...result,
+        providerUsed: llmProvider.toUpperCase().replace('ZHI', 'ZHI ')
+      });
+
+    } catch (error: any) {
+      console.error("IPO parsing error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to parse IPO description"
+      });
+    }
+  });
+
+  // Finance Panel - Download IPO Excel from pre-parsed results
+  app.post("/api/finance/download-ipo", async (req: Request, res: Response) => {
+    try {
+      const { result } = req.body;
+
+      if (!result) {
+        return res.status(400).json({
+          success: false,
+          message: "Result data is required"
+        });
+      }
+
+      console.log("Generating IPO Excel from parsed results...");
+      const excelBuffer = await generateIPOExcel(result);
+
+      const companyNameSlug = result.companyName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `${companyNameSlug}_IPO_Pricing_${dateStr}.xlsx`;
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', excelBuffer.length);
+      res.send(excelBuffer);
+
+    } catch (error: any) {
+      console.error("IPO Excel download error:", error);
       res.status(500).json({
         success: false,
         message: error.message || "Failed to generate Excel file"
