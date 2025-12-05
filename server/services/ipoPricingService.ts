@@ -1354,9 +1354,19 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     // 
     // PRIORITY: Use explicit founder shares from cap table if provided (e.g., CEO 38M + CTO 22M = 60M)
     // Otherwise, fall back to percentage-based calculation
-    const founderSharesFixed = founderSharesExplicitM && founderSharesExplicitM > 0
-      ? founderSharesExplicitM  // Use explicit share count from cap table parsing
-      : foundersEmployeesOwnership * sharesOutstandingPreIPO; // Fall back to percentage
+    let founderSharesFixed: number;
+    let founderSharesSource: string;
+    
+    if (founderSharesExplicitM && founderSharesExplicitM > 0) {
+      founderSharesFixed = founderSharesExplicitM;
+      founderSharesSource = "explicit_shares";
+    } else if (foundersEmployeesOwnership && foundersEmployeesOwnership > 0) {
+      founderSharesFixed = foundersEmployeesOwnership * sharesOutstandingPreIPO;
+      founderSharesSource = "percentage";
+    } else {
+      founderSharesFixed = 0;
+      founderSharesSource = "none";
+    }
     const founderOwnershipPost = fdSharesPostIPO > 0 ? founderSharesFixed / fdSharesPostIPO : 0;
     
     // Generate warnings - ONLY based on user-provided data, no hardcoded thresholds
@@ -1736,6 +1746,24 @@ function formatIPOMemo(
   memo += `Total Shares Sold: ${((recommendedRow.totalSharesSold || 0) * 1).toFixed(2)}M\n`;
   memo += `Post-IPO Fully Diluted Shares: ${((recommendedRow.fdSharesPostIPO || 0) * 1).toFixed(2)}M\n`;
   memo += `Dilution from Primary + Greenshoe: ${((recommendedRow.dilutionPercent || 0) * 100).toFixed(1)}%\n`;
+  
+  // Show founder shares calculation info
+  const memoFounderSharesExplicit = assumptions.founderSharesExplicitM || 0;
+  const memoFoundersOwnershipPct = assumptions.foundersEmployeesOwnership || 0;
+  const memoSharesPreIPO = assumptions.sharesOutstandingPreIPO || 0;
+  
+  const displayFounderShares = memoFounderSharesExplicit > 0
+    ? memoFounderSharesExplicit 
+    : (memoFoundersOwnershipPct > 0 
+        ? memoFoundersOwnershipPct * memoSharesPreIPO 
+        : 0);
+  const founderSharesSourceLabel = memoFounderSharesExplicit > 0
+    ? "(from cap table)"
+    : memoFoundersOwnershipPct > 0
+        ? `(${(memoFoundersOwnershipPct * 100).toFixed(0)}% × ${memoSharesPreIPO.toFixed(1)}M shares)`
+        : "(not provided)";
+  
+  memo += `Founder Shares: ${displayFounderShares.toFixed(1)}M ${founderSharesSourceLabel}\n`;
   memo += `Founder Ownership Post-IPO: ${((recommendedRow.founderOwnershipPost || 0) * 100).toFixed(1)}%\n`;
   
   // === 50% CONTROL THRESHOLD SENSITIVITY ===
