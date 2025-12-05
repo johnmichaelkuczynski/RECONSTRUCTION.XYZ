@@ -4067,16 +4067,16 @@ Examples:
           )}
 
           {/* IPO Pricing Results Display */}
-          {financeResult && financeResult.success && financeModelType === "ipo" && financeResult.companyInfo && (
+          {financeResult && financeResult.success && financeModelType === "ipo" && financeResult.companyName && (
             <div className="mb-6 space-y-6">
               {/* Header with company name and download button */}
               <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700">
                 <div>
                   <h3 className="text-xl font-bold text-cyan-900 dark:text-cyan-100">
-                    {financeResult.companyInfo?.companyName} - IPO Pricing Analysis
+                    {financeResult.companyName} - IPO Pricing Analysis
                   </h3>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {financeResult.companyInfo?.industry} | {financeResult.companyInfo?.companyType} Company | Analyzed by {financeResult.providerUsed}
+                    {financeResult.companyType} Company | {financeResult.valuationMethodology} | Analyzed by {financeResult.providerUsed}
                   </p>
                 </div>
                 <Button
@@ -4104,37 +4104,37 @@ Examples:
                 <div className="p-4 bg-cyan-50 dark:bg-cyan-900/20 rounded-lg border border-cyan-200 dark:border-cyan-700 text-center">
                   <div className="text-sm text-gray-600 dark:text-gray-400">Offer Price Range</div>
                   <div className="text-xl font-bold text-cyan-700 dark:text-cyan-300">
-                    ${financeResult.pricingMatrix?.lowPrice?.toFixed(2)} - ${financeResult.pricingMatrix?.highPrice?.toFixed(2)}
+                    ${financeResult.priceRange?.low?.toFixed(2)} - ${financeResult.priceRange?.high?.toFixed(2)}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Midpoint: ${financeResult.pricingMatrix?.midPrice?.toFixed(2)}
+                    Recommended: ${financeResult.recommendedOfferPrice?.toFixed(2)}
                   </div>
                 </div>
                 <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700 text-center">
                   <div className="text-sm text-gray-600 dark:text-gray-400">Gross Proceeds</div>
                   <div className="text-xl font-bold text-green-700 dark:text-green-300">
-                    ${((financeResult.proceedsAnalysis?.grossProceeds || 0) / 1000000).toFixed(0)}M
+                    ${((financeResult.grossPrimaryProceeds || 0) / 1000000).toFixed(0)}M
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Net: ${((financeResult.proceedsAnalysis?.netProceeds || 0) / 1000000).toFixed(0)}M
+                    Net: ${((financeResult.netPrimaryProceeds || 0) / 1000000).toFixed(0)}M
                   </div>
                 </div>
                 <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-700 text-center">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Pre-Money Valuation</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Enterprise Value</div>
                   <div className="text-xl font-bold text-purple-700 dark:text-purple-300">
-                    ${((financeResult.valuationAnalysis?.preMoneyValuation || 0) / 1000000000).toFixed(2)}B
+                    ${((financeResult.enterpriseValue || 0) / 1000000).toFixed(0)}M
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Post-Money: ${((financeResult.valuationAnalysis?.postMoneyValuation || 0) / 1000000000).toFixed(2)}B
+                    Market Cap: ${((financeResult.marketCap || 0) / 1000000).toFixed(0)}M
                   </div>
                 </div>
                 <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-700 text-center">
                   <div className="text-sm text-gray-600 dark:text-gray-400">Shares Offered</div>
                   <div className="text-xl font-bold text-orange-700 dark:text-orange-300">
-                    {((financeResult.offerStructure?.primarySharesOffered || 0) / 1000000).toFixed(1)}M
+                    {((financeResult.primarySharesIssued || 0) / 1000000).toFixed(1)}M
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Float: {((financeResult.capTable?.publicFloat || 0) * 100).toFixed(1)}%
+                    Float: {((financeResult.publicFloat || 0) * 100).toFixed(1)}%
                   </div>
                 </div>
               </div>
@@ -4146,156 +4146,149 @@ Examples:
                   Valuation Multiples Analysis
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {financeResult.valuationAnalysis?.revenueMultiple && (
-                    <div className="text-center p-3 bg-cyan-50/50 dark:bg-cyan-900/10 rounded-lg">
-                      <div className="text-xs text-gray-600 dark:text-gray-400">EV/Revenue</div>
-                      <div className="text-2xl font-bold text-cyan-700 dark:text-cyan-300">
-                        {financeResult.valuationAnalysis.revenueMultiple.toFixed(1)}x
-                      </div>
+                  <div className="text-center p-3 bg-cyan-50/50 dark:bg-cyan-900/10 rounded-lg">
+                    <div className="text-xs text-gray-600 dark:text-gray-400">Implied EV/Revenue</div>
+                    <div className="text-2xl font-bold text-cyan-700 dark:text-cyan-300">
+                      {financeResult.impliedEVRevenue?.toFixed(1) || 'N/A'}x
                     </div>
-                  )}
-                  {financeResult.valuationAnalysis?.ebitdaMultiple && (
+                  </div>
+                  {financeResult.impliedEVEBITDA && (
                     <div className="text-center p-3 bg-purple-50/50 dark:bg-purple-900/10 rounded-lg">
-                      <div className="text-xs text-gray-600 dark:text-gray-400">EV/EBITDA</div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">Implied EV/EBITDA</div>
                       <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">
-                        {financeResult.valuationAnalysis.ebitdaMultiple.toFixed(1)}x
+                        {financeResult.impliedEVEBITDA.toFixed(1)}x
                       </div>
                     </div>
                   )}
-                  {financeResult.valuationAnalysis?.peRatio && (
-                    <div className="text-center p-3 bg-green-50/50 dark:bg-green-900/10 rounded-lg">
-                      <div className="text-xs text-gray-600 dark:text-gray-400">P/E Ratio</div>
-                      <div className="text-2xl font-bold text-green-700 dark:text-green-300">
-                        {financeResult.valuationAnalysis.peRatio.toFixed(1)}x
-                      </div>
+                  <div className="text-center p-3 bg-green-50/50 dark:bg-green-900/10 rounded-lg">
+                    <div className="text-xs text-gray-600 dark:text-gray-400">Comparable Median EV/Rev</div>
+                    <div className="text-2xl font-bold text-green-700 dark:text-green-300">
+                      {financeResult.comparableMedianEVRevenue?.toFixed(1) || 'N/A'}x
                     </div>
-                  )}
+                  </div>
                   <div className="text-center p-3 bg-orange-50/50 dark:bg-orange-900/10 rounded-lg">
-                    <div className="text-xs text-gray-600 dark:text-gray-400">IPO Discount</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">Dilution</div>
                     <div className="text-2xl font-bold text-orange-700 dark:text-orange-300">
-                      {((financeResult.pricingMatrix?.ipoDiscount || 0) * 100).toFixed(0)}%
+                      {((financeResult.dilutionPercent || 0) * 100).toFixed(1)}%
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Cap Table Summary */}
+              {/* Share Structure & Ownership */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700">
                   <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-4">
-                    Cap Table - Pre vs Post IPO
-                  </h4>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200 dark:border-gray-600">
-                        <th className="text-left py-2 text-gray-600 dark:text-gray-400">Metric</th>
-                        <th className="text-right py-2 text-gray-600 dark:text-gray-400">Pre-IPO</th>
-                        <th className="text-right py-2 text-gray-600 dark:text-gray-400">Post-IPO</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-b border-gray-100 dark:border-gray-700">
-                        <td className="py-2 text-gray-700 dark:text-gray-300">Total Shares</td>
-                        <td className="text-right text-gray-900 dark:text-gray-100">
-                          {((financeResult.capTable?.preIpoShares || 0) / 1000000).toFixed(1)}M
-                        </td>
-                        <td className="text-right font-semibold text-cyan-700 dark:text-cyan-300">
-                          {((financeResult.capTable?.postIpoShares || 0) / 1000000).toFixed(1)}M
-                        </td>
-                      </tr>
-                      <tr className="border-b border-gray-100 dark:border-gray-700">
-                        <td className="py-2 text-gray-700 dark:text-gray-300">Founder Ownership</td>
-                        <td className="text-right text-gray-900 dark:text-gray-100">
-                          {((financeResult.capTable?.founderOwnershipPreIpo || 0) * 100).toFixed(1)}%
-                        </td>
-                        <td className="text-right text-cyan-700 dark:text-cyan-300">
-                          {((financeResult.capTable?.founderOwnershipPostIpo || 0) * 100).toFixed(1)}%
-                        </td>
-                      </tr>
-                      <tr className="border-b border-gray-100 dark:border-gray-700">
-                        <td className="py-2 text-gray-700 dark:text-gray-300">VC/Investor Ownership</td>
-                        <td className="text-right text-gray-900 dark:text-gray-100">
-                          {((financeResult.capTable?.vcOwnershipPreIpo || 0) * 100).toFixed(1)}%
-                        </td>
-                        <td className="text-right text-purple-700 dark:text-purple-300">
-                          {((financeResult.capTable?.vcOwnershipPostIpo || 0) * 100).toFixed(1)}%
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="py-2 text-gray-700 dark:text-gray-300 font-semibold">Public Float</td>
-                        <td className="text-right text-gray-400">-</td>
-                        <td className="text-right font-bold text-green-700 dark:text-green-300">
-                          {((financeResult.capTable?.publicFloat || 0) * 100).toFixed(1)}%
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700">
-                  <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-4">
-                    Transaction Fees & Proceeds
+                    Share Structure
                   </h4>
                   <div className="space-y-3">
                     <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Gross Proceeds</span>
+                      <span className="text-gray-600 dark:text-gray-400">Pre-IPO Shares</span>
                       <span className="font-semibold text-gray-900 dark:text-gray-100">
-                        ${((financeResult.proceedsAnalysis?.grossProceeds || 0) / 1000000).toFixed(1)}M
+                        {((financeResult.preIPOSharesTotal || 0) / 1000000).toFixed(2)}M
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Underwriting Fee ({((financeResult.proceedsAnalysis?.underwritingFeePercent || 0) * 100).toFixed(1)}%)</span>
-                      <span className="text-red-600 dark:text-red-400">
-                        -${((financeResult.proceedsAnalysis?.underwritingFee || 0) / 1000000).toFixed(1)}M
+                      <span className="text-gray-600 dark:text-gray-400">Primary Shares Issued</span>
+                      <span className="font-semibold text-cyan-700 dark:text-cyan-300">
+                        +{((financeResult.primarySharesIssued || 0) / 1000000).toFixed(2)}M
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Legal & Advisory</span>
-                      <span className="text-red-600 dark:text-red-400">
-                        -${((financeResult.proceedsAnalysis?.legalFees || 0) / 1000000).toFixed(1)}M
-                      </span>
-                    </div>
+                    {financeResult.secondarySharesSold > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Secondary Shares Sold</span>
+                        <span className="text-gray-700 dark:text-gray-300">
+                          {((financeResult.secondarySharesSold || 0) / 1000000).toFixed(2)}M
+                        </span>
+                      </div>
+                    )}
+                    {financeResult.greenshoeShares > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Greenshoe Option</span>
+                        <span className="text-gray-700 dark:text-gray-300">
+                          +{((financeResult.greenshoeShares || 0) / 1000000).toFixed(2)}M
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between border-t border-gray-200 dark:border-gray-600 pt-2">
-                      <span className="font-semibold text-gray-700 dark:text-gray-300">Net Proceeds</span>
-                      <span className="font-bold text-green-700 dark:text-green-300">
-                        ${((financeResult.proceedsAnalysis?.netProceeds || 0) / 1000000).toFixed(1)}M
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">Post-IPO Total</span>
+                      <span className="font-bold text-cyan-700 dark:text-cyan-300">
+                        {((financeResult.postIPOSharesTotal || 0) / 1000000).toFixed(2)}M
                       </span>
                     </div>
                   </div>
                 </div>
+
+                <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700">
+                  <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-4">
+                    Proceeds Breakdown
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Gross Primary Proceeds</span>
+                      <span className="font-semibold text-gray-900 dark:text-gray-100">
+                        ${((financeResult.grossPrimaryProceeds || 0) / 1000000).toFixed(1)}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Underwriting (7%)</span>
+                      <span className="text-red-600 dark:text-red-400">
+                        -${(((financeResult.grossPrimaryProceeds || 0) * 0.07) / 1000000).toFixed(1)}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-gray-200 dark:border-gray-600 pt-2">
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">Net to Company</span>
+                      <span className="font-bold text-green-700 dark:text-green-300">
+                        ${((financeResult.netPrimaryProceeds || 0) / 1000000).toFixed(1)}M
+                      </span>
+                    </div>
+                    {financeResult.secondaryProceeds > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Secondary Proceeds (to sellers)</span>
+                        <span className="text-purple-700 dark:text-purple-300">
+                          ${((financeResult.secondaryProceeds || 0) / 1000000).toFixed(1)}M
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              {/* Comparable Companies */}
-              {financeResult.comparableCompanies && financeResult.comparableCompanies.length > 0 && (
+              {/* Ownership Table */}
+              {financeResult.ownershipTable && financeResult.ownershipTable.length > 0 && (
                 <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700 overflow-x-auto">
                   <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-4">
-                    Comparable Public Companies
+                    Ownership Table
                   </h4>
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-200 dark:border-gray-600">
-                        <th className="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Company</th>
-                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Mkt Cap ($B)</th>
-                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">EV/Revenue</th>
-                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">EV/EBITDA</th>
-                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">P/E</th>
+                        <th className="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Holder</th>
+                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Pre-IPO Shares</th>
+                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Pre-IPO %</th>
+                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Post-IPO Shares</th>
+                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Post-IPO %</th>
+                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Voting %</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {financeResult.comparableCompanies.map((comp: any, idx: number) => (
+                      {financeResult.ownershipTable.map((holder: any, idx: number) => (
                         <tr key={idx} className="border-b border-gray-100 dark:border-gray-700">
-                          <td className="py-2 px-3 font-medium text-gray-900 dark:text-gray-100">{comp.name}</td>
+                          <td className="py-2 px-3 font-medium text-gray-900 dark:text-gray-100">{holder.name}</td>
                           <td className="text-right py-2 px-3 text-gray-700 dark:text-gray-300">
-                            ${(comp.marketCap / 1000000000).toFixed(1)}B
+                            {(holder.preIPOShares / 1000000).toFixed(2)}M
                           </td>
                           <td className="text-right py-2 px-3 text-gray-700 dark:text-gray-300">
-                            {comp.evRevenue?.toFixed(1)}x
+                            {(holder.preIPOPercent * 100).toFixed(1)}%
                           </td>
-                          <td className="text-right py-2 px-3 text-gray-700 dark:text-gray-300">
-                            {comp.evEbitda?.toFixed(1)}x
+                          <td className="text-right py-2 px-3 font-medium text-cyan-700 dark:text-cyan-300">
+                            {(holder.postIPOShares / 1000000).toFixed(2)}M
                           </td>
-                          <td className="text-right py-2 px-3 text-gray-700 dark:text-gray-300">
-                            {comp.peRatio?.toFixed(1)}x
+                          <td className="text-right py-2 px-3 font-medium text-cyan-700 dark:text-cyan-300">
+                            {(holder.postIPOPercent * 100).toFixed(1)}%
+                          </td>
+                          <td className="text-right py-2 px-3 text-purple-700 dark:text-purple-300">
+                            {(holder.votingPercent * 100).toFixed(1)}%
                           </td>
                         </tr>
                       ))}
@@ -4304,15 +4297,60 @@ Examples:
                 </div>
               )}
 
-              {/* Executive Summary */}
-              {financeResult.executiveSummary && (
-                <div className="p-4 bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 rounded-lg border border-cyan-200 dark:border-cyan-700">
-                  <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-3">
-                    Executive Summary
+              {/* Pricing Matrix */}
+              {financeResult.pricingMatrix && financeResult.pricingMatrix.length > 0 && (
+                <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700 overflow-x-auto">
+                  <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-4">
+                    Pricing Scenarios
                   </h4>
-                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-line">
-                    {financeResult.executiveSummary}
-                  </p>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-600">
+                        <th className="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Scenario</th>
+                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Offer Price</th>
+                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Market Cap</th>
+                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">EV/Revenue</th>
+                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Dilution</th>
+                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Day 1 Pop</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {financeResult.pricingMatrix.map((scenario: any, idx: number) => (
+                        <tr key={idx} className={`border-b border-gray-100 dark:border-gray-700 ${scenario.scenario === 'Base' ? 'bg-cyan-50/50 dark:bg-cyan-900/20' : ''}`}>
+                          <td className="py-2 px-3 font-medium text-gray-900 dark:text-gray-100">{scenario.scenario}</td>
+                          <td className="text-right py-2 px-3 font-bold text-cyan-700 dark:text-cyan-300">
+                            ${scenario.offerPrice.toFixed(2)}
+                          </td>
+                          <td className="text-right py-2 px-3 text-gray-700 dark:text-gray-300">
+                            ${(scenario.marketCap / 1000000000).toFixed(2)}B
+                          </td>
+                          <td className="text-right py-2 px-3 text-gray-700 dark:text-gray-300">
+                            {scenario.evRevenue.toFixed(1)}x
+                          </td>
+                          <td className="text-right py-2 px-3 text-orange-700 dark:text-orange-300">
+                            {(scenario.dilution * 100).toFixed(1)}%
+                          </td>
+                          <td className="text-right py-2 px-3 text-green-700 dark:text-green-300">
+                            +{(scenario.expectedDayOnePop * 100).toFixed(0)}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Warnings */}
+              {financeResult.warnings && financeResult.warnings.length > 0 && (
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-700">
+                  <h4 className="text-lg font-semibold text-yellow-800 dark:text-yellow-200 mb-3">
+                    Considerations & Warnings
+                  </h4>
+                  <ul className="list-disc list-inside space-y-1 text-yellow-700 dark:text-yellow-300">
+                    {financeResult.warnings.map((warning: string, idx: number) => (
+                      <li key={idx}>{warning}</li>
+                    ))}
+                  </ul>
                 </div>
               )}
             </div>
