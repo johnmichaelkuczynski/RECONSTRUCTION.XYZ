@@ -22,6 +22,11 @@ export interface IPOAssumptions {
   greenshoePercent?: number;    // Over-allotment option as decimal (typically 0.15 = 15%)
   underwritingFeePercent?: number;  // Underwriting commission as decimal (typically 0.07 = 7%)
   
+  // Convertible Debt (Optional)
+  convertibleDebtAmount?: number;     // Convertible debt amount in millions
+  conversionTriggerPrice?: number;    // Price per share that triggers conversion
+  conversionShares?: number;          // Shares debt converts into (in millions)
+  
   // Valuation Method
   valuationMethod: 'revenue' | 'ebitda' | 'blended';
   blendWeight?: number;         // Weight for revenue multiple in blended (0-1)
@@ -60,6 +65,17 @@ export interface IPOPricingResult {
   expectedFirstDayPop: number;   // Expected first day gain (discount inverse)
   marketCapAtOffer: number;      // Market cap at offer price in millions
   
+  // Convertible Debt Treatment
+  convertibleDebtTreatment?: {
+    triggerPrice: number;
+    debtAmount: number;
+    conversionShares: number;
+    conversionActivated: boolean;
+    originalPreIpoShares: number;
+    adjustedPreIpoShares: number;
+    tentativeOfferPrice: number;
+  };
+  
   // Warnings
   warnings: string[];
   
@@ -86,6 +102,10 @@ Return a JSON object with the following structure:
   "greenshoePercent": number (as decimal, default 0.15 for 15% over-allotment),
   "underwritingFeePercent": number (as decimal, default 0.07 for 7% fee),
   
+  "convertibleDebtAmount": number or null (Convertible debt amount in millions, null if none),
+  "conversionTriggerPrice": number or null (Price per share that triggers conversion, null if no convertible debt),
+  "conversionShares": number or null (Shares the debt converts into in millions, null if no convertible debt),
+  
   "valuationMethod": "revenue" or "ebitda" or "blended" (default "revenue"),
   "blendWeight": number or 0.5 (weight for revenue in blended, default 0.5)
 }
@@ -96,6 +116,7 @@ Default values if not specified:
 - underwritingFeePercent: 0.07 (7% standard for IPOs)
 - secondaryShares: 0 (no secondary if not mentioned)
 - valuationMethod: "revenue" (unless EBITDA multiple is the focus)
+- convertibleDebtAmount, conversionTriggerPrice, conversionShares: null if no convertible debt mentioned
 
 IMPORTANT: Return ONLY valid JSON, no markdown, no explanations.`;
 
@@ -223,6 +244,9 @@ export async function parseIPODescription(
     secondaryShares: parsed.secondaryShares || 0,
     greenshoePercent: parsed.greenshoePercent ?? 0.15,
     underwritingFeePercent: parsed.underwritingFeePercent ?? 0.07,
+    convertibleDebtAmount: parsed.convertibleDebtAmount || undefined,
+    conversionTriggerPrice: parsed.conversionTriggerPrice || undefined,
+    conversionShares: parsed.conversionShares || undefined,
     valuationMethod: parsed.valuationMethod || 'revenue',
     blendWeight: parsed.blendWeight ?? 0.5,
   };
@@ -236,17 +260,21 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     ltmEbitda,
     industryRevenueMultiple,
     industryEbitdaMultiple,
-    preIpoShares,
+    preIpoShares: originalPreIpoShares,
     primaryRaiseTarget,
     ipoDiscount,
     secondaryShares = 0,
     greenshoePercent = 0.15,
     underwritingFeePercent = 0.07,
+    convertibleDebtAmount,
+    conversionTriggerPrice,
+    conversionShares,
     valuationMethod,
     blendWeight = 0.5,
   } = assumptions;
 
   const warnings: string[] = [];
+  let convertibleDebtTreatment: IPOPricingResult['convertibleDebtTreatment'] = undefined;
 
   // ============ PHASE 1: Calculate Pre-Money Valuation ============
   let preMoneyValuation: number;
@@ -274,16 +302,60 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     warnings.push('Missing EBITDA data for selected valuation method. Defaulted to revenue multiple.');
   }
 
-  // ============ PHASE 2: Calculate Theoretical & Offer Price ============
-  // Theoretical Price = Pre-Money Valuation / Pre-IPO Shares
-  // Note: preIpoShares is in millions, so we need to adjust
-  const theoreticalPrice = preMoneyValuation / preIpoShares;
-  console.log(`[IPO Model] Theoretical Price: $${preMoneyValuation}M / ${preIpoShares}M shares = $${theoreticalPrice.toFixed(2)}/share`);
+  // ============ PHASE 2: Handle Convertible Debt ============
+  // Calculate initial theoretical price WITHOUT conversion to check trigger
+  const initialTheoreticalPrice = preMoneyValuation / originalPreIpoShares;
+  const tentativeOfferPrice = initialTheoreticalPrice * (1 - ipoDiscount);
+  
+  let adjustedPreIpoShares = originalPreIpoShares;
+  let conversionActivated = false;
+  
+  // Check if we have convertible debt and if it triggers
+  if (convertibleDebtAmount && conversionTriggerPrice && conversionShares) {
+    console.log(`[IPO Model] ============ CONVERTIBLE DEBT CHECK ============`);
+    console.log(`[IPO Model] Tentative Offer Price: $${tentativeOfferPrice.toFixed(2)}`);
+    console.log(`[IPO Model] Conversion Trigger: $${conversionTriggerPrice.toFixed(2)}`);
+    
+    if (tentativeOfferPrice > conversionTriggerPrice) {
+      // DEBT CONVERTS: Add conversion shares
+      conversionActivated = true;
+      adjustedPreIpoShares = originalPreIpoShares + conversionShares;
+      console.log(`[IPO Model] CONVERSION ACTIVATED! Price $${tentativeOfferPrice.toFixed(2)} > Trigger $${conversionTriggerPrice.toFixed(2)}`);
+      console.log(`[IPO Model] Adding ${conversionShares}M conversion shares`);
+      console.log(`[IPO Model] Adjusted Pre-IPO Shares: ${originalPreIpoShares}M + ${conversionShares}M = ${adjustedPreIpoShares}M`);
+      warnings.push(`Convertible debt ($${convertibleDebtAmount}M) converted at $${conversionTriggerPrice.toFixed(2)} trigger, adding ${conversionShares}M shares.`);
+    } else {
+      console.log(`[IPO Model] No conversion: Price $${tentativeOfferPrice.toFixed(2)} <= Trigger $${conversionTriggerPrice.toFixed(2)}`);
+    }
+    
+    // Record convertible debt treatment for output
+    convertibleDebtTreatment = {
+      triggerPrice: conversionTriggerPrice,
+      debtAmount: convertibleDebtAmount,
+      conversionShares: conversionShares,
+      conversionActivated,
+      originalPreIpoShares,
+      adjustedPreIpoShares,
+      tentativeOfferPrice,
+    };
+  }
+
+  // ============ PHASE 3: Calculate Final Theoretical & Offer Price ============
+  // Use adjusted share count (may be same as original if no conversion)
+  const theoreticalPrice = preMoneyValuation / adjustedPreIpoShares;
+  console.log(`[IPO Model] Theoretical Price: $${preMoneyValuation}M / ${adjustedPreIpoShares}M shares = $${theoreticalPrice.toFixed(2)}/share`);
 
   // Apply Market Discount to get Offer Price
-  // Offer Price = Theoretical Price × (1 - IPO Discount)
-  const offerPrice = theoreticalPrice * (1 - ipoDiscount);
+  let offerPrice = theoreticalPrice * (1 - ipoDiscount);
   console.log(`[IPO Model] Offer Price: $${theoreticalPrice.toFixed(2)} × (1 - ${(ipoDiscount*100).toFixed(0)}%) = $${offerPrice.toFixed(2)}/share`);
+
+  // Edge case: If conversion dilution pushed price below trigger, force just above
+  if (conversionActivated && conversionTriggerPrice && offerPrice < conversionTriggerPrice) {
+    console.log(`[IPO Model] EDGE CASE: Dilution pushed price ($${offerPrice.toFixed(2)}) below trigger ($${conversionTriggerPrice.toFixed(2)})`);
+    offerPrice = conversionTriggerPrice + 0.01;
+    console.log(`[IPO Model] Forcing price to $${offerPrice.toFixed(2)} (just above trigger)`);
+    warnings.push(`Dilution pushed price below trigger. Forced to $${offerPrice.toFixed(2)}.`);
+  }
 
   // Warning for low price
   if (offerPrice < 1.00) {
@@ -293,21 +365,20 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     warnings.push('Price below $5.00 may face institutional investor restrictions (penny stock concerns).');
   }
 
-  // ============ PHASE 3: Calculate Shares to Issue ============
+  // ============ PHASE 4: Calculate Shares to Issue ============
+  // Use adjusted share count for all remaining calculations
+  const preIpoShares = adjustedPreIpoShares;
+  
   // New Shares Issued = Primary Raise Target / Offer Price
-  // Note: primaryRaiseTarget is in millions, offerPrice is per share
-  // newSharesIssued will be in millions
   const newSharesIssued = primaryRaiseTarget / offerPrice;
   console.log(`[IPO Model] New Shares: $${primaryRaiseTarget}M / $${offerPrice.toFixed(2)} = ${(newSharesIssued * 1000000).toLocaleString()} shares (${newSharesIssued.toFixed(4)}M)`);
 
-  // ============ PHASE 4: Calculate Post-Money Valuation ============
-  // Post-Money = (Offer Price × Pre-IPO Shares) + Primary Raise
-  // This equals the implied pre-money at offer + cash raised
+  // ============ PHASE 5: Calculate Post-Money Valuation ============
   const impliedPreMoneyAtOffer = offerPrice * preIpoShares;
   const postMoneyValuation = impliedPreMoneyAtOffer + primaryRaiseTarget;
   console.log(`[IPO Model] Post-Money: ($${offerPrice.toFixed(2)} × ${preIpoShares}M) + $${primaryRaiseTarget}M = $${postMoneyValuation.toFixed(2)}M`);
 
-  // ============ PHASE 5: Calculate Offering Structure ============
+  // ============ PHASE 6: Calculate Offering Structure ============
   const totalPrimarySecondary = newSharesIssued + secondaryShares;
   const greenshoeShares = totalPrimarySecondary * greenshoePercent;
   const totalSharesOffered = totalPrimarySecondary + greenshoeShares;
@@ -318,7 +389,7 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
   // With full greenshoe exercise
   const postIpoSharesWithGreenshoe = postIpoSharesOutstanding + greenshoeShares;
 
-  // ============ PHASE 6: Calculate Proceeds ============
+  // ============ PHASE 7: Calculate Proceeds ============
   const grossPrimaryProceeds = newSharesIssued * offerPrice;
   const secondaryProceeds = secondaryShares * offerPrice;
   const greenshoeProceeds = greenshoeShares * offerPrice;
@@ -328,11 +399,11 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
   const underwritingFees = totalGrossProceeds * underwritingFeePercent;
   const netPrimaryProceeds = grossPrimaryProceeds - (grossPrimaryProceeds / totalGrossProceeds * underwritingFees);
 
-  // ============ PHASE 7: Calculate Ownership & Dilution ============
+  // ============ PHASE 8: Calculate Ownership & Dilution ============
   const percentageSold = (newSharesIssued / postIpoSharesOutstanding) * 100;
   const existingHoldersDilution = (1 - (preIpoShares / postIpoSharesOutstanding)) * 100;
   
-  // ============ PHASE 8: Trading Metrics ============
+  // ============ PHASE 9: Trading Metrics ============
   // Expected first day pop = inverse of discount
   // If 20% discount applied, fair value is 25% higher than offer
   const expectedFirstDayPop = (1 / (1 - ipoDiscount) - 1) * 100;
@@ -345,6 +416,9 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
   console.log(`[IPO Model] Primary Shares: ${(newSharesIssued * 1000000).toLocaleString()} (${newSharesIssued.toFixed(4)}M)`);
   console.log(`[IPO Model] Dilution: ${existingHoldersDilution.toFixed(1)}%`);
   console.log(`[IPO Model] Expected First Day Pop: ${expectedFirstDayPop.toFixed(1)}%`);
+  if (conversionActivated) {
+    console.log(`[IPO Model] Convertible Debt: CONVERTED (added ${conversionShares}M shares)`);
+  }
 
   return {
     companyName,
@@ -373,6 +447,8 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     
     expectedFirstDayPop,
     marketCapAtOffer,
+    
+    convertibleDebtTreatment,
     
     warnings,
     assumptions,
@@ -530,6 +606,48 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
     row++;
   });
   
+  // Convertible Debt Section (if applicable)
+  if (result.convertibleDebtTreatment) {
+    row += 1;
+    summarySheet.getCell(`A${row}`).value = '5. CONVERTIBLE DEBT TREATMENT';
+    summarySheet.getCell(`A${row}`).style = sectionStyle;
+    summarySheet.mergeCells(`A${row}:E${row}`);
+    row++;
+    
+    const cdt = result.convertibleDebtTreatment;
+    const convertibleData: [string, string | number, string?][] = [
+      ['Trigger Price', cdt.triggerPrice || 0, 'per share'],
+      ['Debt Amount', cdt.debtAmount || 0, 'millions'],
+      ['Conversion Shares', cdt.conversionShares || 0, 'millions'],
+      ['Conversion Activated', cdt.conversionActivated ? 'YES' : 'NO'],
+      ['Original Pre-IPO Shares', cdt.originalPreIpoShares || 0, 'millions'],
+      ['Adjusted Pre-IPO Shares', cdt.adjustedPreIpoShares || 0, 'millions'],
+      ['Tentative Offer Price (pre-conversion)', cdt.tentativeOfferPrice || 0, 'per share'],
+    ];
+    
+    convertibleData.forEach(([label, value, unit]) => {
+      summarySheet.getCell(`A${row}`).value = label as string;
+      summarySheet.getCell(`B${row}`).value = value;
+      if (typeof value === 'number') {
+        if ((unit as string)?.includes('share')) {
+          summarySheet.getCell(`B${row}`).numFmt = currencyFormat;
+        } else if ((unit as string)?.includes('millions')) {
+          summarySheet.getCell(`B${row}`).numFmt = millionsFormat;
+        }
+      }
+      if (value === 'YES') {
+        summarySheet.getCell(`B${row}`).font = { bold: true, color: { argb: 'FF006400' } };
+      } else if (value === 'NO') {
+        summarySheet.getCell(`B${row}`).font = { color: { argb: 'FF666666' } };
+      }
+      if (unit) {
+        summarySheet.getCell(`C${row}`).value = unit as string;
+        summarySheet.getCell(`C${row}`).font = { italic: true, color: { argb: 'FF666666' } };
+      }
+      row++;
+    });
+  }
+  
   // Warnings
   if (result.warnings && result.warnings.length > 0) {
     row += 1;
@@ -580,6 +698,11 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
     ['IPO Discount', ((assumptions.ipoDiscount || 0.15) * 100).toFixed(1) + '%'],
     ['Greenshoe (Over-allotment)', ((assumptions.greenshoePercent || 0.15) * 100).toFixed(1) + '%'],
     ['Underwriting Fee', ((assumptions.underwritingFeePercent || 0.07) * 100).toFixed(1) + '%'],
+    [''],
+    ['CONVERTIBLE DEBT'],
+    ['Convertible Debt Amount', assumptions.convertibleDebtAmount || 'N/A', assumptions.convertibleDebtAmount ? 'millions' : ''],
+    ['Conversion Trigger Price', assumptions.conversionTriggerPrice ? `$${assumptions.conversionTriggerPrice.toFixed(2)}` : 'N/A'],
+    ['Conversion Shares', assumptions.conversionShares || 'N/A', assumptions.conversionShares ? 'millions' : ''],
   ];
   
   row = 3;
@@ -588,7 +711,7 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
       row++;
       return;
     }
-    if (['FINANCIAL METRICS', 'VALUATION', 'SHARE STRUCTURE', 'OFFERING TERMS'].includes(label as string)) {
+    if (['FINANCIAL METRICS', 'VALUATION', 'SHARE STRUCTURE', 'OFFERING TERMS', 'CONVERTIBLE DEBT'].includes(label as string)) {
       summarySheet.getCell(`A${row}`).style = sectionStyle;
     }
     assumptionsSheet.getCell(`A${row}`).value = label as string;
