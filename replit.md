@@ -40,6 +40,9 @@ The application uses a monorepo structure, separating client and server.
         - **Trading Metrics**: Market cap at offer, expected first-day pop
         - **Excel Export**: 3-tab workbook (Summary, Assumptions, Calculation Steps) with full walkthrough
         - **Formulas**: Pre-Money = LTM Revenue × Multiple; Theoretical Price = Pre-Money / Pre-IPO Shares; Offer Price = Theoretical × (1 - Discount)
+        - **Unit Normalization (December 2024 Fix)**: Automatic handling of LLM parsing inconsistencies. Dollar amounts >10,000 auto-convert to millions; share counts >1,000 auto-convert to millions. Prevents billion-scale errors.
+        - **Convertible Debt Treatment**: Tracks trigger price, debt amount, conversion shares. If offer price exceeds trigger, converts debt to equity, adds conversion shares to pre-IPO count, recalculates final offer price with dilution. Full Excel integration showing activation status.
+        - **Dual-Class Share Voting Control (December 2024)**: Calculates founder voting power (founder shares × vote multiplier) vs public votes (non-founder shares × 1). Compares against user-specified control threshold. Generates CRITICAL warning if founders lose voting control post-IPO. Includes Governance section in Excel export with voting breakdown and status (SECURED/BREACHED).
       - **3-Statement Model**: Fully implemented with comprehensive 11-tab Excel generation:
         - **Income Statement**: Revenue, COGS, Gross Profit, Operating Expenses, EBITDA, D&A, EBIT, Interest, Taxes, Net Income, EPS
         - **Balance Sheet**: Assets (Cash, A/R, Inventory, PP&E), Liabilities (A/P, Debt), Shareholders' Equity with balance check (Assets = L + E)
