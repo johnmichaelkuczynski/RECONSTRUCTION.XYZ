@@ -39,6 +39,8 @@ export interface IPOAssumptions {
   // Peer comps
   peerMedianEVRevenue: number;
   peerMedianEVRaNPV?: number; // For biotech - EV/raNPV multiple
+  peerMedianEVEBITDA?: number; // For restaurants, retail, consumer staples - EV/EBITDA multiple
+  peerMedianNTMFCF?: number; // Alternative: NTM FCF multiple
   
   orderBook: {
     priceLevel: number;
@@ -98,17 +100,33 @@ export interface IPOAssumptions {
   
   // BUG FIX #6: Customer concentration
   customerConcentrationTop5?: number; // e.g., 0.47 for 47%
+  
+  // DCF Inputs - user-provided override sector defaults
+  wacc?: number; // User-provided WACC (e.g., 0.085 for 8.5%)
+  terminalGrowthRate?: number; // User-provided terminal growth (e.g., 0.03 for 3%)
+  capexPercent?: number; // CapEx as % of revenue (e.g., 0.05 for 5%)
+  taxRate?: number; // Tax rate (e.g., 0.26 for 26%)
+  nwcDays?: number; // Net working capital days (negative for cash-generating business)
 }
 
 const IPO_PARSING_PROMPT = `You are an investment banking expert. Parse the IPO description and extract ALL parameters with precision.
 
+*** CRITICAL: DO NOT HALLUCINATE VALUES ***
+- ONLY extract values explicitly stated in the input
+- DO NOT invent/guess indicatedPriceRangeLow or indicatedPriceRangeHigh if not provided
+- DO NOT invent fairValuePerShare - leave it undefined if not given
+- DO NOT infer values from context - ONLY use explicit user numbers
+
 CRITICAL PARSING RULES:
 
-1. SECTOR DETECTION:
+1. SECTOR DETECTION (BE PRECISE):
    - "biotech" / "biopharmaceutical" / "clinical-stage" / "Phase" → sector = "biotech"
    - "SaaS" / "enterprise software" → sector = "saas"
    - "AI infrastructure" / "GPU cloud" → sector = "ai_infrastructure"
    - "defense-tech" / "national security" → sector = "defense_tech"
+   - "restaurant" / "fast-casual" / "QSR" / "food service" / "chain restaurant" → sector = "restaurant"
+   - "consumer staples" / "consumer goods" / "CPG" → sector = "consumer_staples"
+   - "retail" / "e-commerce" / "DTC" → sector = "retail"
 
 2. VALUATION TYPE - CRITICAL FOR BIOTECH:
    - If input mentions "risk-adjusted NPV" / "raNPV" / "rNPV" → fairValueType = "ranpv"
@@ -116,9 +134,13 @@ CRITICAL PARSING RULES:
    - Parse "total_ranpv" in millions as totalRaNPV
    - If input has "dcf" / "DCF valuation" → fairValueType = "dcf"
 
-3. PEER COMPS FOR BIOTECH:
+3. PEER COMPS - PARSE BY SECTOR:
    - If "median EV/raNPV" or "EV/rNPV" is given, set peerMedianEVRaNPV (e.g., 2.4)
+   - If "median EV/EBITDA" or "EV/EBITDA" is given, set peerMedianEVEBITDA (e.g., 8.8)
+   - If "median NTM FCF" or "FCF multiple" is given, set peerMedianNTMFCF (e.g., 22)
    - Regular EV/Revenue goes to peerMedianEVRevenue
+   - RESTAURANTS/RETAIL/CONSUMER: Always extract EV/EBITDA as the primary multiple
+   - CRITICAL FOR RESTAURANTS: Parse "8.8× NTM EV/EBITDA" → peerMedianEVEBITDA = 8.8
 
 4. SECTOR HISTORICAL BENCHMARKS:
    - Parse "sector_ipos_2024_2025.avg_day1_return" → sectorAverageFirstDayPop
@@ -144,14 +166,19 @@ CRITICAL PARSING RULES:
    - "$22+: 5.8×" → { priceLevel: 22, oversubscription: 5.8 }
    - Include ALL tiers mentioned
 
-9. REVENUE:
+9. REVENUE AND EBITDA:
    - For pre-revenue biotech, ntmRevenue = 0
    - Parse FY2026 guidance if present
+   - Parse NTM EBITDA directly if given, OR calculate as: ntmEBITDA = ntmRevenue × ntmEBITDAMargin
+   - For restaurants: Look for "EBITDA margin" and convert to decimal (16.5% → 0.165)
 
 10. DOWN-ROUND DETECTION (CRITICAL):
    - Parse "last_private_round.price_per_share" or "Series E price" → lastPrivateRoundPrice
-   - Parse "risk_factors.down_round_optics" → downRoundOptics (true if mentioned)
+   - Parse "risk_factors.down_round_optics" → downRoundOptics (true ONLY if explicitly flagged as concern)
    - Parse "down_round_ipo_penalty.avg_additional_discount" → downRoundIpoPenalty (ONLY if explicitly provided, NO DEFAULT)
+   - FOR RESTAURANTS/RETAIL/CONSUMER: downRoundOptics = false unless explicitly stated as a concern
+   - DOWN-ROUND LOGIC ONLY APPLIES FOR: biotech sectors OR when input says "down-round is a concern"
+   - PROFITABLE NON-BIOTECH COMPANIES: DO NOT set downRoundOptics=true just because lastPrivateRoundPrice exists
 
 11. DUAL-CLASS STRUCTURE:
    - If "dual_class" or "Class A/B shares" mentioned → dualClass = true
@@ -170,11 +197,18 @@ CRITICAL PARSING RULES:
 14. CUSTOMER CONCENTRATION:
    - Parse "top_5_customers_pct" or "customer_concentration" → customerConcentrationTop5 (as decimal, e.g., 0.47)
 
+15. DCF INPUTS (CRITICAL - PARSE EXACTLY):
+   - Parse "WACC" → wacc (as decimal, e.g., 0.085 for 8.5%)
+   - Parse "terminal growth" → terminalGrowthRate (as decimal, e.g., 0.03 for 3%)
+   - Parse "CapEx" or "capital expenditure" % → capexPercent (as decimal, e.g., 0.05 for 5%)
+   - Parse "tax rate" → taxRate (as decimal, e.g., 0.26 for 26%)
+   - Parse "NWC" or "working capital days" → nwcDays (integer, can be negative for cash-generating business)
+
 Return JSON:
 {
   "companyName": "string",
   "filingDate": "YYYY-MM-DD",
-  "sector": "biotech" | "saas" | "ai_infrastructure" | "defense_tech" | "tech",
+  "sector": "biotech" | "saas" | "ai_infrastructure" | "defense_tech" | "restaurant" | "consumer_staples" | "retail" | "tech",
   
   "sharesOutstandingPreIPO": number (millions),
   "primarySharesOffered": number (millions),
@@ -185,8 +219,8 @@ Return JSON:
   "targetGrossProceeds": number (millions),
   "primaryDollarRaiseM": number (millions, primary proceeds target),
   "secondaryDollarRaiseM": number (millions, secondary proceeds if any),
-  "indicatedPriceRangeLow": number,
-  "indicatedPriceRangeHigh": number,
+  "indicatedPriceRangeLow": number or null (ONLY if explicitly provided in input - DO NOT INVENT),
+  "indicatedPriceRangeHigh": number or null (ONLY if explicitly provided in input - DO NOT INVENT),
   
   "currentCash": number (millions),
   "currentDebt": number (millions, total debt on balance sheet),
@@ -197,12 +231,14 @@ Return JSON:
   "ntmEBITDA": number (millions),
   "ntmEBITDAMargin": number (decimal),
   
-  "fairValuePerShare": number,
+  "fairValuePerShare": number or null (ONLY if explicitly provided - DCF will be computed automatically if not),
   "fairValueType": "dcf" | "ranpv",
   "totalRaNPV": number (millions, if provided),
   
   "peerMedianEVRevenue": number,
   "peerMedianEVRaNPV": number (if biotech),
+  "peerMedianEVEBITDA": number (if restaurant/retail/consumer - THIS IS THE PRIMARY MULTIPLE FOR THESE SECTORS),
+  "peerMedianNTMFCF": number (alternative FCF multiple if provided),
   
   "orderBook": [
     { "priceLevel": number, "oversubscription": number }
@@ -244,7 +280,13 @@ Return JSON:
     "fy2025to2026Growth": number (decimal)
   },
   
-  "customerConcentrationTop5": number (decimal, e.g., 0.47 for 47%)
+  "customerConcentrationTop5": number (decimal, e.g., 0.47 for 47%),
+  
+  "wacc": number (decimal, e.g., 0.085 for 8.5% - USE USER INPUT IF PROVIDED),
+  "terminalGrowthRate": number (decimal, e.g., 0.03 for 3%),
+  "capexPercent": number (decimal, e.g., 0.05 for 5% of revenue),
+  "taxRate": number (decimal, e.g., 0.26 for 26%),
+  "nwcDays": number (integer, can be negative)
 }
 
 Return ONLY JSON, no markdown.`;
@@ -347,6 +389,20 @@ export async function parseIPODescription(
   if (!assumptions.downRoundIpoPenalty) assumptions.downRoundIpoPenalty = 0; // Neutral default
   if (!assumptions.dualClassDiscount) assumptions.dualClassDiscount = 0; // Neutral default
   
+  // Calculate ntmEBITDA if not directly provided but we have revenue and margin
+  if (!assumptions.ntmEBITDA && assumptions.ntmRevenue && assumptions.ntmEBITDAMargin) {
+    assumptions.ntmEBITDA = assumptions.ntmRevenue * assumptions.ntmEBITDAMargin;
+  }
+  
+  // For restaurant/consumer sectors, ensure downRoundOptics defaults to false unless explicitly flagged
+  const sectorLower = (assumptions.sector || "").toLowerCase();
+  const isRestaurantConsumer = sectorLower === "restaurant" || sectorLower === "consumer_staples" || 
+                               sectorLower === "retail" || sectorLower === "fast-casual" ||
+                               sectorLower === "qsr" || sectorLower === "cpg";
+  if (isRestaurantConsumer && assumptions.downRoundOptics === undefined) {
+    assumptions.downRoundOptics = false; // Explicitly false for profitable consumer companies
+  }
+  
   // CRITICAL: NO inference from CEO guidance text - require explicit user input
   // If pricingAggressiveness not explicitly provided, default to "moderate" (neutral)
   if (!assumptions.pricingAggressiveness) {
@@ -377,11 +433,13 @@ interface PricingRow {
   enterpriseValueM: number; // EV = MarketCap + Debt - Cash (CORRECT FORMULA)
   
   ntmEVRevenue: number;
+  ntmEVEBITDA: number; // For restaurant/consumer sectors
   evRaNPV: number;
   growthAdjustedMultiple: number; // BUG FIX #5: peer multiple adjusted for deceleration
   
   vsPeerMedianRevenue: number;
   vsPeerMedianRaNPV: number;
+  vsPeerMedianEBITDA: number; // For restaurant/consumer sectors
   
   fairValueSupport: number;
   grossProceedsM: number;
@@ -416,6 +474,7 @@ interface PricingRow {
  * SIMPLE DCF CALCULATION FOR IPO FAIR VALUE
  * Computes fair value per share from revenue/EBITDA projections
  * Uses sector-appropriate assumptions when not provided by user
+ * CRITICAL: User-provided WACC takes precedence over sector defaults
  */
 function calculateSimpleDCF(params: {
   ntmRevenue: number;
@@ -427,6 +486,9 @@ function calculateSimpleDCF(params: {
   currentDebt: number;
   sharesOutstandingPreIPO: number;
   sector: string;
+  userWACC?: number; // User-provided WACC takes precedence
+  userTerminalGrowth?: number; // User-provided terminal growth
+  projectionYears?: number; // User can specify projection years (default 5)
 }): { fairValuePerShare: number; dcfDetails: string } {
   const {
     ntmRevenue,
@@ -437,6 +499,9 @@ function calculateSimpleDCF(params: {
     currentDebt,
     sharesOutstandingPreIPO,
     sector,
+    userWACC,
+    userTerminalGrowth,
+    projectionYears: inputProjYears,
   } = params;
   
   // Guard - can't compute DCF without revenue
@@ -444,40 +509,66 @@ function calculateSimpleDCF(params: {
     return { fairValuePerShare: 0, dcfDetails: "Insufficient data for DCF calculation" };
   }
   
-  // Sector-specific WACC and terminal assumptions
-  let wacc = 0.10; // 10% default
-  let terminalGrowth = 0.025; // 2.5% default
+  // Sector-specific defaults - USER-PROVIDED WACC TAKES PRECEDENCE
+  let wacc = userWACC || 0.10; // Use user's WACC if provided, else 10% default
+  let terminalGrowth = userTerminalGrowth || 0.025; // 2.5% default
   let targetEBITDAMargin = 0.20; // 20% terminal EBITDA margin
+  const projectionYears = inputProjYears || 5;
   
-  switch (sector.toLowerCase()) {
-    case "saas":
-    case "enterprise software":
-    case "software":
-      wacc = 0.095; // 9.5% - lower risk for recurring revenue
-      targetEBITDAMargin = 0.30; // 30% terminal
-      break;
-    case "consumer internet":
-    case "consumer":
-    case "marketplace":
-      wacc = 0.11; // 11% - higher consumer risk
-      targetEBITDAMargin = 0.25;
-      break;
-    case "fintech":
-    case "payments":
-      wacc = 0.10;
-      targetEBITDAMargin = 0.25;
-      break;
-    case "ai_infrastructure":
-    case "ai":
-    case "hardware":
-      wacc = 0.12; // 12% - capex heavy
-      targetEBITDAMargin = 0.25;
-      break;
-    case "biotech":
-    case "biopharmaceutical":
-    case "clinical-stage":
-      // For biotech, DCF doesn't apply - use raNPV instead
-      return { fairValuePerShare: 0, dcfDetails: "DCF not applicable for biotech - use raNPV valuation" };
+  // Only apply sector defaults if user didn't provide WACC
+  if (!userWACC) {
+    switch (sector.toLowerCase()) {
+      case "saas":
+      case "enterprise software":
+      case "software":
+        wacc = 0.095; // 9.5% - lower risk for recurring revenue
+        targetEBITDAMargin = 0.30; // 30% terminal
+        break;
+      case "consumer internet":
+      case "consumer":
+      case "marketplace":
+        wacc = 0.11; // 11% - higher consumer risk
+        targetEBITDAMargin = 0.25;
+        break;
+      case "fintech":
+      case "payments":
+        wacc = 0.10;
+        targetEBITDAMargin = 0.25;
+        break;
+      case "ai_infrastructure":
+      case "ai":
+      case "hardware":
+        wacc = 0.12; // 12% - capex heavy
+        targetEBITDAMargin = 0.25;
+        break;
+      case "biotech":
+      case "biopharmaceutical":
+      case "clinical-stage":
+        // For biotech, DCF doesn't apply - use raNPV instead
+        return { fairValuePerShare: 0, dcfDetails: "DCF not applicable for biotech - use raNPV valuation" };
+      // NEW: Restaurant and consumer staples sectors
+      case "restaurant":
+      case "fast-casual":
+      case "qsr":
+      case "food service":
+        wacc = 0.085; // 8.5% - stable cash flows
+        targetEBITDAMargin = 0.18; // 18% terminal
+        terminalGrowth = userTerminalGrowth || 0.03; // 3% terminal
+        break;
+      case "consumer_staples":
+      case "consumer staples":
+      case "cpg":
+        wacc = 0.08; // 8% - very stable
+        targetEBITDAMargin = 0.20;
+        terminalGrowth = userTerminalGrowth || 0.025;
+        break;
+      case "retail":
+      case "e-commerce":
+      case "dtc":
+        wacc = 0.10;
+        targetEBITDAMargin = 0.15;
+        break;
+    }
   }
   
   // Determine EBITDA margin - use provided or estimate from sector
@@ -490,8 +581,7 @@ function calculateSimpleDCF(params: {
     initialGrowthRate = growthRates.fy2024to2025Growth;
   }
   
-  // 5-year DCF projection
-  const projectionYears = 5;
+  // N-year DCF projection (default 5)
   let revenue = ntmRevenue;
   let totalPVFCF = 0;
   const dcfYears: string[] = [];
@@ -606,6 +696,15 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     growthRates,
     // BUG FIX #6: Customer concentration
     customerConcentrationTop5 = 0,
+    // DCF Inputs - user-provided override sector defaults
+    wacc: userWACC,
+    terminalGrowthRate: userTerminalGrowth,
+    capexPercent,
+    taxRate,
+    nwcDays,
+    // New: EV/EBITDA for restaurant/consumer sectors
+    peerMedianEVEBITDA,
+    peerMedianNTMFCF,
   } = assumptions;
 
   // FIX: Sector detection - only treat as biotech if explicitly tagged biotech
@@ -615,11 +714,42 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
   // Only use raNPV valuation if EXPLICITLY biotech/clinical-stage, not just missing revenue
   const useRaNPVValuation = isBiotech && isPreRevenue;
   
+  // Sector uses EV/EBITDA as primary multiple (not EV/Revenue)
+  const sectorLower = (sector || "").toLowerCase();
+  const useEVEBITDAValuation = sectorLower === "restaurant" || sectorLower === "fast-casual" || 
+                               sectorLower === "qsr" || sectorLower === "food service" ||
+                               sectorLower === "consumer_staples" || sectorLower === "consumer staples" ||
+                               sectorLower === "retail" || sectorLower === "cpg";
+  
+  // Down-round logic ONLY applies if:
+  // 1. User explicitly says downRoundOptics is true, OR
+  // 2. This is a biotech/clinical-stage company (where down-rounds are common IPO risk)
+  // For profitable consumer/restaurant companies, down-rounds are NOT relevant IPO concerns
+  const applyDownRoundLogic = downRoundOptics === true || isBiotech;
+  
   const warnings: string[] = [];
+  
+  // CRITICAL: Backfill ntmEBITDA from revenue × margin BEFORE price range derivation
+  // This ensures EV/EBITDA Method 3 can run for restaurant/consumer sectors
+  let effectiveNtmEBITDA = assumptions.ntmEBITDA || 0;
+  if (!effectiveNtmEBITDA && ntmRevenue > 0 && assumptions.ntmEBITDAMargin && assumptions.ntmEBITDAMargin > 0) {
+    effectiveNtmEBITDA = ntmRevenue * assumptions.ntmEBITDAMargin;
+    assumptions.ntmEBITDA = effectiveNtmEBITDA; // Update assumptions for downstream use
+  }
   
   // Add sector detection warning for non-biotech with missing revenue
   if (isPreRevenue && !isBiotech) {
     warnings.push(`Pre-revenue company detected but not marked as biotech - using standard valuation metrics. Set sector="biotech" if this is a clinical-stage company.`);
+  }
+  
+  // Add warning for restaurant/consumer sectors if EV/EBITDA data is missing
+  if (useEVEBITDAValuation) {
+    if (!peerMedianEVEBITDA || peerMedianEVEBITDA <= 0) {
+      warnings.push(`Restaurant/consumer sector detected but peerMedianEVEBITDA not provided - may fall back to EV/Revenue valuation`);
+    }
+    if (!effectiveNtmEBITDA || effectiveNtmEBITDA <= 0) {
+      warnings.push(`Restaurant/consumer sector detected but ntmEBITDA not provided - may fall back to EV/Revenue valuation`);
+    }
   }
   
   // Determine if we're using dollar-based or share-based inputs
@@ -664,6 +794,7 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
   
   // ALWAYS compute DCF if we have revenue data (for fair value support calculation)
   // This runs BEFORE price range determination so we have DCF available regardless of how range is set
+  // CRITICAL: Use user-provided WACC and terminal growth if given
   if (!isBiotech && ntmRevenue > 0 && sharesOutstandingPreIPO > 0 && effectiveFairValuePerShare <= 0) {
     const dcfResult = calculateSimpleDCF({
       ntmRevenue,
@@ -675,6 +806,8 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
       currentDebt,
       sharesOutstandingPreIPO,
       sector,
+      userWACC,  // Pass user-provided WACC
+      userTerminalGrowth,  // Pass user-provided terminal growth
     });
     
     if (dcfResult.fairValuePerShare > 0) {
@@ -719,7 +852,18 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
       derivedMidpoint = primaryDollarRaiseM / inputPrimaryShares;
       priceRangeSource = "derived from dollar raise / shares offered";
     }
-    // Method 4: Use peer EV/Rev multiple if revenue company
+    // Method 3: For restaurant/consumer sectors - use peer EV/EBITDA multiple
+    // This is the PRIMARY valuation method for these sectors, NOT EV/Revenue
+    else if (!derivedMidpoint && useEVEBITDAValuation && peerMedianEVEBITDA && peerMedianEVEBITDA > 0 && 
+             assumptions.ntmEBITDA && assumptions.ntmEBITDA > 0 && sharesOutstandingPreIPO > 0) {
+      // Implied EV = EBITDA * EV/EBITDA Multiple
+      const impliedEV = assumptions.ntmEBITDA * peerMedianEVEBITDA;
+      // Equity Value = EV - Debt + Cash
+      const impliedEquity = impliedEV - currentDebt + currentCash;
+      derivedMidpoint = impliedEquity / sharesOutstandingPreIPO;
+      priceRangeSource = `derived from peer EV/EBITDA multiple (${peerMedianEVEBITDA.toFixed(1)}×)`;
+    }
+    // Method 4: Use peer EV/Rev multiple if revenue company (fallback for non-restaurant)
     else if (!derivedMidpoint && peerMedianEVRevenue > 0 && ntmRevenue > 0 && sharesOutstandingPreIPO > 0) {
       // Implied EV = Rev * Multiple, then price = EV / shares (rough approximation)
       const impliedEV = ntmRevenue * peerMedianEVRevenue;
@@ -840,6 +984,14 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
       if (!isFinite(evRaNPV)) evRaNPV = 0; // Guard
     }
     
+    // EV/EBITDA for restaurant/consumer sectors - with guards
+    let ntmEVEBITDA = 0;
+    const ntmEBITDA = assumptions.ntmEBITDA || 0;
+    if (useEVEBITDAValuation && ntmEBITDA > 0 && isFinite(enterpriseValueM)) {
+      ntmEVEBITDA = Math.round((enterpriseValueM / ntmEBITDA) * 10) / 10;
+      if (!isFinite(ntmEVEBITDA)) ntmEVEBITDA = 0; // Guard
+    }
+    
     // vs Peer Median comparisons (using growth-adjusted multiple for revenue comps)
     let vsPeerMedianRevenue = 0;
     if (!isPreRevenue && ntmEVRevenue > 0 && growthAdjustedPeerMultiple > 0) {
@@ -851,6 +1003,13 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     if (totalRaNPV > 0 && evRaNPV > 0 && peerMedianEVRaNPV > 0) {
       vsPeerMedianRaNPV = Math.round(((evRaNPV - peerMedianEVRaNPV) / peerMedianEVRaNPV) * 1000) / 1000;
       if (!isFinite(vsPeerMedianRaNPV)) vsPeerMedianRaNPV = 0; // Guard
+    }
+    
+    // vs Peer Median EV/EBITDA for restaurant/consumer
+    let vsPeerMedianEBITDA = 0;
+    if (useEVEBITDAValuation && ntmEVEBITDA > 0 && peerMedianEVEBITDA && peerMedianEVEBITDA > 0) {
+      vsPeerMedianEBITDA = Math.round(((ntmEVEBITDA - peerMedianEVEBITDA) / peerMedianEVEBITDA) * 1000) / 1000;
+      if (!isFinite(vsPeerMedianEBITDA)) vsPeerMedianEBITDA = 0; // Guard
     }
     
     // === FAIR VALUE SUPPORT - CONSISTENT ROUNDING WITH GUARDS ===
@@ -902,8 +1061,9 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
         oversubscription = lowEndOversub + (highEndOversub - lowEndOversub) * pricePosition;
         oversubscription = Math.round(oversubscription * 10) / 10; // Round to 1 decimal
         
-        orderBookTier = pricePosition < 0.33 ? "Low range" : 
-                        pricePosition < 0.67 ? "Mid range" : "High range";
+        // Neutral tier descriptions (not biotech-specific)
+        orderBookTier = pricePosition < 0.33 ? "Below mid" : 
+                        pricePosition < 0.67 ? "Around mid" : "Above mid";
       }
     }
     
@@ -929,17 +1089,18 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     }
     
     // BUG FIX #1: Down-round detection and discount
-    // MECHANICAL: use user-provided downRoundIpoPenalty coefficient
+    // ONLY apply to biotech or when user explicitly flags downRoundOptics
+    // For profitable consumer/restaurant companies, down-rounds are NOT relevant
     let downRoundPercent = 0;
     let isDownRound = false;
     let downRoundDiscount = 0;
-    if (lastPrivateRoundPrice && lastPrivateRoundPrice > 0) {
+    if (lastPrivateRoundPrice && lastPrivateRoundPrice > 0 && applyDownRoundLogic) {
       downRoundPercent = (offerPrice - lastPrivateRoundPrice) / lastPrivateRoundPrice;
       isDownRound = downRoundPercent < 0;
-      if (isDownRound && downRoundOptics) {
-        // MECHANICAL: use user-provided penalty coefficient, or the absolute discount itself
+      if (isDownRound && downRoundIpoPenalty > 0) {
+        // MECHANICAL: use user-provided penalty coefficient only
         // downRoundIpoPenalty from user determines pass-through rate
-        downRoundDiscount = Math.abs(downRoundPercent) * (downRoundIpoPenalty || 0);
+        downRoundDiscount = Math.abs(downRoundPercent) * downRoundIpoPenalty;
       }
     }
     
@@ -1030,8 +1191,8 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     if (baseImpliedPop !== 0) {
       rowWarnings.push(`Implied POP: ${(adjustedImpliedPop * 100).toFixed(1)}%`);
     }
-    // Down-round - factual from user's lastPrivateRoundPrice
-    if (isDownRound) {
+    // Down-round - only show for biotech or when user explicitly flags it
+    if (isDownRound && applyDownRoundLogic) {
       rowWarnings.push(`DOWN-ROUND: ${(downRoundPercent * 100).toFixed(1)}% vs Series E`);
     }
     // Investor drop-off - factual from user's order book
@@ -1059,10 +1220,12 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
       enterpriseValueM, // EV = MarketCap + Debt - Cash (CORRECT)
       
       ntmEVRevenue,
+      ntmEVEBITDA,
       evRaNPV,
       growthAdjustedMultiple: growthAdjustedPeerMultiple,
       vsPeerMedianRevenue,
       vsPeerMedianRaNPV,
+      vsPeerMedianEBITDA,
       fairValueSupport,
       grossProceedsM,
       primaryProceedsM,
@@ -1177,8 +1340,8 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
   const recommendedRangeLow = minPrice;
   const recommendedRangeHigh = maxPrice;
   
-  // BUG FIX #1: Add down-round alert to warnings
-  if (recommendedRow.isDownRound && lastPrivateRoundPrice) {
+  // BUG FIX #1: Add down-round alert to warnings - ONLY for biotech or when user flags it
+  if (recommendedRow.isDownRound && lastPrivateRoundPrice && applyDownRoundLogic) {
     warnings.push(`DOWN-ROUND ALERT: Offer $${recommendedPrice} is ${(Math.abs(recommendedRow.downRoundPercent) * 100).toFixed(1)}% below Series E price $${lastPrivateRoundPrice.toFixed(2)}`);
   }
   
@@ -1219,6 +1382,13 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     const peerDiffPercent = Math.abs(recommendedRow.vsPeerMedianRaNPV * 100).toFixed(0);
     const peerDirection = recommendedRow.vsPeerMedianRaNPV < 0 ? "below" : "above";
     rationale.push(`$${recommendedPrice} at ${evRaNPVMultiple}× EV/raNPV (${peerDiffPercent}% ${peerDirection} peer median ${peerMedianEVRaNPV.toFixed(1)}×)`);
+  } else if (useEVEBITDAValuation && recommendedRow.ntmEVEBITDA > 0) {
+    // For restaurant/consumer sectors, use EV/EBITDA as primary multiple
+    const evEBITDAMultiple = recommendedRow.ntmEVEBITDA.toFixed(1);
+    const peerDiffPercent = Math.abs(recommendedRow.vsPeerMedianEBITDA * 100).toFixed(0);
+    const peerDirection = recommendedRow.vsPeerMedianEBITDA < 0 ? "below" : "above";
+    const peerMedian = peerMedianEVEBITDA ? `${peerMedianEVEBITDA.toFixed(1)}×` : "N/A";
+    rationale.push(`$${recommendedPrice} at ${evEBITDAMultiple}× NTM EV/EBITDA (${peerDiffPercent}% ${peerDirection} peer median ${peerMedian})`);
   } else {
     const evMultiple = recommendedRow.ntmEVRevenue.toFixed(1);
     const peerDiffPercent = Math.abs(recommendedRow.vsPeerMedianRevenue * 100).toFixed(0);
@@ -1277,7 +1447,12 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     warnings.push(w);
   }
   
-  const memoText = formatIPOMemo(assumptions, pricingMatrix, recommendedRangeLow, recommendedRangeHigh, recommendedPrice, rationale, warnings);
+  // Pass computed DCF fair value to memo (not just parsed value)
+  const assumptionsWithComputedDCF = {
+    ...assumptions,
+    fairValuePerShare: effectiveFairValuePerShare, // Use computed DCF if we calculated it
+  };
+  const memoText = formatIPOMemo(assumptionsWithComputedDCF, pricingMatrix, recommendedRangeLow, recommendedRangeHigh, recommendedPrice, rationale, warnings);
 
   return {
     assumptions,
@@ -1382,6 +1557,12 @@ function formatIPOMemo(
   
   // Use correct valuation metric - only show raNPV for explicit biotech companies
   const explicitlyBiotech = sector === "biotech" || sector === "biopharmaceutical" || sector === "clinical-stage";
+  const sectorLower = (sector || "").toLowerCase();
+  const memoUseEVEBITDA = sectorLower === "restaurant" || sectorLower === "fast-casual" || 
+                          sectorLower === "qsr" || sectorLower === "food service" ||
+                          sectorLower === "consumer_staples" || sectorLower === "consumer staples" ||
+                          sectorLower === "retail" || sectorLower === "cpg";
+  const safePeerMedianEVEBITDA = assumptions.peerMedianEVEBITDA || 0;
   
   if (explicitlyBiotech && totalRaNPV > 0) {
     const evRaNPVMultiple = (recommendedRow.evRaNPV || 0).toFixed(2);
@@ -1389,6 +1570,12 @@ function formatIPOMemo(
     memo += `Valuation Method: EV/raNPV (clinical-stage)\n`;
     memo += `EV/raNPV: ${evRaNPVMultiple}× (Peer Median: ${safePeerMedianEVRaNPV.toFixed(1)}×, ${parseInt(peerDiffPercent) >= 0 ? '+' : ''}${peerDiffPercent}%)\n`;
     memo += `Total raNPV: $${totalRaNPV.toFixed(0)}M\n`;
+  } else if (memoUseEVEBITDA && (recommendedRow.ntmEVEBITDA || 0) > 0) {
+    // For restaurant/consumer sectors, use EV/EBITDA as primary multiple
+    const evEBITDAMultiple = (recommendedRow.ntmEVEBITDA || 0).toFixed(1);
+    const peerDiffPercent = ((recommendedRow.vsPeerMedianEBITDA || 0) * 100).toFixed(0);
+    memo += `Valuation Method: EV/EBITDA (restaurant/consumer)\n`;
+    memo += `NTM EV/EBITDA: ${evEBITDAMultiple}× (Peer Median: ${safePeerMedianEVEBITDA.toFixed(1)}×, ${parseInt(peerDiffPercent) >= 0 ? '+' : ''}${peerDiffPercent}%)\n`;
   } else if (ntmRevenue > 0) {
     const evMultiple = (recommendedRow.ntmEVRevenue === Infinity || recommendedRow.ntmEVRevenue == null || recommendedRow.ntmEVRevenue === 0) ? "N/A" : recommendedRow.ntmEVRevenue.toFixed(1);
     const peerDiffPercent = ((recommendedRow.vsPeerMedianRevenue || 0) * 100).toFixed(0);
@@ -1414,11 +1601,22 @@ function formatIPOMemo(
   memo += "Market Cap             " + rows.map(r => pad(`$${Math.round(r.marketCapM).toLocaleString()}`, 10)).join("") + "\n";
   memo += "Enterprise Value       " + rows.map(r => pad(`$${Math.round(r.enterpriseValueM).toLocaleString()}`, 10)).join("") + "\n";
   
-  // Show correct valuation metric
-  if (useRaNPVValuation && totalRaNPV > 0) {
+  // Show correct valuation metric based on sector
+  if (explicitlyBiotech && totalRaNPV > 0) {
     memo += "EV/raNPV               " + rows.map(r => pad(`${(r.evRaNPV || 0).toFixed(2)}×`, 10)).join("") + "\n";
     memo += `vs peer median ${safePeerMedianEVRaNPV.toFixed(1)}×   ` + rows.map(r => {
       const pct = (r.vsPeerMedianRaNPV || 0) * 100;
+      return pad(`${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`, 10);
+    }).join("") + "\n";
+  } else if (memoUseEVEBITDA && rows.some(r => (r.ntmEVEBITDA || 0) > 0)) {
+    // For restaurant/consumer sectors, show EV/EBITDA as primary multiple
+    memo += "NTM EV/EBITDA          " + rows.map(r => {
+      if (r.ntmEVEBITDA === Infinity || r.ntmEVEBITDA == null || r.ntmEVEBITDA === 0) return pad("N/A", 10);
+      return pad(`${r.ntmEVEBITDA.toFixed(1)}×`, 10);
+    }).join("") + "\n";
+    memo += `vs peer median ${safePeerMedianEVEBITDA.toFixed(1)}×   ` + rows.map(r => {
+      if (r.vsPeerMedianEBITDA === Infinity || r.vsPeerMedianEBITDA == null) return pad("N/A", 10);
+      const pct = (r.vsPeerMedianEBITDA || 0) * 100;
       return pad(`${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`, 10);
     }).join("") + "\n";
   } else {
