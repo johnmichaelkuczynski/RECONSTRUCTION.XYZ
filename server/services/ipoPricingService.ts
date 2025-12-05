@@ -1036,9 +1036,35 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     }
   }
   
+  // === PRICING MATRIX - GENERATE 6 PRICE POINTS ===
+  // Ensure at least 6 price points for proper sensitivity analysis
   const pricePoints: number[] = [];
-  for (let p = minPrice; p <= maxPrice; p += 1) {
-    if (p > 0) pricePoints.push(p);
+  const targetNumPoints = 6;
+  const range = maxPrice - minPrice;
+  
+  if (range < targetNumPoints - 1) {
+    // Range is too narrow (e.g., $12-$14), expand to get 6 points
+    const midPoint = (minPrice + maxPrice) / 2;
+    const expandedMin = Math.max(1, Math.round(midPoint - 2.5));
+    const expandedMax = Math.round(midPoint + 2.5);
+    for (let p = expandedMin; p <= expandedMax; p += 1) {
+      if (p > 0) pricePoints.push(p);
+    }
+  } else if (range > targetNumPoints * 2) {
+    // Range is wide, use step size to get ~6 points
+    const step = Math.ceil(range / (targetNumPoints - 1));
+    for (let p = minPrice; p <= maxPrice; p += step) {
+      if (p > 0) pricePoints.push(p);
+    }
+    // Ensure we include maxPrice
+    if (pricePoints[pricePoints.length - 1] !== maxPrice && maxPrice > 0) {
+      pricePoints.push(maxPrice);
+    }
+  } else {
+    // Normal range, use $1 increments
+    for (let p = minPrice; p <= maxPrice; p += 1) {
+      if (p > 0) pricePoints.push(p);
+    }
   }
   
   // Sort order book by price DESCENDING - only use explicit user-provided tiers
@@ -1711,6 +1737,35 @@ function formatIPOMemo(
   memo += `Post-IPO Fully Diluted Shares: ${((recommendedRow.fdSharesPostIPO || 0) * 1).toFixed(2)}M\n`;
   memo += `Dilution from Primary + Greenshoe: ${((recommendedRow.dilutionPercent || 0) * 100).toFixed(1)}%\n`;
   memo += `Founder Ownership Post-IPO: ${((recommendedRow.founderOwnershipPost || 0) * 100).toFixed(1)}%\n`;
+  
+  // === 50% CONTROL THRESHOLD SENSITIVITY ===
+  // Analyze if founders maintain majority control at recommended price
+  // and at what price/dilution they would preserve 50%+ ownership
+  const founderOwnershipAtRec = recommendedRow.founderOwnershipPost || 0;
+  if (founderOwnershipAtRec > 0 && founderOwnershipAtRec < 0.50) {
+    // Founders LOSE majority control at recommended price
+    memo += `\n*** FOUNDER CONTROL WARNING ***\n`;
+    memo += `At $${recommendedPrice}, founders retain ${(founderOwnershipAtRec * 100).toFixed(1)}% - BELOW 50% control threshold\n`;
+    
+    // Find highest price where founders still have 50%+ control
+    const controlPreservingRows = pricingMatrix.filter(row => (row.founderOwnershipPost || 0) >= 0.50);
+    if (controlPreservingRows.length > 0) {
+      const maxControlPrice = Math.max(...controlPreservingRows.map(r => r.offerPrice));
+      const controlRow = pricingMatrix.find(r => r.offerPrice === maxControlPrice);
+      if (controlRow) {
+        memo += `To preserve 50%+ control: Price at $${maxControlPrice} or higher (${(controlRow.founderOwnershipPost! * 100).toFixed(1)}% ownership)\n`;
+        memo += `Required dilution cap: ≤${((controlRow.dilutionPercent || 0) * 100).toFixed(1)}%\n`;
+      }
+    } else {
+      // Even at highest price, founders don't maintain 50%
+      memo += `Note: Founders cannot maintain 50%+ control at any price in the range due to primary raise size\n`;
+      memo += `Options to preserve control: (1) Reduce primary raise, (2) Increase secondary component, (3) Dual-class structure\n`;
+    }
+    memo += `\n`;
+  } else if (founderOwnershipAtRec >= 0.50) {
+    memo += `Founder Control: Majority preserved (≥50%)\n`;
+  }
+  
   memo += `\n--- PROCEEDS CALCULATION ---\n`;
   memo += `Gross Proceeds: $${grossProceeds}M (Price $${recommendedPrice} × ${((recommendedRow.totalSharesSold || 0) * 1).toFixed(2)}M shares)\n`;
   memo += `  Base Primary (to company): $${Math.round(recommendedRow.basePrimaryProceedsM || 0)}M\n`;
