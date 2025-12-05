@@ -117,11 +117,21 @@ const IPO_PARSING_PROMPT = `You are an investment banking expert. Parse the IPO 
 - DO NOT invent fairValuePerShare - leave it undefined if not given
 - DO NOT infer values from context - ONLY use explicit user numbers
 
+*** FLEXIBLE PARSING - RECOGNIZE NATURAL LANGUAGE ***
+Users may describe inputs in various ways. Be flexible:
+- "Target gross proceeds $600M with $480M primary and $120M secondary" → targetGrossProceeds=600, primaryDollarRaiseM=480, secondaryDollarRaiseM=120
+- "raise $500 million" or "target $500M IPO" → primaryDollarRaiseM=500
+- "founders hold X shares, investors hold Y shares, options Z shares" → add them for sharesOutstandingPreIPO
+- "comparable companies: A at 7x, B at 4.5x, C at 9x" → calculate median EV/Revenue multiple
+- "WACC 11.8%" or "discount rate of 11.8%" → wacc=0.118
+- "15% greenshoe" or "include 15% over-allotment" → greenshoePercent=0.15
+
 CRITICAL PARSING RULES:
 
-1. SECTOR DETECTION (BE PRECISE):
+1. SECTOR DETECTION (BE FLEXIBLE):
    - "biotech" / "biopharmaceutical" / "clinical-stage" / "Phase" → sector = "biotech"
    - "SaaS" / "enterprise software" → sector = "saas"
+   - "AI" / "robotics" / "automation" / "machine learning" / "tech" → sector = "tech"
    - "AI infrastructure" / "GPU cloud" → sector = "ai_infrastructure"
    - "defense-tech" / "national security" → sector = "defense_tech"
    - "restaurant" / "fast-casual" / "QSR" / "food service" / "chain restaurant" → sector = "restaurant"
@@ -134,13 +144,19 @@ CRITICAL PARSING RULES:
    - Parse "total_ranpv" in millions as totalRaNPV
    - If input has "dcf" / "DCF valuation" → fairValueType = "dcf"
 
-3. PEER COMPS - PARSE BY SECTOR:
+3. PEER COMPS - PARSE FLEXIBLY:
    - If "median EV/raNPV" or "EV/rNPV" is given, set peerMedianEVRaNPV (e.g., 2.4)
    - If "median EV/EBITDA" or "EV/EBITDA" is given, set peerMedianEVEBITDA (e.g., 8.8)
    - If "median NTM FCF" or "FCF multiple" is given, set peerMedianNTMFCF (e.g., 22)
    - Regular EV/Revenue goes to peerMedianEVRevenue
    - RESTAURANTS/RETAIL/CONSUMER: Always extract EV/EBITDA as the primary multiple
    - CRITICAL FOR RESTAURANTS: Parse "8.8× NTM EV/EBITDA" → peerMedianEVEBITDA = 8.8
+   
+   *** FLEXIBLE COMP PARSING ***
+   - "Comparable companies: A at 7x revenue, B at 4.5x, C at 9x, D at 14x" → Calculate MEDIAN of [7, 4.5, 9, 14] = 8.0 for peerMedianEVRevenue
+   - "trades at 7x revenue" or "7x sales" or "7x rev" → interpret as EV/Revenue multiple
+   - If multiple comps given, use the MEDIAN (not average) for peerMedianEVRevenue
+   - "Boston Dynamics parent trades at 7x revenue, Rockwell at 4.5x" → peerMedianEVRevenue = median of list
 
 4. SECTOR HISTORICAL BENCHMARKS:
    - Parse "sector_ipos_2024_2025.avg_day1_return" → sectorAverageFirstDayPop
@@ -166,11 +182,18 @@ CRITICAL PARSING RULES:
    - "$22+: 5.8×" → { priceLevel: 22, oversubscription: 5.8 }
    - Include ALL tiers mentioned
 
-9. REVENUE AND EBITDA:
+9. REVENUE AND EBITDA (BE FLEXIBLE):
    - For pre-revenue biotech, ntmRevenue = 0
    - Parse FY2026 guidance if present
    - Parse NTM EBITDA directly if given, OR calculate as: ntmEBITDA = ntmRevenue × ntmEBITDAMargin
    - For restaurants: Look for "EBITDA margin" and convert to decimal (16.5% → 0.165)
+   
+   *** FLEXIBLE REVENUE/EBITDA PARSING ***
+   - "Current revenue $410 million" → currentYearRevenue=410
+   - "growing at 48%" → apply growth: ntmRevenue = 410 × 1.48 = ~607
+   - "EBITDA margin currently 12%" → ntmEBITDAMargin=0.12, ntmEBITDA = ntmRevenue × 0.12
+   - If only "gross margin 61%" given, that's NOT EBITDA margin - keep separate
+   - "revenue $X, growing Y% for years 1-2" → ntmRevenue = X × (1 + Y/100)
 
 10. DOWN-ROUND DETECTION (CRITICAL):
    - Parse "last_private_round.price_per_share" or "Series E price" → lastPrivateRoundPrice
@@ -198,11 +221,18 @@ CRITICAL PARSING RULES:
    - Parse "top_5_customers_pct" or "customer_concentration" → customerConcentrationTop5 (as decimal, e.g., 0.47)
 
 15. DCF INPUTS (CRITICAL - PARSE EXACTLY):
-   - Parse "WACC" → wacc (as decimal, e.g., 0.085 for 8.5%)
-   - Parse "terminal growth" → terminalGrowthRate (as decimal, e.g., 0.03 for 3%)
-   - Parse "CapEx" or "capital expenditure" % → capexPercent (as decimal, e.g., 0.05 for 5%)
-   - Parse "tax rate" → taxRate (as decimal, e.g., 0.26 for 26%)
-   - Parse "NWC" or "working capital days" → nwcDays (integer, can be negative for cash-generating business)
+   - Parse "WACC" or "WACC 11.8%" or "discount rate" → wacc (as decimal, e.g., 0.118 for 11.8%)
+   - Parse "terminal growth" or "terminal growth rate 3.5%" → terminalGrowthRate (as decimal, e.g., 0.035 for 3.5%)
+   - Parse "CapEx" or "CapEx at 7% of revenue" → capexPercent (as decimal, e.g., 0.07 for 7%)
+   - Parse "tax rate" or "tax rate 21%" → taxRate (as decimal, e.g., 0.21 for 21%)
+   - Parse "NWC" or "NWC at 9%" → nwcDays (integer or percent, e.g., 0.09 for 9% of revenue)
+
+16. CAP TABLE PARSING (FLEXIBLE):
+   - "founders hold 45 million shares" → add to sharesOutstandingPreIPO
+   - "Series A/B/C investors hold 30 million shares" → add to sharesOutstandingPreIPO
+   - "employee option pool is 8 million shares" → add to sharesOutstandingPreIPO
+   - Sum ALL share categories for total sharesOutstandingPreIPO (e.g., 45 + 30 + 8 = 83 million)
+   - "Pre-IPO cap table: founders X, investors Y, options Z" → sharesOutstandingPreIPO = X + Y + Z
 
 Return JSON:
 {

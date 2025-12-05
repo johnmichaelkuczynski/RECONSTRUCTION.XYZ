@@ -44,13 +44,25 @@ The application uses a monorepo structure, separating client and server.
         - **Core Mechanics**: EV = MarketCap + Debt - Cash; Proceeds = OfferPrice × SharesSold
         - **Shares Calculation**: Computed from dollarRaise/offerPrice at each price point
         - **Founder Ownership**: Recomputed at each price point (fixed founder shares / updated FD shares)
-        - **Price Range Derivation**: Uses user-provided range, OR computes from (1) fair value per share ±15%, (2) dollar raise / shares, (3) peer EV/Rev multiple, (4) EV/raNPV multiple
+        - **Price Range Derivation**: Uses user-provided range, OR computes from (1) fair value per share ±15%, (2) dollar raise / shares, (3) peer EV/EBITDA multiple (for restaurant/consumer), (4) peer EV/Rev multiple, (5) EV/raNPV multiple
         - **POP Calculation**: Purely mechanical from user-provided order book and sector benchmarks
         - **Book Quality**: Uses ln(oversubscription) with no fabricated extrapolation or decay rates
         - **All Defaults Neutral**: downRoundIpoPenalty=0, dualClassDiscount=0, underwritingFeePercent=0, monthsToCatalyst=undefined
         - **No Hardcoded Thresholds**: Removed all judgment thresholds (oversubscription 3/5/10, POP -0.10)
         - **No CEO Text Inference**: pricingAggressiveness and managementPriority must be explicitly provided
         - **Recommendation Logic**: Based purely on user's pricingAggressiveness and managementPriority
+        - **Restaurant/Consumer Sector Support (December 2024)**: 
+          - EV/EBITDA as primary valuation multiple (not EV/Revenue)
+          - Hard guard prevents EV/Revenue fallback for restaurant/consumer sectors
+          - ntmEBITDA auto-calculated from revenue × margin when not provided directly
+          - Sector-specific WACC defaults: restaurant 8.5%, consumer staples 8%, SaaS 9.5%
+          - Down-round logic only applies to biotech or when explicitly flagged
+        - **Flexible Natural Language Parsing (December 2024)**:
+          - Recognizes "comparable companies: A at 7x, B at 4.5x" → calculates median multiple
+          - Parses cap tables: "founders hold X, investors hold Y, options Z" → sums to sharesOutstandingPreIPO
+          - Handles "$600M with $480M primary and $120M secondary" → extracts all proceeds correctly
+          - Recognizes "WACC 11.8%", "CapEx at 7%", "terminal growth 3.5%" in natural language
+        - **DCF Independence**: Fair value computed independently using user WACC/terminal growth, not reverse-engineered from offer price
       - Default LLM: Zhi 5 (Grok) using grok-3 model for finance models.
     - **Data Science Panel**: Generates production-ready Python code for machine learning and statistical analysis from natural language descriptions.
       - **Regression Models**: Fully implemented with 7 regression types:
