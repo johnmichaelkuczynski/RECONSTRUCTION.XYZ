@@ -178,7 +178,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [coherenceStageProgress, setCoherenceStageProgress] = useState<string>("");
   
   // Finance Panel State
-  const [financeModelType, setFinanceModelType] = useState<"dcf" | "lbo" | "ma" | "threestatement" | "ipo" | null>(null);
+  const [financeModelType, setFinanceModelType] = useState<"dcf" | "lbo" | "ma" | "threestatement" | null>(null);
   const [financeInputText, setFinanceInputText] = useState("");
   const [financeCustomInstructions, setFinanceCustomInstructions] = useState("");
   const [financeLoading, setFinanceLoading] = useState(false);
@@ -571,7 +571,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   };
 
   // Finance Panel Handler - Two-step flow: Parse & Preview, then Download
-  const handleFinanceModelGenerate = async (modelType: "dcf" | "lbo" | "ma" | "threestatement" | "ipo") => {
+  const handleFinanceModelGenerate = async (modelType: "dcf" | "lbo" | "ma" | "threestatement") => {
     if (!financeInputText.trim()) {
       toast({
         title: "No Input",
@@ -586,11 +586,11 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setFinanceResult(null);
 
     const providerNames: Record<string, string> = {
-      'zhi1': 'ZHI 1',
-      'zhi2': 'ZHI 2',
-      'zhi3': 'ZHI 3',
-      'zhi4': 'ZHI 4',
-      'zhi5': 'ZHI 5'
+      'zhi1': 'OpenAI GPT-4',
+      'zhi2': 'Anthropic Claude',
+      'zhi3': 'DeepSeek',
+      'zhi4': 'Perplexity',
+      'zhi5': 'Grok'
     };
 
     try {
@@ -694,31 +694,6 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           title: "3-Statement Model Complete",
           description: `Financial projections for ${result.assumptions?.companyName || 'company'} with ${result.summary?.isBalanced ? 'balanced' : 'unbalanced'} balance sheet`,
         });
-      } else if (modelType === "ipo") {
-        setFinanceLoadingPhase(`Parsing IPO with ${providerNames[financeLLMProvider]}...`);
-        
-        const response = await fetch('/api/finance/parse-ipo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            description: financeInputText,
-            customInstructions: financeCustomInstructions,
-            llmProvider: financeLLMProvider,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || 'IPO parsing failed');
-        }
-
-        const result = await response.json();
-        setFinanceResult(result);
-        
-        toast({
-          title: "IPO Pricing Complete",
-          description: `Recommended offer price: $${result.recommendedOfferPrice?.toFixed(2) || 'N/A'} for ${result.companyName || 'company'}`,
-        });
       } else {
         toast({
           title: "Coming Soon",
@@ -765,14 +740,9 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       } else if (financeModelType === "threestatement") {
         endpoint = '/api/finance/download-3statement';
         modelLabel = '3-Statement';
-      } else if (financeModelType === "ipo") {
-        endpoint = '/api/finance/download-ipo';
-        modelLabel = 'IPO_Pricing';
       }
       
       const requestBody = financeModelType === "threestatement" 
-        ? { result: financeResult }
-        : financeModelType === "ipo"
         ? { result: financeResult }
         : { assumptions: financeResult.assumptions };
       
@@ -2823,8 +2793,8 @@ Examples:
             </p>
           </div>
 
-          {/* Five Model Type Buttons */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          {/* Four Model Type Buttons */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <Button
               onClick={() => {
                 setShowFinanceCustomization(prev => financeModelType === "dcf" ? !prev : true);
@@ -2896,24 +2866,6 @@ Examples:
               <span className="font-bold text-lg">3-Statement</span>
               <span className="text-xs mt-1 text-center opacity-80">Integrated Financials</span>
             </Button>
-
-            <Button
-              onClick={() => {
-                setShowFinanceCustomization(prev => financeModelType === "ipo" ? !prev : true);
-                setFinanceModelType("ipo");
-              }}
-              className={`flex flex-col items-center justify-center p-6 h-auto ${
-                financeModelType === "ipo" 
-                  ? "bg-cyan-600 hover:bg-cyan-700 text-white" 
-                  : "bg-white dark:bg-gray-800 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border-2 border-cyan-300"
-              }`}
-              disabled={financeLoading}
-              data-testid="button-ipo-model"
-            >
-              <TrendingUp className="w-6 h-6 mb-2" />
-              <span className="font-bold text-lg">IPO Pricing</span>
-              <span className="text-xs mt-1 text-center opacity-80">Public Offering</span>
-            </Button>
           </div>
 
           {/* Customization Panel - Appears when model type is selected */}
@@ -2924,7 +2876,6 @@ Examples:
                 {financeModelType === "lbo" && "LBO Model Customization"}
                 {financeModelType === "ma" && "M&A Model Customization"}
                 {financeModelType === "threestatement" && "3-Statement Model Customization"}
-                {financeModelType === "ipo" && "IPO Pricing Customization"}
               </h3>
 
               {/* LLM Provider Selector */}
@@ -2963,8 +2914,6 @@ Examples:
                       ? "Add specific instructions for LBO model... (e.g., 'Model 5-year hold period', 'Include management equity rollover', 'Target 3x MOIC')"
                       : financeModelType === "ma"
                       ? "Add specific instructions for M&A model... (e.g., 'Model accretion/dilution analysis', 'Include synergy assumptions', 'Compare cash vs stock deal')"
-                      : financeModelType === "ipo"
-                      ? "Add specific instructions for IPO pricing... (e.g., 'Use 20% IPO discount', 'Assume dual-class shares with 10:1 voting', 'Include greenshoe at 15%', 'Founder minimum ownership 30%')"
                       : "Add specific instructions for 3-statement model... (e.g., 'Include quarterly breakdown', 'Add working capital schedule', 'Model debt covenants')"
                   }
                   className="min-h-[100px]"
@@ -4066,305 +4015,6 @@ Examples:
             </div>
           )}
 
-          {/* IPO Pricing Results Display */}
-          {financeResult && financeResult.success && financeModelType === "ipo" && financeResult.companyName && (
-            <div className="mb-6 space-y-6">
-              {/* Header with company name and download button */}
-              <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700">
-                <div>
-                  <h3 className="text-xl font-bold text-cyan-900 dark:text-cyan-100">
-                    {financeResult.companyName} - IPO Pricing Analysis
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {financeResult.companyType} Company | {financeResult.valuationMethodology} | Analyzed by {financeResult.providerUsed}
-                  </p>
-                </div>
-                <Button
-                  onClick={handleFinanceDownloadExcel}
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                  disabled={financeDownloadLoading}
-                  data-testid="button-download-ipo-excel"
-                >
-                  {financeDownloadLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Downloading...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Download IPO Model Excel
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {/* IPO Pricing Summary */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="p-4 bg-cyan-50 dark:bg-cyan-900/20 rounded-lg border border-cyan-200 dark:border-cyan-700 text-center">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Offer Price Range</div>
-                  <div className="text-xl font-bold text-cyan-700 dark:text-cyan-300">
-                    ${financeResult.priceRange?.low?.toFixed(2)} - ${financeResult.priceRange?.high?.toFixed(2)}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Recommended: ${financeResult.recommendedOfferPrice?.toFixed(2)}
-                  </div>
-                </div>
-                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700 text-center">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Gross Proceeds</div>
-                  <div className="text-xl font-bold text-green-700 dark:text-green-300">
-                    ${((financeResult.grossPrimaryProceeds || 0) / 1000000).toFixed(0)}M
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Net: ${((financeResult.netPrimaryProceeds || 0) / 1000000).toFixed(0)}M
-                  </div>
-                </div>
-                <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-700 text-center">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Enterprise Value</div>
-                  <div className="text-xl font-bold text-purple-700 dark:text-purple-300">
-                    ${((financeResult.enterpriseValue || 0) / 1000000).toFixed(0)}M
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Market Cap: ${((financeResult.marketCap || 0) / 1000000).toFixed(0)}M
-                  </div>
-                </div>
-                <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-700 text-center">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Shares Offered</div>
-                  <div className="text-xl font-bold text-orange-700 dark:text-orange-300">
-                    {((financeResult.primarySharesIssued || 0) / 1000000).toFixed(1)}M
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Float: {((financeResult.publicFloat || 0) / 1000000).toFixed(1)}M
-                  </div>
-                </div>
-                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-700 text-center">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Pre-IPO Valuation</div>
-                  <div className="text-xl font-bold text-indigo-700 dark:text-indigo-300">
-                    ${((financeResult.impliedPreIPOValuation || 0) / 1000000).toFixed(0)}M
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Implied at offer price
-                  </div>
-                </div>
-              </div>
-
-              {/* Valuation Multiples */}
-              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700">
-                <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-4 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5" />
-                  Valuation Multiples Analysis
-                </h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center p-3 bg-cyan-50/50 dark:bg-cyan-900/10 rounded-lg">
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Implied EV/Revenue</div>
-                    <div className="text-2xl font-bold text-cyan-700 dark:text-cyan-300">
-                      {financeResult.impliedEVRevenue?.toFixed(1) || 'N/A'}x
-                    </div>
-                  </div>
-                  {financeResult.impliedEVEBITDA && (
-                    <div className="text-center p-3 bg-purple-50/50 dark:bg-purple-900/10 rounded-lg">
-                      <div className="text-xs text-gray-600 dark:text-gray-400">Implied EV/EBITDA</div>
-                      <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">
-                        {financeResult.impliedEVEBITDA.toFixed(1)}x
-                      </div>
-                    </div>
-                  )}
-                  <div className="text-center p-3 bg-green-50/50 dark:bg-green-900/10 rounded-lg">
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Comparable Median EV/Rev</div>
-                    <div className="text-2xl font-bold text-green-700 dark:text-green-300">
-                      {financeResult.comparableMedianEVRevenue?.toFixed(1) || 'N/A'}x
-                    </div>
-                  </div>
-                  <div className="text-center p-3 bg-orange-50/50 dark:bg-orange-900/10 rounded-lg">
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Dilution</div>
-                    <div className="text-2xl font-bold text-orange-700 dark:text-orange-300">
-                      {(financeResult.dilutionPercent || 0).toFixed(1)}%
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Share Structure & Ownership */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700">
-                  <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-4">
-                    Share Structure
-                  </h4>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Pre-IPO Shares</span>
-                      <span className="font-semibold text-gray-900 dark:text-gray-100">
-                        {((financeResult.preIPOSharesTotal || 0) / 1000000).toFixed(2)}M
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Primary Shares Issued</span>
-                      <span className="font-semibold text-cyan-700 dark:text-cyan-300">
-                        +{((financeResult.primarySharesIssued || 0) / 1000000).toFixed(2)}M
-                      </span>
-                    </div>
-                    {financeResult.secondarySharesSold > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Secondary Shares Sold</span>
-                        <span className="text-gray-700 dark:text-gray-300">
-                          {((financeResult.secondarySharesSold || 0) / 1000000).toFixed(2)}M
-                        </span>
-                      </div>
-                    )}
-                    {financeResult.greenshoeShares > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Greenshoe Option</span>
-                        <span className="text-gray-700 dark:text-gray-300">
-                          +{((financeResult.greenshoeShares || 0) / 1000000).toFixed(2)}M
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex justify-between border-t border-gray-200 dark:border-gray-600 pt-2">
-                      <span className="font-semibold text-gray-700 dark:text-gray-300">Post-IPO Total</span>
-                      <span className="font-bold text-cyan-700 dark:text-cyan-300">
-                        {((financeResult.postIPOSharesTotal || 0) / 1000000).toFixed(2)}M
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700">
-                  <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-4">
-                    Proceeds Breakdown
-                  </h4>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Gross Primary Proceeds</span>
-                      <span className="font-semibold text-gray-900 dark:text-gray-100">
-                        ${((financeResult.grossPrimaryProceeds || 0) / 1000000).toFixed(1)}M
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Underwriting (7%)</span>
-                      <span className="text-red-600 dark:text-red-400">
-                        -${(((financeResult.grossPrimaryProceeds || 0) * 0.07) / 1000000).toFixed(1)}M
-                      </span>
-                    </div>
-                    <div className="flex justify-between border-t border-gray-200 dark:border-gray-600 pt-2">
-                      <span className="font-semibold text-gray-700 dark:text-gray-300">Net to Company</span>
-                      <span className="font-bold text-green-700 dark:text-green-300">
-                        ${((financeResult.netPrimaryProceeds || 0) / 1000000).toFixed(1)}M
-                      </span>
-                    </div>
-                    {financeResult.secondaryProceeds > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Secondary Proceeds (to sellers)</span>
-                        <span className="text-purple-700 dark:text-purple-300">
-                          ${((financeResult.secondaryProceeds || 0) / 1000000).toFixed(1)}M
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Ownership Table */}
-              {financeResult.ownershipTable && financeResult.ownershipTable.length > 0 && (
-                <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700 overflow-x-auto">
-                  <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-4">
-                    Ownership Table
-                  </h4>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200 dark:border-gray-600">
-                        <th className="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Holder</th>
-                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Pre-IPO Shares</th>
-                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Pre-IPO %</th>
-                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Post-IPO Shares</th>
-                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Post-IPO %</th>
-                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Voting %</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {financeResult.ownershipTable.map((holder: any, idx: number) => (
-                        <tr key={idx} className="border-b border-gray-100 dark:border-gray-700">
-                          <td className="py-2 px-3 font-medium text-gray-900 dark:text-gray-100">{holder.name}</td>
-                          <td className="text-right py-2 px-3 text-gray-700 dark:text-gray-300">
-                            {(holder.preIPOShares / 1000000).toFixed(2)}M
-                          </td>
-                          <td className="text-right py-2 px-3 text-gray-700 dark:text-gray-300">
-                            {(holder.preIPOPercent * 100).toFixed(1)}%
-                          </td>
-                          <td className="text-right py-2 px-3 font-medium text-cyan-700 dark:text-cyan-300">
-                            {(holder.postIPOShares / 1000000).toFixed(2)}M
-                          </td>
-                          <td className="text-right py-2 px-3 font-medium text-cyan-700 dark:text-cyan-300">
-                            {(holder.postIPOPercent * 100).toFixed(1)}%
-                          </td>
-                          <td className="text-right py-2 px-3 text-purple-700 dark:text-purple-300">
-                            {(holder.votingPercent * 100).toFixed(1)}%
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* Pricing Matrix */}
-              {financeResult.pricingMatrix && financeResult.pricingMatrix.length > 0 && (
-                <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700 overflow-x-auto">
-                  <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-4">
-                    Pricing Scenarios
-                  </h4>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200 dark:border-gray-600">
-                        <th className="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Scenario</th>
-                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Offer Price</th>
-                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Market Cap</th>
-                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">EV/Revenue</th>
-                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Dilution</th>
-                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Day 1 Pop</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {financeResult.pricingMatrix.map((scenario: any, idx: number) => (
-                        <tr key={idx} className={`border-b border-gray-100 dark:border-gray-700 ${scenario.scenario === 'Base' ? 'bg-cyan-50/50 dark:bg-cyan-900/20' : ''}`}>
-                          <td className="py-2 px-3 font-medium text-gray-900 dark:text-gray-100">{scenario.scenario}</td>
-                          <td className="text-right py-2 px-3 font-bold text-cyan-700 dark:text-cyan-300">
-                            ${scenario.offerPrice.toFixed(2)}
-                          </td>
-                          <td className="text-right py-2 px-3 text-gray-700 dark:text-gray-300">
-                            ${(scenario.marketCap / 1000000000).toFixed(2)}B
-                          </td>
-                          <td className="text-right py-2 px-3 text-gray-700 dark:text-gray-300">
-                            {scenario.evRevenue.toFixed(1)}x
-                          </td>
-                          <td className="text-right py-2 px-3 text-orange-700 dark:text-orange-300">
-                            {(scenario.dilution * 100).toFixed(1)}%
-                          </td>
-                          <td className="text-right py-2 px-3 text-green-700 dark:text-green-300">
-                            +{(scenario.expectedDayOnePop * 100).toFixed(0)}%
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* Warnings */}
-              {financeResult.warnings && financeResult.warnings.length > 0 && (
-                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-700">
-                  <h4 className="text-lg font-semibold text-yellow-800 dark:text-yellow-200 mb-3">
-                    Considerations & Warnings
-                  </h4>
-                  <ul className="list-disc list-inside space-y-1 text-yellow-700 dark:text-yellow-300">
-                    {financeResult.warnings.map((warning: string, idx: number) => (
-                      <li key={idx}>{warning}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Clear Finance Panel Button */}
           <div className="mt-4 text-center">
             <Button
@@ -5422,20 +5072,6 @@ Examples:
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Evaluate logical, scientific, thematic, instructional, or motivational coherence - then get rewrites that maximize it
             </p>
-            {/* Clear All Button */}
-            <div className="mt-4">
-              <Button
-                onClick={handleCoherenceClear}
-                variant="outline"
-                size="sm"
-                className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
-                disabled={coherenceLoading}
-                data-testid="button-coherence-clear-all"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Clear Coherence Panel
-              </Button>
-            </div>
           </div>
 
           {/* Input Area */}
