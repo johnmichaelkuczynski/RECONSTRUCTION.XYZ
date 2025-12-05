@@ -31,6 +31,15 @@ The application uses a monorepo structure, separating client and server.
         - **Revenue Synergy Margin**: Applies flow-through margin (e.g., 50%) to revenue synergies for EBITDA impact. Default 100% if not specified.
         - **Interest Expense**: Properly calculated from debt schedule and included in pro forma projections.
         - Features separate phase-in schedules for revenue synergies (default: 0/50/100/100/100%) and cost synergies (default: 20/60/100/100/100%).
+      - **IPO Pricing Model**: Fully implemented (December 2024) with comprehensive pricing analysis:
+        - **Valuation Methods**: Revenue multiple (default), EBITDA multiple, or blended (weighted average)
+        - **Pricing Calculation**: Pre-money valuation, theoretical share price, offer price with IPO discount
+        - **Offer Structure**: Primary shares issued, secondary shares sold, greenshoe (over-allotment) option
+        - **Proceeds Analysis**: Gross/net primary proceeds, secondary proceeds, underwriting fees
+        - **Dilution Analysis**: Post-IPO shares outstanding, percentage sold, existing holder dilution
+        - **Trading Metrics**: Market cap at offer, expected first-day pop
+        - **Excel Export**: 3-tab workbook (Summary, Assumptions, Calculation Steps) with full walkthrough
+        - **Formulas**: Pre-Money = LTM Revenue × Multiple; Theoretical Price = Pre-Money / Pre-IPO Shares; Offer Price = Theoretical × (1 - Discount)
       - **3-Statement Model**: Fully implemented with comprehensive 11-tab Excel generation:
         - **Income Statement**: Revenue, COGS, Gross Profit, Operating Expenses, EBITDA, D&A, EBIT, Interest, Taxes, Net Income, EPS
         - **Balance Sheet**: Assets (Cash, A/R, Inventory, PP&E), Liabilities (A/P, Debt), Shareholders' Equity with balance check (Assets = L + E)
