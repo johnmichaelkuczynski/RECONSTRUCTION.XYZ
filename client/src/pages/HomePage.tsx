@@ -3206,33 +3206,33 @@ Examples:
                   <tbody>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Revenue ($M)</td>
-                      {financeResult.projections?.revenue?.map((val: number, idx: number) => (
+                      {financeResult.projections?.revenue?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
-                          ${val.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">EBITDA ($M)</td>
-                      {financeResult.projections?.ebitda?.map((val: number, idx: number) => (
+                      {financeResult.projections?.ebitda?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
-                          ${val.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">EBITDA Margin</td>
-                      {financeResult.projections?.ebitdaMargin?.map((val: number, idx: number) => (
+                      {financeResult.projections?.ebitdaMargin?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
-                          {(val * 100).toFixed(1)}%
+                          {((val ?? 0) * 100).toFixed(1)}%
                         </td>
                       ))}
                     </tr>
                     <tr>
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Free Cash Flow ($M)</td>
-                      {financeResult.projections?.fcf?.map((val: number, idx: number) => (
+                      {financeResult.projections?.fcf?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-bold text-blue-700 dark:text-blue-300">
-                          ${val.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
@@ -3485,41 +3485,41 @@ Examples:
                   <tbody>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Revenue ($M)</td>
-                      {financeResult.projections?.revenue?.map((val: number, idx: number) => (
+                      {financeResult.projections?.revenue?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">EBITDA ($M)</td>
-                      {financeResult.projections?.ebitda?.map((val: number, idx: number) => (
+                      {financeResult.projections?.ebitda?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Senior Debt ($M)</td>
-                      {financeResult.projections?.seniorDebt?.map((val: number, idx: number) => (
+                      {financeResult.projections?.seniorDebt?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Subordinated Debt ($M)</td>
-                      {financeResult.projections?.subDebt?.map((val: number, idx: number) => (
+                      {financeResult.projections?.subDebt?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr>
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Free Cash Flow ($M)</td>
-                      {financeResult.projections?.freeCashFlow?.map((val: number, idx: number) => (
+                      {financeResult.projections?.freeCashFlow?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-bold text-purple-700 dark:text-purple-300">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
@@ -3720,33 +3720,33 @@ Examples:
                   <tbody>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Combined Revenue ($M)</td>
-                      {financeResult.proFormaProjections?.revenue?.slice(1).map((val: number, idx: number) => (
+                      {financeResult.proFormaProjections?.revenue?.slice(1).map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Combined EBITDA ($M)</td>
-                      {financeResult.proFormaProjections?.ebitda?.slice(1).map((val: number, idx: number) => (
+                      {financeResult.proFormaProjections?.ebitda?.slice(1).map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Net Income ($M)</td>
-                      {financeResult.proFormaProjections?.netIncome?.slice(1).map((val: number, idx: number) => (
+                      {financeResult.proFormaProjections?.netIncome?.slice(1).map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr>
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Pro Forma EPS</td>
-                      {financeResult.proFormaProjections?.eps?.slice(1).map((val: number, idx: number) => (
+                      {financeResult.proFormaProjections?.eps?.slice(1).map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-bold text-purple-700 dark:text-purple-300">
-                          ${val?.toFixed(2)}
+                          ${(val ?? 0).toFixed(2)}
                         </td>
                       ))}
                     </tr>
@@ -3837,65 +3837,65 @@ Examples:
                   <tbody>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Revenue ($M)</td>
-                      {financeResult.incomeStatement?.revenue?.map((val: number, idx: number) => (
+                      {financeResult.incomeStatement?.revenue?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-600 dark:text-gray-400 text-xs">Growth %</td>
-                      {financeResult.incomeStatement?.revenueGrowth?.map((val: number, idx: number) => (
+                      {financeResult.incomeStatement?.revenueGrowth?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 text-xs text-gray-500">
-                          {(val * 100).toFixed(1)}%
+                          {((val ?? 0) * 100).toFixed(1)}%
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Gross Profit ($M)</td>
-                      {financeResult.incomeStatement?.grossProfit?.map((val: number, idx: number) => (
+                      {financeResult.incomeStatement?.grossProfit?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700 bg-indigo-50/50 dark:bg-indigo-900/10">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">EBITDA ($M)</td>
-                      {financeResult.incomeStatement?.ebitda?.map((val: number, idx: number) => (
+                      {financeResult.incomeStatement?.ebitda?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-bold text-indigo-700 dark:text-indigo-300">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-600 dark:text-gray-400 text-xs">EBITDA Margin %</td>
-                      {financeResult.incomeStatement?.ebitdaMargin?.map((val: number, idx: number) => (
+                      {financeResult.incomeStatement?.ebitdaMargin?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 text-xs text-gray-500">
-                          {(val * 100).toFixed(1)}%
+                          {((val ?? 0) * 100).toFixed(1)}%
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">EBIT ($M)</td>
-                      {financeResult.incomeStatement?.ebit?.map((val: number, idx: number) => (
+                      {financeResult.incomeStatement?.ebit?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700 bg-green-50/50 dark:bg-green-900/10">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Net Income ($M)</td>
-                      {financeResult.incomeStatement?.netIncome?.map((val: number, idx: number) => (
+                      {financeResult.incomeStatement?.netIncome?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-bold text-green-700 dark:text-green-300">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr>
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">EPS</td>
-                      {financeResult.incomeStatement?.eps?.map((val: number, idx: number) => (
+                      {financeResult.incomeStatement?.eps?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-bold text-purple-700 dark:text-purple-300">
-                          ${val?.toFixed(2)}
+                          ${(val ?? 0).toFixed(2)}
                         </td>
                       ))}
                     </tr>
@@ -3920,33 +3920,33 @@ Examples:
                   <tbody>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Cash ($M)</td>
-                      {financeResult.balanceSheet?.cash?.map((val: number, idx: number) => (
+                      {financeResult.balanceSheet?.cash?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-green-600 dark:text-green-400">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700 bg-indigo-50/50 dark:bg-indigo-900/10">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Total Assets ($M)</td>
-                      {financeResult.balanceSheet?.totalAssets?.map((val: number, idx: number) => (
+                      {financeResult.balanceSheet?.totalAssets?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-bold text-indigo-700 dark:text-indigo-300">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Total Liabilities ($M)</td>
-                      {financeResult.balanceSheet?.totalLiabilities?.map((val: number, idx: number) => (
+                      {financeResult.balanceSheet?.totalLiabilities?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-red-600 dark:text-red-400">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="bg-purple-50/50 dark:bg-purple-900/10">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Shareholders' Equity ($M)</td>
-                      {financeResult.balanceSheet?.totalEquity?.map((val: number, idx: number) => (
+                      {financeResult.balanceSheet?.totalEquity?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-bold text-purple-700 dark:text-purple-300">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
@@ -3971,33 +3971,33 @@ Examples:
                   <tbody>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">CFO ($M)</td>
-                      {financeResult.cashFlow?.cfo?.map((val: number, idx: number) => (
+                      {financeResult.cashFlow?.cfo?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">CFI ($M)</td>
-                      {financeResult.cashFlow?.cfi?.map((val: number, idx: number) => (
+                      {financeResult.cashFlow?.cfi?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-red-600 dark:text-red-400">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300">CFF ($M)</td>
-                      {financeResult.cashFlow?.cff?.map((val: number, idx: number) => (
+                      {financeResult.cashFlow?.cff?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="bg-green-50/50 dark:bg-green-900/10">
                       <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Free Cash Flow ($M)</td>
-                      {financeResult.cashFlow?.freeCashFlow?.map((val: number, idx: number) => (
+                      {financeResult.cashFlow?.freeCashFlow?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-bold text-green-700 dark:text-green-300">
-                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
