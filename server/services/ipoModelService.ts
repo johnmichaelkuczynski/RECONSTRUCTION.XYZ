@@ -106,6 +106,7 @@ export interface IPOPricingResult {
     milestoneProbability: number;       // Probability of milestone being hit (0-1)
     theoreticalPriceBeforeAdjustment: number;  // Theoretical price before warrant adjustment
     expectedDilutionCost: number;       // Expected cost in millions
+    originalPreMoneyValuation: number;  // Original pre-money before warrant adjustment (millions)
     adjustedPreMoneyValuation: number;  // Pre-money after warrant adjustment (millions)
     warrantInTheMoney: boolean;         // true if theoretical price > strike price
   };
@@ -425,6 +426,7 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
         milestoneProbability,
         theoreticalPriceBeforeAdjustment: initialTheoreticalPriceForWarrant,
         expectedDilutionCost: expectedDilutionCostMillions,
+        originalPreMoneyValuation: originalPreMoneyValuation,
         adjustedPreMoneyValuation: preMoneyValuation,
         warrantInTheMoney: true,
       };
@@ -438,6 +440,7 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
         milestoneProbability,
         theoreticalPriceBeforeAdjustment: initialTheoreticalPriceForWarrant,
         expectedDilutionCost: 0,
+        originalPreMoneyValuation: originalPreMoneyValuation,
         adjustedPreMoneyValuation: preMoneyValuation,
         warrantInTheMoney: false,
       };
@@ -907,13 +910,29 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
       ['Warrant Shares', mwt.warrantSharesMillions, 'millions'],
       ['Strike Price', mwt.warrantStrikePrice, 'per share'],
       ['Milestone Probability', mwt.milestoneProbability, ''],
-      ['Theoretical Price (Before Adjustment)', mwt.theoreticalPriceBeforeAdjustment, 'per share'],
+      ['', '', ''],
+      ['VALUATION IMPACT:', '', ''],
+      ['Original Pre-Money Valuation', mwt.originalPreMoneyValuation, 'millions'],
+      ['Theoretical Price (Pre-Warrant)', mwt.theoreticalPriceBeforeAdjustment, 'per share'],
       ['Warrant Status', mwt.warrantInTheMoney ? 'IN-THE-MONEY' : 'OUT-OF-THE-MONEY', ''],
       ['Expected Dilution Cost', mwt.expectedDilutionCost, 'millions'],
       ['Adjusted Pre-Money Valuation', mwt.adjustedPreMoneyValuation, 'millions'],
     ];
     
     warrantData.forEach(([label, value, unit]) => {
+      if (label === '') {
+        row++;
+        return;
+      }
+      
+      // Sub-section header styling
+      if ((label as string) === 'VALUATION IMPACT:') {
+        summarySheet.getCell(`A${row}`).value = label as string;
+        summarySheet.getCell(`A${row}`).font = { bold: true, italic: true };
+        row++;
+        return;
+      }
+      
       summarySheet.getCell(`A${row}`).value = label as string;
       summarySheet.getCell(`B${row}`).value = value;
       
