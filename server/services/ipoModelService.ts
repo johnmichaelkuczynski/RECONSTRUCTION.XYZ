@@ -1742,8 +1742,132 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
     row++;
   });
   
-  assumptionsSheet.getColumn('A').width = 30;
-  assumptionsSheet.getColumn('B').width = 20;
+  // Add enhanced convertibles if present
+  if (result.convertibleAnalysis && result.convertibleAnalysis.instruments.length > 0) {
+    row += 1;
+    assumptionsSheet.getCell(`A${row}`).value = 'ENHANCED CONVERTIBLE INSTRUMENTS';
+    assumptionsSheet.getCell(`A${row}`).style = sectionStyle;
+    row++;
+    
+    result.convertibleAnalysis.instruments.forEach((inst, idx) => {
+      assumptionsSheet.getCell(`A${row}`).value = `  ${idx + 1}. ${inst.name}`;
+      assumptionsSheet.getCell(`A${row}`).font = { bold: true };
+      row++;
+      assumptionsSheet.getCell(`A${row}`).value = `     Type: ${inst.type}`;
+      assumptionsSheet.getCell(`B${row}`).value = `Amount: $${inst.amountMillions.toFixed(2)}M`;
+      row++;
+      assumptionsSheet.getCell(`A${row}`).value = `     Status:`;
+      assumptionsSheet.getCell(`B${row}`).value = inst.triggered ? 'CONVERTED' : 'Not Converted';
+      assumptionsSheet.getCell(`B${row}`).font = { color: { argb: inst.triggered ? 'FF008800' : 'FF888888' } };
+      row++;
+      if (inst.triggered) {
+        assumptionsSheet.getCell(`A${row}`).value = `     Conversion Price:`;
+        assumptionsSheet.getCell(`B${row}`).value = `$${inst.conversionPrice.toFixed(2)}`;
+        row++;
+        assumptionsSheet.getCell(`A${row}`).value = `     Shares Issued:`;
+        assumptionsSheet.getCell(`B${row}`).value = `${inst.sharesIssued.toFixed(3)}M`;
+        row++;
+      }
+      if (inst.probability < 1.0) {
+        assumptionsSheet.getCell(`A${row}`).value = `     Probability:`;
+        assumptionsSheet.getCell(`B${row}`).value = `${(inst.probability * 100).toFixed(0)}%`;
+        row++;
+        assumptionsSheet.getCell(`A${row}`).value = `     Expected Shares:`;
+        assumptionsSheet.getCell(`B${row}`).value = `${inst.expectedShares.toFixed(3)}M`;
+        row++;
+      }
+    });
+    
+    row++;
+    assumptionsSheet.getCell(`A${row}`).value = 'Total Expected Conversion Shares:';
+    assumptionsSheet.getCell(`A${row}`).font = { bold: true };
+    assumptionsSheet.getCell(`B${row}`).value = `${result.convertibleAnalysis.totalExpectedShares.toFixed(3)}M`;
+    assumptionsSheet.getCell(`B${row}`).font = { bold: true };
+    row++;
+    assumptionsSheet.getCell(`A${row}`).value = 'Total Convertible Amount:';
+    assumptionsSheet.getCell(`A${row}`).font = { bold: true };
+    assumptionsSheet.getCell(`B${row}`).value = `$${result.convertibleAnalysis.totalConvertibleAmount.toFixed(2)}M`;
+    row++;
+  }
+  
+  // Add contingency analysis if present
+  if (result.contingencyAnalysis && result.contingencyAnalysis.liabilities.length > 0) {
+    row += 1;
+    assumptionsSheet.getCell(`A${row}`).value = 'CONTINGENT INSTRUMENTS';
+    assumptionsSheet.getCell(`A${row}`).style = sectionStyle;
+    row++;
+    
+    result.contingencyAnalysis.liabilities.forEach((cont: { name: string; type: string; sharesMillions?: number; paymentMillions?: number; probability: number; expectedShares: number; expectedCostMillions: number; }, idx: number) => {
+      assumptionsSheet.getCell(`A${row}`).value = `  ${idx + 1}. ${cont.name}`;
+      assumptionsSheet.getCell(`A${row}`).font = { bold: true };
+      row++;
+      assumptionsSheet.getCell(`A${row}`).value = `     Type: ${cont.type}`;
+      assumptionsSheet.getCell(`B${row}`).value = `Probability: ${(cont.probability * 100).toFixed(0)}%`;
+      row++;
+      if (cont.sharesMillions) {
+        assumptionsSheet.getCell(`A${row}`).value = `     Expected Shares:`;
+        assumptionsSheet.getCell(`B${row}`).value = `${cont.expectedShares?.toFixed(3) || 0}M`;
+        row++;
+      }
+      if (cont.paymentMillions) {
+        assumptionsSheet.getCell(`A${row}`).value = `     Expected Cost:`;
+        assumptionsSheet.getCell(`B${row}`).value = `$${cont.expectedCostMillions?.toFixed(2) || 0}M`;
+        row++;
+      }
+    });
+    
+    row++;
+    assumptionsSheet.getCell(`A${row}`).value = 'Total Expected Contingent Shares:';
+    assumptionsSheet.getCell(`A${row}`).font = { bold: true };
+    assumptionsSheet.getCell(`B${row}`).value = `${result.contingencyAnalysis.totalExpectedShares.toFixed(3)}M`;
+    row++;
+    assumptionsSheet.getCell(`A${row}`).value = 'Total Expected Contingent Cost:';
+    assumptionsSheet.getCell(`A${row}`).font = { bold: true };
+    assumptionsSheet.getCell(`B${row}`).value = `$${result.contingencyAnalysis.totalExpectedCostMillions.toFixed(2)}M`;
+    row++;
+  }
+  
+  // Add blended valuation breakdown if present
+  if (result.blendedValuationBreakdown && result.blendedValuationBreakdown.components.length > 0) {
+    row += 1;
+    assumptionsSheet.getCell(`A${row}`).value = 'BLENDED VALUATION BREAKDOWN';
+    assumptionsSheet.getCell(`A${row}`).style = sectionStyle;
+    row++;
+    
+    result.blendedValuationBreakdown.components.forEach((comp) => {
+      assumptionsSheet.getCell(`A${row}`).value = `  ${comp.name}`;
+      assumptionsSheet.getCell(`B${row}`).value = `${comp.multiple.toFixed(1)}x × ${(comp.weight * 100).toFixed(0)}% = ${comp.weightedMultiple?.toFixed(2) || (comp.multiple * comp.weight).toFixed(2)}x`;
+      row++;
+    });
+    
+    row++;
+    assumptionsSheet.getCell(`A${row}`).value = 'Base Blended Multiple:';
+    assumptionsSheet.getCell(`A${row}`).font = { bold: true };
+    assumptionsSheet.getCell(`B${row}`).value = `${result.blendedValuationBreakdown.baseBlendedMultiple?.toFixed(2) || 'N/A'}x`;
+    row++;
+    
+    if (result.blendedValuationBreakdown.growthPremiumApplied) {
+      assumptionsSheet.getCell(`A${row}`).value = 'Growth Premium Applied:';
+      assumptionsSheet.getCell(`B${row}`).value = `+${result.blendedValuationBreakdown.growthPremiumPercent?.toFixed(0) || 0}%`;
+      assumptionsSheet.getCell(`B${row}`).font = { color: { argb: 'FF008800' } };
+      row++;
+    }
+    
+    assumptionsSheet.getCell(`A${row}`).value = 'Effective Multiple:';
+    assumptionsSheet.getCell(`A${row}`).font = { bold: true };
+    assumptionsSheet.getCell(`B${row}`).value = `${result.blendedValuationBreakdown.effectiveMultiple?.toFixed(2) || 'N/A'}x`;
+    assumptionsSheet.getCell(`B${row}`).font = { bold: true };
+    row++;
+    
+    assumptionsSheet.getCell(`A${row}`).value = 'Blended Valuation:';
+    assumptionsSheet.getCell(`A${row}`).font = { bold: true };
+    assumptionsSheet.getCell(`B${row}`).value = `$${result.blendedValuationBreakdown.totalBlendedValuation?.toFixed(2) || 0}M`;
+    assumptionsSheet.getCell(`B${row}`).font = { bold: true };
+    row++;
+  }
+  
+  assumptionsSheet.getColumn('A').width = 35;
+  assumptionsSheet.getColumn('B').width = 25;
   assumptionsSheet.getColumn('C').width = 15;
   
   // ============ TAB 3: Calculation Walkthrough ============
