@@ -440,13 +440,23 @@ PARSING RULES FOR COMPLEX INSTRUMENTS:
    - growthPremium: the premium multiplier as decimal (e.g., 0.15 for 15%)
    - The effective multiple is then: baseBlendedMultiple × (1 + growthPremium)
 
-4. Strategic Deals with Premiums: If a partner pays "IPO price + X%", use priceType: "ipo_premium" with pricePremium: X/100.
+4. Contingent Liabilities: Use the "contingencies" array for earnouts, warrants, litigation, grants, and other probability-weighted items:
+   - "earnout": Share issuance tied to performance (e.g., "4.1M earnout shares if revenue exceeds $250M (70% probability)")
+     → { "name": "Revenue Earnout", "type": "earnout", "sharesMillions": 4.1, "condition": "revenue>250", "probability": 0.70 }
+   - "warrant": Options with strike price (e.g., "3.3M warrants at $12 strike (55% chance they vest)")
+     → { "name": "Performance Warrants", "type": "warrant", "sharesMillions": 3.3, "strikePrice": 12.0, "probability": 0.55 }
+   - "litigation": Cash liability (e.g., "$42M patent settlement risk (30% probability)")
+     → { "name": "Patent Litigation", "type": "litigation", "paymentMillions": 42.0, "probability": 0.30 }
+   - "grant": Milestone-based shares (e.g., "2.25M shares for tech milestone (80% probability)")
+     → { "name": "Tech Milestone Grant", "type": "grant", "sharesMillions": 2.25, "probability": 0.80 }
 
-5. Anchor Orders: Large committed investments that reduce execution risk should be captured in "anchorOrders".
+5. Strategic Deals with Premiums: If a partner pays "IPO price + X%", use priceType: "ipo_premium" with pricePremium: X/100.
 
-6. Employee Options: Unexercised employee options should be captured in "employeeOptions" for treasury stock method dilution.
+6. Anchor Orders: Large committed investments that reduce execution risk should be captured in "anchorOrders".
 
-7. Probability Estimation: For contingent items without explicit probability, estimate based on:
+7. Employee Options: Unexercised employee options should be captured in "employeeOptions" for treasury stock method dilution.
+
+8. Probability Estimation: For contingent items without explicit probability, estimate based on:
    - FDA/regulatory approval: 0.60-0.80
    - Revenue/performance targets: 0.50-0.70
    - Litigation loss: 0.20-0.40
@@ -624,7 +634,12 @@ export async function parseIPODescription(
       condition: c.condition || undefined,
       probability: c.probability ?? 0.5,
     }));
-    console.log(`[IPO Parser] Parsed ${contingencies.length} contingent liabilities`);
+    console.log(`[IPO Parser] Parsed ${contingencies.length} contingent liabilities:`);
+    contingencies.forEach((cont, idx) => {
+      console.log(`  [${idx + 1}] ${cont.name} (${cont.type}): ${cont.sharesMillions ?? 0}M shares, $${cont.paymentMillions ?? 0}M payment, ${(cont.probability * 100).toFixed(0)}% probability`);
+    });
+  } else {
+    console.log(`[IPO Parser] No contingencies array found in parsed response`);
   }
   
   let strategicDeals: StrategicDeal[] | undefined = undefined;
