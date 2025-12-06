@@ -1157,25 +1157,67 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     }
   }
   
-  // FIX: Apply IPO discount to enterprise valuation FIRST, then convert to per-share
-  // "Move your IPO discount logic so it applies to enterprise valuation before converting to equity value or dividing by share count; never apply discounts to the per-share output."
+  // ============ CORRECTED IPO PRICING CALCULATION ============
+  // "Apply the IPO discount to enterprise valuation before converting to equity value, 
+  // and compute per-share price using fully diluted post-IPO shares (including primary 
+  // issuance and greenshoe); never apply discounts after dividing by shares."
   
   // Step 1: Calculate adjusted pre-money valuation (with confidence/demand multiplier)
   const adjustedPreMoneyValuation = preMoneyValuation * confidenceMultiplier;
-  console.log(`[IPO Model] Adjusted Pre-Money: $${preMoneyValuation}M${confidenceMultiplier > 1 ? ` × ${confidenceMultiplier.toFixed(4)}x = $${adjustedPreMoneyValuation.toFixed(2)}M` : ''}`);
+  console.log(`[IPO Model] Adjusted Pre-Money: $${preMoneyValuation.toFixed(2)}M${confidenceMultiplier > 1 ? ` × ${confidenceMultiplier.toFixed(4)}x = $${adjustedPreMoneyValuation.toFixed(2)}M` : ''}`);
   
   // Step 2: Apply IPO discount to ENTERPRISE VALUATION (not per-share price)
   const effectiveDiscount = Math.min(Math.max(ipoDiscount, 0), 0.5); // Cap at 50%
   const discountedPreMoneyValuation = adjustedPreMoneyValuation * (1 - effectiveDiscount);
   console.log(`[IPO Model] Discounted Pre-Money: $${adjustedPreMoneyValuation.toFixed(2)}M × (1 - ${(effectiveDiscount*100).toFixed(0)}%) = $${discountedPreMoneyValuation.toFixed(2)}M`);
   
-  // Step 3: Theoretical price is UNDISCOUNTED (fair value)
+  // Step 3: Theoretical price uses UNDISCOUNTED valuation / pre-IPO shares (fair value reference)
   const theoreticalPrice = adjustedPreMoneyValuation / adjustedPreIpoShares;
-  console.log(`[IPO Model] Theoretical Price (Undiscounted): $${adjustedPreMoneyValuation.toFixed(2)}M / ${adjustedPreIpoShares}M shares = $${theoreticalPrice.toFixed(2)}/share`);
+  console.log(`[IPO Model] Theoretical Price (Undiscounted): $${adjustedPreMoneyValuation.toFixed(2)}M / ${adjustedPreIpoShares.toFixed(4)}M pre-IPO shares = $${theoreticalPrice.toFixed(2)}/share`);
   
-  // Step 4: Offer price is derived from DISCOUNTED valuation
-  let offerPrice = discountedPreMoneyValuation / adjustedPreIpoShares;
-  console.log(`[IPO Model] Offer Price: $${discountedPreMoneyValuation.toFixed(2)}M / ${adjustedPreIpoShares}M shares = $${offerPrice.toFixed(2)}/share`);
+  // Step 4: ITERATIVELY SOLVE for Offer Price using POST-IPO fully diluted shares
+  // This is a circular calculation: Price depends on post-IPO shares, which depends on new shares, which depends on price
+  // Formula: Offer Price = Discounted Pre-Money / (Pre-IPO + New Shares + Greenshoe)
+  // Where: New Shares = Primary Raise / Offer Price, Greenshoe = New Shares × greenshoePercent
+  // Algebraic solution:
+  //   P = DiscountedPM / (PreIPO + Raise/P + Raise/P × Greenshoe%)
+  //   P = DiscountedPM / (PreIPO + Raise/P × (1 + Greenshoe%))
+  //   P × (PreIPO + Raise/P × (1 + Greenshoe%)) = DiscountedPM
+  //   P × PreIPO + Raise × (1 + Greenshoe%) = DiscountedPM
+  //   P = (DiscountedPM - Raise × (1 + Greenshoe%)) / PreIPO
+  
+  const preIpoShares = adjustedPreIpoShares;
+  const greenshoeMultiplier = 1 + greenshoePercent; // e.g., 1.15 for 15% greenshoe
+  
+  // Algebraic solution for offer price
+  let offerPrice = (discountedPreMoneyValuation - primaryRaiseTarget * greenshoeMultiplier) / preIpoShares;
+  
+  // Validate: If the algebraic solution produces negative or very low price, use iterative approach
+  if (offerPrice <= 0) {
+    console.log(`[IPO Model] Algebraic solution invalid ($${offerPrice.toFixed(2)}), using iterative approach`);
+    // Fallback: Iterate to find equilibrium price
+    offerPrice = discountedPreMoneyValuation / preIpoShares; // Initial guess
+    for (let i = 0; i < 20; i++) {
+      const newShares = primaryRaiseTarget / offerPrice;
+      const greenshoe = newShares * greenshoePercent;
+      const totalPostIpo = preIpoShares + newShares + greenshoe;
+      const newPrice = discountedPreMoneyValuation / totalPostIpo;
+      if (Math.abs(newPrice - offerPrice) < 0.001) break;
+      offerPrice = newPrice;
+    }
+  }
+  
+  // Calculate the derived values
+  const newSharesIssued = primaryRaiseTarget / offerPrice;
+  const greenshoeShares = newSharesIssued * greenshoePercent;
+  const fullyDilutedPostIpo = preIpoShares + newSharesIssued + greenshoeShares;
+  
+  console.log(`[IPO Model] Post-IPO Fully Diluted: ${preIpoShares.toFixed(4)}M + ${newSharesIssued.toFixed(4)}M + ${greenshoeShares.toFixed(4)}M = ${fullyDilutedPostIpo.toFixed(4)}M shares`);
+  console.log(`[IPO Model] Offer Price: $${discountedPreMoneyValuation.toFixed(2)}M / ${fullyDilutedPostIpo.toFixed(4)}M FD shares = $${offerPrice.toFixed(2)}/share`);
+  
+  // Verify the calculation
+  const verifyPrice = discountedPreMoneyValuation / fullyDilutedPostIpo;
+  console.log(`[IPO Model] Verification: $${discountedPreMoneyValuation.toFixed(2)}M / ${fullyDilutedPostIpo.toFixed(4)}M = $${verifyPrice.toFixed(2)}/share`);
 
   // Edge case: If conversion dilution pushed price below trigger, force just above
   if (conversionActivated && conversionTriggerPrice && offerPrice < conversionTriggerPrice) {
@@ -1193,22 +1235,13 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     warnings.push('Price below $5.00 may face institutional investor restrictions (penny stock concerns).');
   }
 
-  // ============ PHASE 4: Calculate Shares to Issue ============
-  // Use adjusted share count for all remaining calculations
-  const preIpoShares = adjustedPreIpoShares;
-  
-  // New Shares Issued = Primary Raise Target / Offer Price
-  const newSharesIssued = primaryRaiseTarget / offerPrice;
-  console.log(`[IPO Model] New Shares: $${primaryRaiseTarget}M / $${offerPrice.toFixed(2)} = ${(newSharesIssued * 1000000).toLocaleString()} shares (${newSharesIssued.toFixed(4)}M)`);
-
-  // ============ PHASE 5: Calculate Post-Money Valuation ============
+  // ============ PHASE 4: Calculate Post-Money Valuation ============
   const impliedPreMoneyAtOffer = offerPrice * preIpoShares;
-  const postMoneyValuation = impliedPreMoneyAtOffer + primaryRaiseTarget;
-  console.log(`[IPO Model] Post-Money: ($${offerPrice.toFixed(2)} × ${preIpoShares}M) + $${primaryRaiseTarget}M = $${postMoneyValuation.toFixed(2)}M`);
+  const postMoneyValuation = offerPrice * fullyDilutedPostIpo; // Market cap at offer = price × FD shares
+  console.log(`[IPO Model] Post-Money (Market Cap): $${offerPrice.toFixed(2)} × ${fullyDilutedPostIpo.toFixed(4)}M FD shares = $${postMoneyValuation.toFixed(2)}M`);
 
-  // ============ PHASE 6: Calculate Offering Structure ============
+  // ============ PHASE 5: Calculate Offering Structure ============
   const totalPrimarySecondary = newSharesIssued + secondaryShares;
-  const greenshoeShares = totalPrimarySecondary * greenshoePercent;
   const totalSharesOffered = totalPrimarySecondary + greenshoeShares;
   
   // Post-IPO shares outstanding (excluding greenshoe initially)
@@ -1945,18 +1978,21 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
   calcSheet.getCell('A1').style = headerStyle;
   calcSheet.getRow(1).height = 25;
   
-  // FIX: Corrected calculation steps to show discount applied to enterprise valuation first
+  // CORRECTED: Calculation steps showing discount applied to valuation, divided by FD post-IPO shares
   const discountPercent = ((assumptions.ipoDiscount || 0.15) * 100).toFixed(0);
   const discountedValuation = (result.preMoneyValuation || 0) * (1 - (assumptions.ipoDiscount || 0.15));
+  const fdPostIpo = (result.postIpoSharesWithGreenshoe || 0).toFixed(4);
   
   const calcSteps = [
     ['Step', 'Formula', 'Calculation', 'Result'],
     ['1. Pre-Money Valuation', 'LTM Revenue × Multiple', `$${assumptions.ltmRevenue || 0}M × ${assumptions.industryRevenueMultiple || 0}x`, `$${(result.preMoneyValuation || 0).toFixed(2)}M`],
     ['2. Apply IPO Discount', 'Pre-Money × (1 - Discount)', `$${(result.preMoneyValuation || 0).toFixed(2)}M × (1 - ${discountPercent}%)`, `$${discountedValuation.toFixed(2)}M`],
     ['3. Theoretical Price', 'Pre-Money / Pre-IPO Shares', `$${(result.preMoneyValuation || 0).toFixed(2)}M / ${assumptions.preIpoShares || 0}M`, `$${(result.theoreticalPrice || 0).toFixed(2)} (undiscounted)`],
-    ['4. Offer Price', 'Discounted Pre-Money / Shares', `$${discountedValuation.toFixed(2)}M / ${assumptions.preIpoShares || 0}M`, `$${(result.offerPrice || 0).toFixed(2)}`],
-    ['5. New Shares to Issue', 'Primary Raise / Offer Price', `$${assumptions.primaryRaiseTarget || 0}M / $${(result.offerPrice || 0).toFixed(2)}`, `${((result.newSharesIssued || 0) * 1000000).toLocaleString()} shares`],
-    ['6. Post-Money Valuation', '(Price × Pre-IPO) + Raise', `($${(result.offerPrice || 0).toFixed(2)} × ${assumptions.preIpoShares || 0}M) + $${assumptions.primaryRaiseTarget || 0}M`, `$${(result.postMoneyValuation || 0).toFixed(2)}M`],
+    ['4. Solve for Offer Price', 'Discounted Val / FD Post-IPO', `$${discountedValuation.toFixed(2)}M / ${fdPostIpo}M FD shares`, `$${(result.offerPrice || 0).toFixed(2)}`],
+    ['5. New Shares Issued', 'Primary Raise / Offer Price', `$${assumptions.primaryRaiseTarget || 0}M / $${(result.offerPrice || 0).toFixed(2)}`, `${((result.newSharesIssued || 0) * 1000000).toLocaleString()} shares`],
+    ['6. Greenshoe Shares', 'New Shares × 15%', `${((result.newSharesIssued || 0) * 1000000).toLocaleString()} × 15%`, `${((result.greenshoeShares || 0) * 1000000).toLocaleString()} shares`],
+    ['7. FD Post-IPO Shares', 'Pre-IPO + New + Greenshoe', `${assumptions.preIpoShares || 0}M + ${(result.newSharesIssued || 0).toFixed(4)}M + ${(result.greenshoeShares || 0).toFixed(4)}M`, `${fdPostIpo}M shares`],
+    ['8. Post-Money (Market Cap)', 'Price × FD Shares', `$${(result.offerPrice || 0).toFixed(2)} × ${fdPostIpo}M`, `$${(result.postMoneyValuation || 0).toFixed(2)}M`],
   ];
   
   row = 3;
