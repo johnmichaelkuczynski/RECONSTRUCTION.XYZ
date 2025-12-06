@@ -56,7 +56,11 @@ The application uses a monorepo structure, separating client and server.
             - Formula: demandBoost = 1.0 + min(anchorAmount / raiseTarget × 0.2, 0.20)
           - **Employee Option Dilution (Treasury Stock Method)**:
             - If strike < offer: Net dilution = options - (options × strike / offer price)
-          - **Multi-Proxy Blended Valuation**: Weighted array of multiples (e.g., 60% industry × 28x + 40% AI proxy × 32x)
+          - **Multi-Proxy Blended Valuation with Growth Premium**: Weighted array of multiples with growth adjustment:
+            - Base blended multiple = sum of (each multiple × its weight)
+            - Example: 48x × 60% + 24x × 40% = 28.8x + 9.6x = 38.4x base
+            - Growth premium: If revenue growth > threshold (default 200%), applies premium (e.g., 15%)
+            - Effective multiple = 38.4x × 1.15 = 44.16x for high-growth companies
         - **Processing Order (Correct Sequence)**: Blended valuation → Anchor boost → Convertibles → Contingencies → Employee options → Final pricing
         - **Dual-Class Share Voting Control**: Calculates founder voting power vs public, generates CRITICAL warning if control threshold breached
         - **Backward Compatible**: Legacy single-instrument fields still supported for simple cases

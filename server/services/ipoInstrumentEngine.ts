@@ -81,8 +81,15 @@ export interface InstrumentEngineResult {
     type: string;
     multiple: number;
     weight: number;
+    weightedMultiple: number;
     contribution: number;
   }>;
+  
+  // Growth premium tracking
+  blendedMultiple: number;
+  baseBlendedMultiple: number;
+  growthPremiumApplied: boolean;
+  growthPremiumPercent: number;
   
   // Logs for debugging
   logs: string[];
@@ -132,44 +139,100 @@ export function evaluateCondition(
 
 // ============ BLENDED VALUATION CALCULATOR ============
 
+export interface BlendedValuationResult {
+  valuation: number;
+  blendedMultiple: number;
+  baseBlendedMultiple: number;
+  growthPremiumApplied: boolean;
+  growthPremiumPercent: number;
+  components: Array<{ 
+    name: string; 
+    type: string; 
+    multiple: number; 
+    weight: number; 
+    weightedMultiple: number;
+    contribution: number;
+  }>;
+}
+
 export function calculateBlendedValuation(
   ltmRevenue: number,
   ltmEbitda: number | undefined,
   multiples: ValuationMultiple[],
-  logs: string[]
-): { valuation: number; components: Array<{ name: string; type: string; multiple: number; weight: number; contribution: number }> } {
+  logs: string[],
+  revenueGrowthRate?: number,
+  growthPremiumThreshold?: number,
+  growthPremium?: number
+): BlendedValuationResult {
   if (!multiples || multiples.length === 0) {
     logs.push('[Engine] No valuation multiples provided, returning 0');
-    return { valuation: 0, components: [] };
+    return { 
+      valuation: 0, 
+      blendedMultiple: 0, 
+      baseBlendedMultiple: 0,
+      growthPremiumApplied: false,
+      growthPremiumPercent: 0,
+      components: [] 
+    };
   }
   
-  let totalValuation = 0;
-  const components: Array<{ name: string; type: string; multiple: number; weight: number; contribution: number }> = [];
+  logs.push(`[Engine] ============ BLENDED VALUATION BREAKDOWN ============`);
+  
+  // Step 1: Calculate weighted blended multiple
+  let baseBlendedMultiple = 0;
+  const components: BlendedValuationResult['components'] = [];
   
   for (const mult of multiples) {
-    let baseValue = 0;
-    if (mult.type === 'revenue') {
-      baseValue = ltmRevenue;
-    } else if (mult.type === 'ebitda' && ltmEbitda !== undefined) {
-      baseValue = Math.max(0, ltmEbitda); // Use 0 if negative
-    }
+    const weightedMultiple = mult.multiple * mult.weight;
+    baseBlendedMultiple += weightedMultiple;
     
-    const contribution = baseValue * mult.multiple * mult.weight;
-    totalValuation += contribution;
+    logs.push(`[Engine] - ${mult.name}: ${mult.multiple}x × ${(mult.weight * 100).toFixed(0)}% = ${weightedMultiple.toFixed(2)}x`);
     
     components.push({
       name: mult.name,
       type: mult.type,
       multiple: mult.multiple,
       weight: mult.weight,
-      contribution
+      weightedMultiple,
+      contribution: 0 // Will be calculated after growth premium
     });
-    
-    logs.push(`[Engine] Valuation Component: ${mult.name} = $${baseValue}M × ${mult.multiple}x × ${(mult.weight * 100).toFixed(0)}% = $${contribution.toFixed(2)}M`);
   }
   
-  logs.push(`[Engine] Total Blended Valuation: $${totalValuation.toFixed(2)}M`);
-  return { valuation: totalValuation, components };
+  logs.push(`[Engine] Base Blended Multiple: ${baseBlendedMultiple.toFixed(2)}x`);
+  
+  // Step 2: Apply growth premium if applicable
+  let effectiveMultiple = baseBlendedMultiple;
+  let growthPremiumApplied = false;
+  const threshold = growthPremiumThreshold ?? 2.0; // Default 200% growth
+  const premium = growthPremium ?? 0; // Default no premium
+  
+  if (revenueGrowthRate !== undefined && revenueGrowthRate > threshold && premium > 0) {
+    growthPremiumApplied = true;
+    effectiveMultiple = baseBlendedMultiple * (1 + premium);
+    logs.push(`[Engine] Revenue Growth: ${(revenueGrowthRate * 100).toFixed(0)}% > ${(threshold * 100).toFixed(0)}% threshold`);
+    logs.push(`[Engine] Growth Premium (${(premium * 100).toFixed(0)}%): ${baseBlendedMultiple.toFixed(2)}x × ${(1 + premium).toFixed(2)} = ${effectiveMultiple.toFixed(2)}x`);
+  }
+  
+  logs.push(`[Engine] Effective Multiple: ${effectiveMultiple.toFixed(2)}x`);
+  
+  // Step 3: Calculate total valuation using revenue base
+  const totalValuation = ltmRevenue * effectiveMultiple;
+  
+  // Update component contributions
+  for (const comp of components) {
+    comp.contribution = ltmRevenue * comp.weightedMultiple * (growthPremiumApplied ? (1 + premium) : 1);
+  }
+  
+  logs.push(`[Engine] Base Valuation: $${ltmRevenue}M × ${effectiveMultiple.toFixed(2)}x = $${totalValuation.toFixed(2)}M`);
+  
+  return { 
+    valuation: totalValuation, 
+    blendedMultiple: effectiveMultiple,
+    baseBlendedMultiple,
+    growthPremiumApplied,
+    growthPremiumPercent: premium * 100,
+    components 
+  };
 }
 
 // ============ CONVERTIBLE PROCESSOR ============
@@ -506,16 +569,28 @@ export function runInstrumentEngine(
   let adjustedShares = assumptions.preIpoShares;
   
   // Step 1: Calculate blended valuation if multiple proxies provided
-  let blendedComponents: Array<{ name: string; type: string; multiple: number; weight: number; contribution: number }> = [];
+  let blendedComponents: BlendedValuationResult['components'] = [];
+  let blendedMultiple = 0;
+  let baseBlendedMultiple = 0;
+  let growthPremiumApplied = false;
+  let growthPremiumPercent = 0;
+  
   if (assumptions.valuationMultiples && assumptions.valuationMultiples.length > 0) {
     const blendedResult = calculateBlendedValuation(
       assumptions.ltmRevenue,
       assumptions.ltmEbitda,
       assumptions.valuationMultiples,
-      logs
+      logs,
+      assumptions.revenueGrowthRate,
+      assumptions.growthPremiumThreshold,
+      assumptions.growthPremium
     );
     adjustedValuation = blendedResult.valuation;
     blendedComponents = blendedResult.components;
+    blendedMultiple = blendedResult.blendedMultiple;
+    baseBlendedMultiple = blendedResult.baseBlendedMultiple;
+    growthPremiumApplied = blendedResult.growthPremiumApplied;
+    growthPremiumPercent = blendedResult.growthPremiumPercent;
   }
   
   // Step 2: Apply anchor order demand boost
@@ -589,6 +664,10 @@ export function runInstrumentEngine(
     employeeOptionDilution,
     
     blendedValuationComponents: blendedComponents,
+    blendedMultiple,
+    baseBlendedMultiple,
+    growthPremiumApplied,
+    growthPremiumPercent,
     
     logs
   };

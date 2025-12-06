@@ -146,6 +146,11 @@ export interface IPOAssumptions {
   
   // Multi-proxy Blended Valuation
   valuationMultiples?: ValuationMultiple[];
+  
+  // Growth Premium (for high-growth companies)
+  revenueGrowthRate?: number;    // Revenue growth rate as decimal (e.g., 2.0 for 200%)
+  growthPremiumThreshold?: number; // Growth threshold to trigger premium (e.g., 2.0 for 200%)
+  growthPremium?: number;         // Growth premium multiplier as decimal (e.g., 0.15 for 15%)
 }
 
 export interface IPOPricingResult {
@@ -295,9 +300,14 @@ export interface IPOPricingResult {
       type: string;
       multiple: number;
       weight: number;
-      valuationContribution: number;    // In millions
+      weightedMultiple: number;          // multiple × weight
+      valuationContribution: number;     // In millions
     }>;
-    totalBlendedValuation: number;
+    baseBlendedMultiple: number;         // Sum of weighted multiples
+    effectiveMultiple: number;           // After growth premium
+    growthPremiumApplied: boolean;
+    growthPremiumPercent: number;        // e.g., 15 for 15%
+    totalBlendedValuation: number;       // In millions
   };
   
   // Warnings
@@ -393,9 +403,14 @@ Return a JSON object with the following structure:
       "name": "Industry Revenue" (descriptive name),
       "type": "revenue" | "ebitda",
       "multiple": number (e.g., 28.0),
-      "weight": number (0-1, weight in blend)
+      "weight": number (0-1, weight in blend - all weights should sum to 1.0)
     }
   ] or null,
+  
+  // GROWTH PREMIUM (for high-growth companies)
+  "revenueGrowthRate": number or null (revenue growth as decimal, e.g., 2.5 for 250% growth),
+  "growthPremiumThreshold": number or 2.0 (threshold above which premium applies, e.g., 2.0 for 200%),
+  "growthPremium": number or null (premium multiplier as decimal, e.g., 0.15 for 15% premium),
   
   // LEGACY SINGLE-INSTRUMENT FIELDS (for backwards compatibility)
   "convertibleDebtAmount": number or null,
@@ -415,15 +430,23 @@ PARSING RULES FOR COMPLEX INSTRUMENTS:
    - "price_gt" for terms like "converts if IPO price > $X"
    - "conditional" for probability-based conversions
 
-2. Blended Valuations: If multiple valuation proxies are mentioned (e.g., "28x revenue weighted 60%, AI proxy 32x weighted 40%"), use "valuationMultiples" array and set valuationMethod to "blended".
+2. Blended Valuations: If multiple valuation proxies are mentioned (e.g., "quantum computing 48x weighted 60%, AI proxy 24x weighted 40%"), use "valuationMultiples" array and set valuationMethod to "blended".
+   - IMPORTANT: When using valuationMultiples, the effective multiple = sum of (each multiple × its weight)
+   - Example: 48x × 0.6 + 24x × 0.4 = 28.8x + 9.6x = 38.4x base blended multiple
 
-3. Strategic Deals with Premiums: If a partner pays "IPO price + X%", use priceType: "ipo_premium" with pricePremium: X/100.
+3. Growth Premium: If a growth premium or growth adjustment is mentioned (e.g., "15% premium for >200% growth"), extract:
+   - revenueGrowthRate: the company's growth rate as decimal (e.g., 2.5 for 250%)
+   - growthPremiumThreshold: the threshold for premium to apply (default 2.0 for 200%)
+   - growthPremium: the premium multiplier as decimal (e.g., 0.15 for 15%)
+   - The effective multiple is then: baseBlendedMultiple × (1 + growthPremium)
 
-4. Anchor Orders: Large committed investments that reduce execution risk should be captured in "anchorOrders".
+4. Strategic Deals with Premiums: If a partner pays "IPO price + X%", use priceType: "ipo_premium" with pricePremium: X/100.
 
-5. Employee Options: Unexercised employee options should be captured in "employeeOptions" for treasury stock method dilution.
+5. Anchor Orders: Large committed investments that reduce execution risk should be captured in "anchorOrders".
 
-6. Probability Estimation: For contingent items without explicit probability, estimate based on:
+6. Employee Options: Unexercised employee options should be captured in "employeeOptions" for treasury stock method dilution.
+
+7. Probability Estimation: For contingent items without explicit probability, estimate based on:
    - FDA/regulatory approval: 0.60-0.80
    - Revenue/performance targets: 0.50-0.70
    - Litigation loss: 0.20-0.40
@@ -690,6 +713,10 @@ export async function parseIPODescription(
     anchorOrders,
     employeeOptions,
     valuationMultiples,
+    // Growth premium for high-growth companies
+    revenueGrowthRate: parsed.revenueGrowthRate || undefined,
+    growthPremiumThreshold: parsed.growthPremiumThreshold || 2.0,
+    growthPremium: parsed.growthPremium || undefined,
   };
 }
 
@@ -856,9 +883,14 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
           type: c.type,
           multiple: c.multiple,
           weight: c.weight,
+          weightedMultiple: c.weightedMultiple,
           valuationContribution: c.contribution,
         })),
-        totalBlendedValuation: engineResult.blendedValuationComponents.reduce((sum, c) => sum + c.contribution, 0),
+        baseBlendedMultiple: engineResult.baseBlendedMultiple,
+        effectiveMultiple: engineResult.blendedMultiple,
+        growthPremiumApplied: engineResult.growthPremiumApplied,
+        growthPremiumPercent: engineResult.growthPremiumPercent,
+        totalBlendedValuation: engineResult.adjustedPreMoneyValuation,
       };
     }
     
@@ -874,6 +906,9 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     }
     if (engineResult.employeeOptionDilution > 0) {
       warnings.push(`Employee option dilution: ${engineResult.employeeOptionDilution.toFixed(3)}M shares (treasury stock method).`);
+    }
+    if (engineResult.growthPremiumApplied) {
+      warnings.push(`Growth premium applied: ${engineResult.growthPremiumPercent.toFixed(0)}% premium on ${engineResult.baseBlendedMultiple.toFixed(2)}x base multiple = ${engineResult.blendedMultiple.toFixed(2)}x effective multiple.`);
     }
   }
 
