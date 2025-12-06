@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, TrendingUp, Calculator, DollarSign, FileSpreadsheet, PiggyBank, LineChart, FileCode, Search } from "lucide-react";
+import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, TrendingUp, Calculator, DollarSign, FileSpreadsheet, PiggyBank, LineChart, FileCode, Search, Copy } from "lucide-react";
 import { analyzeDocument, compareDocuments, checkForAI } from "@/lib/analysis";
 import { AnalysisMode, DocumentInput as DocumentInputType, AIDetectionResult, DocumentAnalysis, DocumentComparison } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
@@ -4558,20 +4558,39 @@ Examples:
                 </div>
               </div>
 
-              {/* Python Code Preview */}
+              {/* Python Code - Full with Copy Button */}
               <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-2 gap-2">
                   <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
                     <FileCode className="w-4 h-4" />
-                    Generated Python Code Preview
+                    Generated Python Code
                   </h4>
-                  <span className="text-xs text-gray-500">
-                    {dataScienceResult.pythonCode?.split('\n').length || 0} lines
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-500">
+                      {dataScienceResult.pythonCode?.split('\n').length || 0} lines
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        if (dataScienceResult.pythonCode) {
+                          navigator.clipboard.writeText(dataScienceResult.pythonCode);
+                          toast({
+                            title: "Copied!",
+                            description: "Full Python code copied to clipboard",
+                          });
+                        }
+                      }}
+                      className="gap-1 text-xs bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700"
+                      data-testid="button-copy-python-code"
+                    >
+                      <Copy className="w-3 h-3" />
+                      Copy Code
+                    </Button>
+                  </div>
                 </div>
-                <pre className="text-sm text-green-400 overflow-x-auto max-h-96 overflow-y-auto font-mono">
-                  {dataScienceResult.pythonCode?.slice(0, 3000)}
-                  {dataScienceResult.pythonCode?.length > 3000 && '\n\n... [Download for full code] ...'}
+                <pre className="text-sm text-green-400 overflow-x-auto max-h-[600px] overflow-y-auto font-mono whitespace-pre-wrap">
+                  {dataScienceResult.pythonCode}
                 </pre>
               </div>
 
