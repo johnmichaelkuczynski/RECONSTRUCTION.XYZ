@@ -328,7 +328,7 @@ Return a JSON object with the following structure:
   "ltmEbitda": number or null (LTM EBITDA in millions, null if not provided),
   "industryRevenueMultiple": number (e.g., 10.0 for 10.0x revenue),
   "industryEbitdaMultiple": number or null (e.g., 15.0 for 15.0x EBITDA, null if not provided),
-  "preIpoShares": number (Pre-IPO Fully Diluted Shares in millions),
+  "preIpoShares": number (REQUIRED - Pre-IPO Fully Diluted Shares Outstanding in millions. Look for "shares outstanding", "pre-IPO shares", "existing shares", "FD shares". Example: 18.5 for 18.5 million shares. NEVER return 0 or null for this field.),
   "primaryRaiseTarget": number (Primary Cash to Raise in millions),
   "ipoDiscount": number (as decimal, e.g., 0.20 for 20% discount),
   
@@ -583,6 +583,29 @@ export async function parseIPODescription(
   
   const parsed = JSON.parse(jsonStr.trim());
   
+  // Debug: Log what the LLM returned for key fields
+  console.log(`[IPO Parser] LLM returned preIpoShares: ${parsed.preIpoShares} (type: ${typeof parsed.preIpoShares})`);
+  console.log(`[IPO Parser] LLM returned ltmRevenue: ${parsed.ltmRevenue}, multiple: ${parsed.industryRevenueMultiple}`);
+  console.log(`[IPO Parser] LLM returned primaryRaiseTarget: ${parsed.primaryRaiseTarget}`);
+  
+  // Handle alternative field names the LLM might use
+  if (!parsed.preIpoShares && parsed.sharesOutstanding) {
+    console.log(`[IPO Parser] Using sharesOutstanding as preIpoShares: ${parsed.sharesOutstanding}`);
+    parsed.preIpoShares = parsed.sharesOutstanding;
+  }
+  if (!parsed.preIpoShares && parsed.existingShares) {
+    console.log(`[IPO Parser] Using existingShares as preIpoShares: ${parsed.existingShares}`);
+    parsed.preIpoShares = parsed.existingShares;
+  }
+  if (!parsed.preIpoShares && parsed.preIPOShares) {
+    console.log(`[IPO Parser] Using preIPOShares as preIpoShares: ${parsed.preIPOShares}`);
+    parsed.preIpoShares = parsed.preIPOShares;
+  }
+  if (!parsed.preIpoShares && parsed.totalShares) {
+    console.log(`[IPO Parser] Using totalShares as preIpoShares: ${parsed.totalShares}`);
+    parsed.preIpoShares = parsed.totalShares;
+  }
+  
   // Normalize values to millions - LLM may return in raw dollars instead of millions
   // If a dollar value is > 10,000, assume it's in raw dollars and convert to millions
   const normalizeToMillions = (val: number | undefined, fieldName: string): number | undefined => {
@@ -765,6 +788,22 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
   } = assumptions;
 
   const warnings: string[] = [];
+  
+  // CRITICAL VALIDATION: Prevent division by zero
+  if (!originalPreIpoShares || originalPreIpoShares <= 0) {
+    console.error(`[IPO Model] CRITICAL ERROR: preIpoShares is ${originalPreIpoShares} - cannot calculate pricing`);
+    throw new Error(`Pre-IPO shares outstanding is required and must be greater than 0. The LLM failed to extract this value from the input. Please specify the number of shares outstanding (e.g., "18.5 million shares outstanding" or "pre-IPO shares: 25M").`);
+  }
+  
+  if (!ltmRevenue || ltmRevenue <= 0) {
+    console.error(`[IPO Model] CRITICAL ERROR: ltmRevenue is ${ltmRevenue}`);
+    throw new Error(`LTM Revenue is required and must be greater than 0. Please specify the company's revenue (e.g., "$92 million revenue").`);
+  }
+  
+  if (!industryRevenueMultiple || industryRevenueMultiple <= 0) {
+    console.error(`[IPO Model] CRITICAL ERROR: industryRevenueMultiple is ${industryRevenueMultiple}`);
+    throw new Error(`Valuation multiple is required and must be greater than 0. Please specify a revenue or EBITDA multiple (e.g., "40x revenue multiple").`);
+  }
   let convertibleDebtTreatment: IPOPricingResult['convertibleDebtTreatment'] = undefined;
 
   // ============ PHASE 1: Calculate Pre-Money Valuation ============
