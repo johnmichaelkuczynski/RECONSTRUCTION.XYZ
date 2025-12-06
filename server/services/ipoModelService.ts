@@ -35,6 +35,11 @@ export interface IPOAssumptions {
   founderSharesMillions?: number;     // Number of founder shares in millions
   founderVoteMultiplier?: number;     // Votes per founder share (e.g., 10 for 10x voting)
   controlThreshold?: number;          // Minimum voting % founders require (e.g., 0.40 for 40%)
+  
+  // Milestone Warrants (Optional - Contingent Dilution)
+  warrantSharesMillions?: number;     // Shares to be issued if milestone hit (in millions)
+  warrantStrikePrice?: number;        // Price at which those shares can be bought
+  milestoneProbability?: number;      // Estimated chance of milestone being hit (0.0 to 1.0)
 }
 
 export interface IPOPricingResult {
@@ -94,6 +99,17 @@ export interface IPOPricingResult {
     votingPowerShortfall?: number;  // How much below threshold (if any)
   };
   
+  // Milestone Warrant Treatment (Contingent Dilution)
+  milestoneWarrantTreatment?: {
+    warrantSharesMillions: number;      // Shares to be issued if milestone hit
+    warrantStrikePrice: number;         // Strike price per share
+    milestoneProbability: number;       // Probability of milestone being hit (0-1)
+    theoreticalPriceBeforeAdjustment: number;  // Theoretical price before warrant adjustment
+    expectedDilutionCost: number;       // Expected cost in millions
+    adjustedPreMoneyValuation: number;  // Pre-money after warrant adjustment (millions)
+    warrantInTheMoney: boolean;         // true if theoretical price > strike price
+  };
+  
   // Warnings
   warnings: string[];
   
@@ -129,7 +145,11 @@ Return a JSON object with the following structure:
   
   "founderSharesMillions": number or null (Founder shares with super-voting rights in millions, null if no dual-class),
   "founderVoteMultiplier": number or null (Votes per founder share, e.g., 10 for 10x voting, null if no dual-class),
-  "controlThreshold": number or null (Minimum voting % founders require as decimal, e.g., 0.40 for 40%, null if not specified)
+  "controlThreshold": number or null (Minimum voting % founders require as decimal, e.g., 0.40 for 40%, null if not specified),
+  
+  "warrantSharesMillions": number or null (Shares to be issued if milestone is hit in millions, null if no warrants),
+  "warrantStrikePrice": number or null (Price at which warrant shares can be purchased, null if no warrants),
+  "milestoneProbability": number or null (Probability of milestone being hit as decimal 0.0-1.0, null if no warrants)
 }
 
 Default values if not specified:
@@ -141,6 +161,7 @@ Default values if not specified:
 - convertibleDebtAmount, conversionTriggerPrice, conversionShares: null if no convertible debt mentioned
 - founderSharesMillions, founderVoteMultiplier: null if no dual-class share structure mentioned
 - controlThreshold: 0.50 (50%) if dual-class is mentioned but no specific threshold given
+- warrantSharesMillions, warrantStrikePrice, milestoneProbability: null if no milestone warrants mentioned
 
 IMPORTANT: Return ONLY valid JSON, no markdown, no explanations.`;
 
@@ -298,6 +319,10 @@ export async function parseIPODescription(
     founderSharesMillions: normalizeShares(parsed.founderSharesMillions, 'founderSharesMillions'),
     founderVoteMultiplier: parsed.founderVoteMultiplier || undefined,
     controlThreshold: parsed.controlThreshold ?? (parsed.founderSharesMillions ? 0.50 : undefined),
+    // Milestone warrants
+    warrantSharesMillions: normalizeShares(parsed.warrantSharesMillions, 'warrantSharesMillions'),
+    warrantStrikePrice: parsed.warrantStrikePrice || undefined,
+    milestoneProbability: parsed.milestoneProbability || undefined,
   };
 }
 
@@ -323,6 +348,9 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     founderSharesMillions,
     founderVoteMultiplier,
     controlThreshold,
+    warrantSharesMillions,
+    warrantStrikePrice,
+    milestoneProbability,
   } = assumptions;
 
   const warnings: string[] = [];
@@ -352,6 +380,68 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     // Fallback to revenue - this happens if EBITDA/blended was selected but data is missing
     preMoneyValuation = ltmRevenue * industryRevenueMultiple;
     warnings.push('Missing EBITDA data for selected valuation method. Defaulted to revenue multiple.');
+  }
+
+  // ============ PHASE 1.5: Milestone Warrant Adjustment (Contingent Dilution) ============
+  // This adjusts valuation DOWNWARD to account for potential future share issuance
+  let milestoneWarrantTreatment: IPOPricingResult['milestoneWarrantTreatment'] = undefined;
+  const originalPreMoneyValuation = preMoneyValuation; // Store original for reporting
+  
+  if (warrantSharesMillions && warrantStrikePrice !== undefined && milestoneProbability !== undefined && milestoneProbability > 0) {
+    console.log(`[IPO Model] ============ MILESTONE WARRANT CHECK ============`);
+    
+    // Calculate initial theoretical price to check if warrant is in-the-money
+    const initialTheoreticalPriceForWarrant = preMoneyValuation / originalPreIpoShares;
+    console.log(`[IPO Model] Pre-Adjustment Theoretical Price: $${initialTheoreticalPriceForWarrant.toFixed(2)}`);
+    console.log(`[IPO Model] Warrant Strike Price: $${warrantStrikePrice.toFixed(2)}`);
+    console.log(`[IPO Model] Warrant Shares: ${warrantSharesMillions}M`);
+    console.log(`[IPO Model] Milestone Probability: ${(milestoneProbability * 100).toFixed(0)}%`);
+    
+    // Calculate expected dilution cost
+    // Cost = (Current Fair Value - Strike Price) × Shares × Probability
+    // Only apply if warrant is "in-the-money" (theoretical > strike)
+    const warrantSpread = initialTheoreticalPriceForWarrant - warrantStrikePrice;
+    const warrantInTheMoney = warrantSpread > 0;
+    
+    if (warrantInTheMoney) {
+      // Expected cost in dollars: spread × shares × probability
+      // warrantSharesMillions is in millions, so multiply by 1M to get actual shares
+      const expectedDilutionCostDollars = warrantSpread * (warrantSharesMillions * 1000000) * milestoneProbability;
+      const expectedDilutionCostMillions = expectedDilutionCostDollars / 1000000;
+      
+      // Reduce pre-money valuation by expected cost
+      preMoneyValuation = preMoneyValuation - expectedDilutionCostMillions;
+      
+      console.log(`[IPO Model] Warrant IN-THE-MONEY: $${initialTheoreticalPriceForWarrant.toFixed(2)} > $${warrantStrikePrice.toFixed(2)}`);
+      console.log(`[IPO Model] Spread: $${warrantSpread.toFixed(2)} per share`);
+      console.log(`[IPO Model] Expected Dilution Cost: $${warrantSpread.toFixed(2)} × ${warrantSharesMillions}M shares × ${(milestoneProbability * 100).toFixed(0)}% = $${expectedDilutionCostMillions.toFixed(2)}M`);
+      console.log(`[IPO Model] Adjusted Pre-Money: $${originalPreMoneyValuation.toFixed(2)}M - $${expectedDilutionCostMillions.toFixed(2)}M = $${preMoneyValuation.toFixed(2)}M`);
+      
+      warnings.push(`Milestone warrant adjustment: -$${expectedDilutionCostMillions.toFixed(2)}M (${(milestoneProbability * 100).toFixed(0)}% probability × ${warrantSharesMillions}M shares at $${warrantStrikePrice.toFixed(2)} strike).`);
+      
+      milestoneWarrantTreatment = {
+        warrantSharesMillions,
+        warrantStrikePrice,
+        milestoneProbability,
+        theoreticalPriceBeforeAdjustment: initialTheoreticalPriceForWarrant,
+        expectedDilutionCost: expectedDilutionCostMillions,
+        adjustedPreMoneyValuation: preMoneyValuation,
+        warrantInTheMoney: true,
+      };
+    } else {
+      console.log(`[IPO Model] Warrant OUT-OF-THE-MONEY: $${initialTheoreticalPriceForWarrant.toFixed(2)} <= $${warrantStrikePrice.toFixed(2)}`);
+      console.log(`[IPO Model] No valuation adjustment needed`);
+      
+      milestoneWarrantTreatment = {
+        warrantSharesMillions,
+        warrantStrikePrice,
+        milestoneProbability,
+        theoreticalPriceBeforeAdjustment: initialTheoreticalPriceForWarrant,
+        expectedDilutionCost: 0,
+        adjustedPreMoneyValuation: preMoneyValuation,
+        warrantInTheMoney: false,
+      };
+    }
   }
 
   // ============ PHASE 2: Handle Convertible Debt ============
@@ -546,6 +636,7 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     
     convertibleDebtTreatment,
     votingControlAnalysis,
+    milestoneWarrantTreatment,
     
     warnings,
     assumptions,
@@ -798,6 +889,59 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
     });
   }
   
+  // Milestone Warrant Treatment Section (if applicable)
+  if (result.milestoneWarrantTreatment) {
+    row += 1;
+    let sectionNum = '5';
+    if (result.convertibleDebtTreatment) sectionNum = '6';
+    if (result.convertibleDebtTreatment && result.votingControlAnalysis) sectionNum = '7';
+    else if (result.votingControlAnalysis) sectionNum = '6';
+    
+    summarySheet.getCell(`A${row}`).value = `${sectionNum}. MILESTONE WARRANTS (CONTINGENT DILUTION)`;
+    summarySheet.getCell(`A${row}`).style = sectionStyle;
+    summarySheet.mergeCells(`A${row}:E${row}`);
+    row++;
+    
+    const mwt = result.milestoneWarrantTreatment;
+    const warrantData: [string, string | number, string?][] = [
+      ['Warrant Shares', mwt.warrantSharesMillions, 'millions'],
+      ['Strike Price', mwt.warrantStrikePrice, 'per share'],
+      ['Milestone Probability', mwt.milestoneProbability, ''],
+      ['Theoretical Price (Before Adjustment)', mwt.theoreticalPriceBeforeAdjustment, 'per share'],
+      ['Warrant Status', mwt.warrantInTheMoney ? 'IN-THE-MONEY' : 'OUT-OF-THE-MONEY', ''],
+      ['Expected Dilution Cost', mwt.expectedDilutionCost, 'millions'],
+      ['Adjusted Pre-Money Valuation', mwt.adjustedPreMoneyValuation, 'millions'],
+    ];
+    
+    warrantData.forEach(([label, value, unit]) => {
+      summarySheet.getCell(`A${row}`).value = label as string;
+      summarySheet.getCell(`B${row}`).value = value;
+      
+      if (typeof value === 'number') {
+        if ((unit as string) === 'millions') {
+          summarySheet.getCell(`B${row}`).numFmt = '"$"#,##0.00"M"';
+        } else if ((unit as string) === 'per share') {
+          summarySheet.getCell(`B${row}`).numFmt = '"$"#,##0.00';
+        } else if ((label as string).includes('Probability')) {
+          summarySheet.getCell(`B${row}`).numFmt = '0.0%';
+        }
+      }
+      
+      // Status styling
+      if (value === 'IN-THE-MONEY') {
+        summarySheet.getCell(`B${row}`).font = { bold: true, color: { argb: 'FFCC0000' } };
+      } else if (value === 'OUT-OF-THE-MONEY') {
+        summarySheet.getCell(`B${row}`).font = { color: { argb: 'FF006400' } };
+      }
+      
+      if (unit && (unit as string) !== '') {
+        summarySheet.getCell(`C${row}`).value = unit as string;
+        summarySheet.getCell(`C${row}`).font = { italic: true, color: { argb: 'FF666666' } };
+      }
+      row++;
+    });
+  }
+  
   // Warnings
   if (result.warnings && result.warnings.length > 0) {
     row += 1;
@@ -853,6 +997,11 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
     ['Convertible Debt Amount', assumptions.convertibleDebtAmount || 'N/A', assumptions.convertibleDebtAmount ? 'millions' : ''],
     ['Conversion Trigger Price', assumptions.conversionTriggerPrice ? `$${assumptions.conversionTriggerPrice.toFixed(2)}` : 'N/A'],
     ['Conversion Shares', assumptions.conversionShares || 'N/A', assumptions.conversionShares ? 'millions' : ''],
+    [''],
+    ['MILESTONE WARRANTS'],
+    ['Warrant Shares', assumptions.warrantSharesMillions || 'N/A', assumptions.warrantSharesMillions ? 'millions' : ''],
+    ['Warrant Strike Price', assumptions.warrantStrikePrice ? `$${assumptions.warrantStrikePrice.toFixed(2)}` : 'N/A'],
+    ['Milestone Probability', assumptions.milestoneProbability ? `${(assumptions.milestoneProbability * 100).toFixed(0)}%` : 'N/A'],
   ];
   
   row = 3;
@@ -861,7 +1010,7 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
       row++;
       return;
     }
-    if (['FINANCIAL METRICS', 'VALUATION', 'SHARE STRUCTURE', 'OFFERING TERMS', 'CONVERTIBLE DEBT'].includes(label as string)) {
+    if (['FINANCIAL METRICS', 'VALUATION', 'SHARE STRUCTURE', 'OFFERING TERMS', 'CONVERTIBLE DEBT', 'MILESTONE WARRANTS'].includes(label as string)) {
       assumptionsSheet.getCell(`A${row}`).style = sectionStyle;
     }
     assumptionsSheet.getCell(`A${row}`).value = label as string;
