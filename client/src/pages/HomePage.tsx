@@ -827,6 +827,161 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     }
   };
 
+  // Copy Finance Results as Text
+  const handleFinanceCopyAsText = () => {
+    if (!financeResult) return;
+    
+    let text = "";
+    const modelName = financeResult.assumptions?.companyName || "Financial Model";
+    
+    if (financeModelType === "dcf") {
+      text = `${modelName} - DCF Valuation\n`;
+      text += `${"=".repeat(50)}\n\n`;
+      text += `VALUATION SUMMARY\n`;
+      text += `-----------------\n`;
+      text += `Base Case Share Price: $${financeResult.valuation?.base?.sharePrice?.toFixed(2) || "N/A"}\n`;
+      text += `Bull Case Share Price: $${financeResult.valuation?.bull?.sharePrice?.toFixed(2) || "N/A"}\n`;
+      text += `Bear Case Share Price: $${financeResult.valuation?.bear?.sharePrice?.toFixed(2) || "N/A"}\n\n`;
+      text += `Enterprise Value: $${financeResult.valuation?.base?.enterpriseValue?.toLocaleString()}M\n`;
+      text += `Equity Value: $${financeResult.valuation?.base?.equityValue?.toLocaleString()}M\n`;
+      text += `Net Debt: $${financeResult.valuation?.base?.netDebt?.toLocaleString()}M\n\n`;
+      text += `KEY ASSUMPTIONS\n`;
+      text += `---------------\n`;
+      text += `WACC: ${((financeResult.assumptions?.wacc || 0) * 100).toFixed(1)}%\n`;
+      text += `Terminal Growth: ${((financeResult.assumptions?.terminalGrowthRate || 0) * 100).toFixed(1)}%\n`;
+      text += `Base EBITDA Margin: ${((financeResult.assumptions?.baseEBITDAMargin || 0) * 100).toFixed(1)}%\n`;
+      text += `Target EBITDA Margin: ${((financeResult.assumptions?.targetEBITDAMargin || 0) * 100).toFixed(1)}%\n\n`;
+      if (financeResult.projections?.revenue) {
+        text += `5-YEAR PROJECTIONS\n`;
+        text += `------------------\n`;
+        text += `Year\tRevenue\t\tEBITDA\t\tFCF\n`;
+        for (let i = 0; i < financeResult.projections.revenue.length; i++) {
+          text += `${i + 1}\t$${financeResult.projections.revenue[i]?.toLocaleString()}M\t$${financeResult.projections.ebitda?.[i]?.toLocaleString()}M\t$${financeResult.projections.fcf?.[i]?.toLocaleString()}M\n`;
+        }
+      }
+    } else if (financeModelType === "lbo") {
+      text = `${modelName} - LBO Analysis\n`;
+      text += `${"=".repeat(50)}\n\n`;
+      text += `SPONSOR RETURNS\n`;
+      text += `---------------\n`;
+      text += `Initial Equity: $${financeResult.returns?.sponsor?.equity?.toLocaleString()}M\n`;
+      text += `Exit Proceeds: $${financeResult.returns?.sponsor?.exitProceeds?.toLocaleString()}M\n`;
+      text += `MOIC: ${financeResult.returns?.sponsor?.moic?.toFixed(1)}x\n`;
+      text += `IRR: ${((financeResult.returns?.sponsor?.irr || 0) * 100).toFixed(1)}%\n\n`;
+      text += `EXIT VALUATION\n`;
+      text += `--------------\n`;
+      text += `Exit EBITDA: $${financeResult.exitValuation?.exitEBITDA?.toLocaleString()}M\n`;
+      text += `Exit Multiple: ${financeResult.exitValuation?.exitMultiple?.toFixed(1)}x\n`;
+      text += `Enterprise Value: $${financeResult.exitValuation?.enterpriseValue?.toLocaleString()}M\n`;
+      text += `Exit Equity Value: $${financeResult.exitValuation?.equityValue?.toLocaleString()}M\n\n`;
+      text += `SOURCES OF FUNDS\n`;
+      text += `----------------\n`;
+      text += `Senior Debt: $${financeResult.sourcesUses?.sources?.seniorDebt?.toLocaleString()}M\n`;
+      text += `Subordinated Debt: $${financeResult.sourcesUses?.sources?.subordinatedDebt?.toLocaleString()}M\n`;
+      text += `Sponsor Equity: $${financeResult.sourcesUses?.sources?.sponsorEquity?.toLocaleString()}M\n`;
+      text += `Total Sources: $${financeResult.sourcesUses?.sources?.total?.toLocaleString()}M\n\n`;
+      text += `USES OF FUNDS\n`;
+      text += `-------------\n`;
+      text += `Purchase Price: $${financeResult.sourcesUses?.uses?.purchasePrice?.toLocaleString()}M\n`;
+      text += `Transaction Costs: $${financeResult.sourcesUses?.uses?.transactionCosts?.toLocaleString()}M\n`;
+      text += `Total Uses: $${financeResult.sourcesUses?.uses?.total?.toLocaleString()}M\n\n`;
+      text += `KEY DEAL METRICS\n`;
+      text += `----------------\n`;
+      text += `Entry Multiple: ${financeResult.assumptions?.entryMultiple?.toFixed(1)}x\n`;
+      text += `Exit Multiple: ${financeResult.assumptions?.exitMultiple?.toFixed(1)}x\n`;
+      text += `Entry Leverage: ${financeResult.debtMetrics?.entryLeverage?.toFixed(1)}x\n`;
+      text += `Exit Leverage: ${financeResult.debtMetrics?.exitLeverage?.toFixed(1)}x\n`;
+      text += `Hold Period: ${financeResult.assumptions?.holdPeriod} Years\n`;
+      text += `Debt Paydown: $${financeResult.debtMetrics?.debtPaydown?.toLocaleString()}M\n`;
+      text += `% Debt Repaid: ${((financeResult.debtMetrics?.percentDebtRepaid || 0) * 100).toFixed(0)}%\n\n`;
+      if (financeResult.projections?.revenue) {
+        text += `5-YEAR PROJECTIONS\n`;
+        text += `------------------\n`;
+        text += `Metric\t\tYear 0\tYear 1\tYear 2\tYear 3\tYear 4\tYear 5\n`;
+        text += `Revenue ($M)\t`;
+        financeResult.projections.revenue.forEach((v: number) => text += `$${v?.toLocaleString()}\t`);
+        text += `\nEBITDA ($M)\t`;
+        financeResult.projections.ebitda?.forEach((v: number) => text += `$${v?.toLocaleString()}\t`);
+        text += `\nSenior Debt ($M)\t`;
+        financeResult.projections.seniorDebt?.forEach((v: number) => text += `$${v?.toLocaleString()}\t`);
+        text += `\nFree Cash Flow ($M)\t`;
+        financeResult.projections.fcf?.forEach((v: number) => text += `$${v?.toLocaleString()}\t`);
+        text += `\n`;
+      }
+    } else if (financeModelType === "ma") {
+      text = `${modelName} - M&A Analysis\n`;
+      text += `${"=".repeat(50)}\n\n`;
+      text += `TRANSACTION OVERVIEW\n`;
+      text += `--------------------\n`;
+      text += `Acquirer: ${financeResult.assumptions?.acquirerName || "N/A"}\n`;
+      text += `Target: ${financeResult.assumptions?.targetName || "N/A"}\n`;
+      text += `Purchase Price: $${financeResult.assumptions?.purchasePrice?.toLocaleString()}M\n`;
+      text += `Consideration: ${financeResult.assumptions?.considerationType || "Mixed"}\n\n`;
+      text += `ACCRETION/DILUTION\n`;
+      text += `------------------\n`;
+      text += `Year 1: ${financeResult.accretionDilution?.year1?.percentage?.toFixed(1)}% (${financeResult.accretionDilution?.year1?.isAccretive ? "Accretive" : "Dilutive"})\n`;
+      text += `Year 2: ${financeResult.accretionDilution?.year2?.percentage?.toFixed(1)}% (${financeResult.accretionDilution?.year2?.isAccretive ? "Accretive" : "Dilutive"})\n\n`;
+      text += `SYNERGIES\n`;
+      text += `---------\n`;
+      text += `Revenue Synergies: $${financeResult.synergies?.revenueSynergies?.toLocaleString()}M\n`;
+      text += `Cost Synergies: $${financeResult.synergies?.costSynergies?.toLocaleString()}M\n`;
+      text += `Total NPV: $${financeResult.synergies?.npv?.toLocaleString()}M\n`;
+    } else if (financeModelType === "threestatement") {
+      text = `${modelName} - 3-Statement Model\n`;
+      text += `${"=".repeat(50)}\n\n`;
+      if (financeResult.incomeStatement) {
+        text += `INCOME STATEMENT SUMMARY\n`;
+        text += `------------------------\n`;
+        const years = financeResult.incomeStatement.years || [];
+        text += `Year\t\t${years.join('\t')}\n`;
+        text += `Revenue ($M)\t${financeResult.incomeStatement.revenue?.map((v: number) => `$${v?.toLocaleString()}`).join('\t')}\n`;
+        text += `Net Income ($M)\t${financeResult.incomeStatement.netIncome?.map((v: number) => `$${v?.toLocaleString()}`).join('\t')}\n\n`;
+      }
+      if (financeResult.balanceSheet) {
+        text += `BALANCE SHEET SUMMARY\n`;
+        text += `---------------------\n`;
+        text += `Total Assets: $${financeResult.balanceSheet.totalAssets?.[financeResult.balanceSheet.totalAssets.length - 1]?.toLocaleString()}M\n`;
+        text += `Total Liabilities: $${financeResult.balanceSheet.totalLiabilities?.[financeResult.balanceSheet.totalLiabilities.length - 1]?.toLocaleString()}M\n`;
+        text += `Shareholders Equity: $${financeResult.balanceSheet.shareholdersEquity?.[financeResult.balanceSheet.shareholdersEquity.length - 1]?.toLocaleString()}M\n\n`;
+      }
+      if (financeResult.cashFlow) {
+        text += `CASH FLOW SUMMARY\n`;
+        text += `-----------------\n`;
+        text += `Operating CF: $${financeResult.cashFlow.operatingCF?.[financeResult.cashFlow.operatingCF.length - 1]?.toLocaleString()}M\n`;
+        text += `Investing CF: $${financeResult.cashFlow.investingCF?.[financeResult.cashFlow.investingCF.length - 1]?.toLocaleString()}M\n`;
+        text += `Financing CF: $${financeResult.cashFlow.financingCF?.[financeResult.cashFlow.financingCF.length - 1]?.toLocaleString()}M\n`;
+      }
+    } else if (financeModelType === "ipo") {
+      text = `${modelName} - IPO Pricing Model\n`;
+      text += `${"=".repeat(50)}\n\n`;
+      text += `VALUATION\n`;
+      text += `---------\n`;
+      text += `Pre-Money Valuation: $${financeResult.preMoneyValuation?.toLocaleString()}M\n`;
+      text += `Offer Price: $${financeResult.offerPrice?.toFixed(2)}\n`;
+      text += `IPO Discount: ${((financeResult.ipoDiscount || 0) * 100).toFixed(0)}%\n\n`;
+      text += `OFFER STRUCTURE\n`;
+      text += `---------------\n`;
+      text += `Primary Shares: ${financeResult.primaryShares?.toLocaleString()}M\n`;
+      text += `Secondary Shares: ${financeResult.secondaryShares?.toLocaleString()}M\n`;
+      text += `Greenshoe: ${financeResult.greenshoeShares?.toLocaleString()}M\n\n`;
+      text += `PROCEEDS\n`;
+      text += `--------\n`;
+      text += `Gross Proceeds: $${financeResult.grossPrimaryProceeds?.toLocaleString()}M\n`;
+      text += `Net Proceeds: $${financeResult.netPrimaryProceeds?.toLocaleString()}M\n`;
+      text += `Underwriting Fees: $${financeResult.underwritingFees?.toLocaleString()}M\n\n`;
+      text += `DILUTION\n`;
+      text += `--------\n`;
+      text += `Post-IPO Shares: ${financeResult.postIPOShares?.toLocaleString()}M\n`;
+      text += `% Sold: ${((financeResult.percentSold || 0) * 100).toFixed(1)}%\n`;
+    }
+    
+    navigator.clipboard.writeText(text);
+    toast({
+      title: "Copied!",
+      description: "Finance results copied to clipboard as text",
+    });
+  };
+
   const handleFinanceClear = () => {
     setFinanceInputText("");
     setFinanceCustomInstructions("");
@@ -3003,7 +3158,7 @@ Examples:
           {/* DCF Results Display */}
           {financeResult && financeResult.success && financeModelType === "dcf" && financeResult.valuation && (
             <div className="mb-6 space-y-6">
-              {/* Header with company name and download button */}
+              {/* Header with company name and download/copy buttons */}
               <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-700">
                 <div>
                   <h3 className="text-xl font-bold text-blue-900 dark:text-blue-100">
@@ -3013,24 +3168,35 @@ Examples:
                     Analyzed by {financeResult.providerUsed}
                   </p>
                 </div>
-                <Button
-                  onClick={handleFinanceDownloadExcel}
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                  disabled={financeDownloadLoading}
-                  data-testid="button-download-excel"
-                >
-                  {financeDownloadLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Downloading...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Download Excel Model
-                    </>
-                  )}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleFinanceCopyAsText}
+                    variant="outline"
+                    className="border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-600 dark:text-blue-300 dark:hover:bg-blue-900/20"
+                    data-testid="button-copy-dcf-text"
+                  >
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copy as Text
+                  </Button>
+                  <Button
+                    onClick={handleFinanceDownloadExcel}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                    disabled={financeDownloadLoading}
+                    data-testid="button-download-excel"
+                  >
+                    {financeDownloadLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Downloading...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 mr-2" />
+                        Download Excel
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {/* Valuation Summary - Three Scenarios */}
@@ -3245,7 +3411,7 @@ Examples:
           {/* LBO Results Display */}
           {financeResult && financeResult.success && financeModelType === "lbo" && financeResult.returns && (
             <div className="mb-6 space-y-6">
-              {/* Header with company name and download button */}
+              {/* Header with company name and download/copy buttons */}
               <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-purple-200 dark:border-purple-700">
                 <div>
                   <h3 className="text-xl font-bold text-purple-900 dark:text-purple-100">
@@ -3255,24 +3421,35 @@ Examples:
                     Analyzed by {financeResult.providerUsed}
                   </p>
                 </div>
-                <Button
-                  onClick={handleFinanceDownloadExcel}
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                  disabled={financeDownloadLoading}
-                  data-testid="button-download-lbo-excel"
-                >
-                  {financeDownloadLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Downloading...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Download LBO Excel Model
-                    </>
-                  )}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleFinanceCopyAsText}
+                    variant="outline"
+                    className="border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-600 dark:text-purple-300 dark:hover:bg-purple-900/20"
+                    data-testid="button-copy-lbo-text"
+                  >
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copy as Text
+                  </Button>
+                  <Button
+                    onClick={handleFinanceDownloadExcel}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                    disabled={financeDownloadLoading}
+                    data-testid="button-download-lbo-excel"
+                  >
+                    {financeDownloadLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Downloading...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 mr-2" />
+                        Download Excel
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {/* Returns Summary - Sponsor and Management */}
@@ -3532,7 +3709,7 @@ Examples:
           {/* M&A Results Display */}
           {financeResult && financeResult.success && financeModelType === "ma" && financeResult.accretionDilution && (
             <div className="mb-6 space-y-6">
-              {/* Header with company names and download button */}
+              {/* Header with company names and download/copy buttons */}
               <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-purple-200 dark:border-purple-700">
                 <div>
                   <h3 className="text-xl font-bold text-purple-900 dark:text-purple-100">
@@ -3542,24 +3719,35 @@ Examples:
                     M&A Analysis by {financeResult.providerUsed}
                   </p>
                 </div>
-                <Button
-                  onClick={handleFinanceDownloadExcel}
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                  disabled={financeDownloadLoading}
-                  data-testid="button-download-ma-excel"
-                >
-                  {financeDownloadLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Downloading...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Download M&A Excel Model
-                    </>
-                  )}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleFinanceCopyAsText}
+                    variant="outline"
+                    className="border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-600 dark:text-purple-300 dark:hover:bg-purple-900/20"
+                    data-testid="button-copy-ma-text"
+                  >
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copy as Text
+                  </Button>
+                  <Button
+                    onClick={handleFinanceDownloadExcel}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                    disabled={financeDownloadLoading}
+                    data-testid="button-download-ma-excel"
+                  >
+                    {financeDownloadLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Downloading...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 mr-2" />
+                        Download Excel
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {/* Transaction Summary and Accretion/Dilution */}
@@ -3759,7 +3947,7 @@ Examples:
           {/* 3-Statement Model Results Display */}
           {financeResult && financeResult.success && financeModelType === "threestatement" && financeResult.incomeStatement && (
             <div className="mb-6 space-y-6">
-              {/* Header with company name and download button */}
+              {/* Header with company name and download/copy buttons */}
               <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-indigo-200 dark:border-indigo-700">
                 <div>
                   <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-100">
@@ -3772,24 +3960,35 @@ Examples:
                     {financeResult.summary?.isBalanced ? 'Balance Sheet Check: BALANCED' : 'Balance Sheet Check: ERROR'}
                   </p>
                 </div>
-                <Button
-                  onClick={handleFinanceDownloadExcel}
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                  disabled={financeDownloadLoading}
-                  data-testid="button-download-3statement-excel"
-                >
-                  {financeDownloadLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Downloading...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Download 3-Statement Excel
-                    </>
-                  )}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleFinanceCopyAsText}
+                    variant="outline"
+                    className="border-indigo-300 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-600 dark:text-indigo-300 dark:hover:bg-indigo-900/20"
+                    data-testid="button-copy-3statement-text"
+                  >
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copy as Text
+                  </Button>
+                  <Button
+                    onClick={handleFinanceDownloadExcel}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                    disabled={financeDownloadLoading}
+                    data-testid="button-download-3statement-excel"
+                  >
+                    {financeDownloadLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Downloading...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 mr-2" />
+                        Download Excel
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {/* Key Metrics Summary */}
@@ -4067,7 +4266,7 @@ Examples:
           {/* IPO Pricing Results Display */}
           {financeResult && financeResult.success && financeModelType === "ipo" && financeResult.offerPrice && (
             <div className="mb-6 space-y-6">
-              {/* Header with company name and download button */}
+              {/* Header with company name and download/copy buttons */}
               <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-teal-200 dark:border-teal-700">
                 <div>
                   <h3 className="text-xl font-bold text-teal-900 dark:text-teal-100">
@@ -4077,24 +4276,35 @@ Examples:
                     Transaction Date: {financeResult.transactionDate} | Analysis by {financeResult.providerUsed}
                   </p>
                 </div>
-                <Button
-                  onClick={handleFinanceDownloadExcel}
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                  disabled={financeDownloadLoading}
-                  data-testid="button-download-ipo-excel"
-                >
-                  {financeDownloadLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Downloading...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Download IPO Excel
-                    </>
-                  )}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleFinanceCopyAsText}
+                    variant="outline"
+                    className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-600 dark:text-teal-300 dark:hover:bg-teal-900/20"
+                    data-testid="button-copy-ipo-text"
+                  >
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copy as Text
+                  </Button>
+                  <Button
+                    onClick={handleFinanceDownloadExcel}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                    disabled={financeDownloadLoading}
+                    data-testid="button-download-ipo-excel"
+                  >
+                    {financeDownloadLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Downloading...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 mr-2" />
+                        Download Excel
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {/* Main Recommendation Box */}
