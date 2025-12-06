@@ -3045,19 +3045,19 @@ Examples:
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-400">Enterprise Value:</span>
                       <span className="font-semibold text-red-700 dark:text-red-300">
-                        ${(financeResult.valuation.bear.enterpriseValue).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                        ${(financeResult.valuation?.bear?.enterpriseValue ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}M
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-400">Equity Value:</span>
                       <span className="font-semibold text-red-700 dark:text-red-300">
-                        ${(financeResult.valuation.bear.equityValue).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                        ${(financeResult.valuation?.bear?.equityValue ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}M
                       </span>
                     </div>
                     <div className="flex justify-between border-t border-red-200 dark:border-red-600 pt-2">
                       <span className="text-gray-700 dark:text-gray-300 font-medium">Share Price:</span>
                       <span className="font-bold text-red-800 dark:text-red-200 text-lg">
-                        ${(financeResult.valuation.bear.sharePrice).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        ${(financeResult.valuation?.bear?.sharePrice ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                       </span>
                     </div>
                   </div>
@@ -3073,19 +3073,19 @@ Examples:
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-400">Enterprise Value:</span>
                       <span className="font-semibold text-blue-700 dark:text-blue-300">
-                        ${(financeResult.valuation.base.enterpriseValue).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                        ${(financeResult.valuation?.base?.enterpriseValue ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}M
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-400">Equity Value:</span>
                       <span className="font-semibold text-blue-700 dark:text-blue-300">
-                        ${(financeResult.valuation.base.equityValue).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                        ${(financeResult.valuation?.base?.equityValue ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}M
                       </span>
                     </div>
                     <div className="flex justify-between border-t border-blue-300 dark:border-blue-500 pt-2">
                       <span className="text-gray-700 dark:text-gray-300 font-medium">Share Price:</span>
                       <span className="font-bold text-blue-800 dark:text-blue-200 text-xl">
-                        ${(financeResult.valuation.base.sharePrice).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        ${(financeResult.valuation?.base?.sharePrice ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                       </span>
                     </div>
                   </div>
@@ -3101,19 +3101,19 @@ Examples:
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-400">Enterprise Value:</span>
                       <span className="font-semibold text-green-700 dark:text-green-300">
-                        ${(financeResult.valuation.bull.enterpriseValue).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                        ${(financeResult.valuation?.bull?.enterpriseValue ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}M
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-400">Equity Value:</span>
                       <span className="font-semibold text-green-700 dark:text-green-300">
-                        ${(financeResult.valuation.bull.equityValue).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                        ${(financeResult.valuation?.bull?.equityValue ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}M
                       </span>
                     </div>
                     <div className="flex justify-between border-t border-green-200 dark:border-green-600 pt-2">
                       <span className="text-gray-700 dark:text-gray-300 font-medium">Share Price:</span>
                       <span className="font-bold text-green-800 dark:text-green-200 text-lg">
-                        ${(financeResult.valuation.bull.sharePrice).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        ${(financeResult.valuation?.bull?.sharePrice ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                       </span>
                     </div>
                   </div>
