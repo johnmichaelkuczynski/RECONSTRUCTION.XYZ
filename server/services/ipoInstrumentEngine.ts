@@ -368,13 +368,14 @@ export function processContingencies(
       case 'earnout':
       case 'grant':
       case 'milestone':
-        // Share issuance contingency
+        // Share issuance contingency - causes DILUTION not cash cost
+        // expectedCost = 0 for share-based contingencies (they dilute, not cost cash)
         if (cont.sharesMillions) {
           expectedShares = cont.sharesMillions * cont.probability;
-          // Cost = fair value of expected shares
-          expectedCost = expectedShares * tentativeIpoPrice;
+          // NO cash cost for share issuance - dilution is handled by adding to share count
+          expectedCost = 0;
         }
-        logs.push(`[Engine] ${cont.name} (${cont.type}): ${cont.sharesMillions?.toFixed(3) ?? 0}M shares × ${(cont.probability * 100).toFixed(0)}% = ${expectedShares.toFixed(3)}M expected shares`);
+        logs.push(`[Engine] ${cont.name} (${cont.type}): ${cont.sharesMillions?.toFixed(3) ?? 0}M shares × ${(cont.probability * 100).toFixed(0)}% = ${expectedShares.toFixed(3)}M expected shares (dilution only, no cash cost)`);
         break;
         
       case 'warrant':
