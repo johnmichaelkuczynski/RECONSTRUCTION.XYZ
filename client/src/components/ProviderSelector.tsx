@@ -36,11 +36,13 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
                 <Info className="h-4 w-4 text-gray-400 cursor-help" />
               </TooltipTrigger>
               <TooltipContent className="max-w-sm">
-                <p>Choose which AI provider to use for document analysis:</p>
+                <p>Choose which ZHI model to use for document analysis:</p>
                 <ul className="list-disc pl-5 mt-2 text-sm">
-                  <li><span className="font-medium">OpenAI GPT-4o</span> - Excellent for detailed analysis, strong at recognizing complex patterns</li>
-                  <li><span className="font-medium">Anthropic Claude</span> - Very good at nuanced text interpretation and detailed reasoning</li>
-                  <li><span className="font-medium">Perplexity</span> - Advanced search-augmented model with strong research capabilities</li>
+                  <li><span className="font-medium">ZHI 1</span> - Excellent for detailed analysis, strong at recognizing complex patterns</li>
+                  <li><span className="font-medium">ZHI 2</span> - Very good at nuanced text interpretation and detailed reasoning</li>
+                  <li><span className="font-medium">ZHI 3</span> - Strong analytical capabilities with efficient processing</li>
+                  <li><span className="font-medium">ZHI 4</span> - Advanced search-augmented model with strong research capabilities</li>
+                  <li><span className="font-medium">ZHI 5</span> - High-performance model for complex reasoning tasks</li>
                 </ul>
               </TooltipContent>
             </Tooltip>

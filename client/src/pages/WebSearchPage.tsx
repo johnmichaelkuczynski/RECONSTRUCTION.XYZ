@@ -583,10 +583,10 @@ Your task is to create a comprehensive synthesis of the provided content accordi
                     <SelectValue placeholder="Select provider" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Providers (Compare)</SelectItem>
-                    <SelectItem value="openai">OpenAI Only</SelectItem>
-                    <SelectItem value="anthropic">Anthropic Only</SelectItem>
-                    <SelectItem value="perplexity">Perplexity Only</SelectItem>
+                    <SelectItem value="all">All Models (Compare)</SelectItem>
+                    <SelectItem value="openai">ZHI 1 Only</SelectItem>
+                    <SelectItem value="anthropic">ZHI 2 Only</SelectItem>
+                    <SelectItem value="perplexity">ZHI 4 Only</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

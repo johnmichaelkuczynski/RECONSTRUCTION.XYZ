@@ -18,10 +18,10 @@ interface BuyCreditsDialogProps {
 }
 
 const PROVIDERS = [
-  { id: "openai", name: "OpenAI (GPT-4)", packages: { 5: "4.3M", 10: "9M", 25: "23.5M", 50: "51.3M", 100: "115.4M" } },
-  { id: "anthropic", name: "Anthropic (Claude)", packages: { 5: "107K", 10: "224K", 25: "588K", 50: "1.3M", 100: "2.9M" } },
-  { id: "perplexity", name: "Perplexity", packages: { 5: "702K", 10: "1.5M", 25: "3.9M", 50: "8.4M", 100: "19M" } },
-  { id: "deepseek", name: "DeepSeek", packages: { 5: "6.4M", 10: "13.5M", 25: "35.3M", 50: "76.9M", 100: "173.2M" } },
+  { id: "openai", name: "ZHI 1", packages: { 5: "4.3M", 10: "9M", 25: "23.5M", 50: "51.3M", 100: "115.4M" } },
+  { id: "anthropic", name: "ZHI 2", packages: { 5: "107K", 10: "224K", 25: "588K", 50: "1.3M", 100: "2.9M" } },
+  { id: "deepseek", name: "ZHI 3", packages: { 5: "6.4M", 10: "13.5M", 25: "35.3M", 50: "76.9M", 100: "173.2M" } },
+  { id: "perplexity", name: "ZHI 4", packages: { 5: "702K", 10: "1.5M", 25: "3.9M", 50: "8.4M", 100: "19M" } },
 ];
 
 const PRICE_TIERS = [5, 10, 25, 50, 100];

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { CreditCard, Infinity } from "lucide-react";
+import { CreditCard } from "lucide-react";
 import { useState } from "react";
 import { BuyCreditsDialog } from "./BuyCreditsDialog";
 
@@ -23,7 +23,7 @@ export function CreditBalance() {
   if (!credits) return null;
 
   const formatCredits = (amount: number) => {
-    if (amount === Infinity) return "∞";
+    if (amount === Number.POSITIVE_INFINITY) return "∞";
     if (amount >= 1000000) return `${(amount / 1000000).toFixed(1)}M`;
     if (amount >= 1000) return `${(amount / 1000).toFixed(1)}K`;
     return amount.toString();
@@ -36,16 +36,16 @@ export function CreditBalance() {
           <CreditCard className="h-4 w-4 text-gray-600 dark:text-gray-400" />
           <div className="flex gap-3 text-sm font-medium">
             <span className="text-gray-700 dark:text-gray-300" data-testid="openai-credits">
-              GPT: {formatCredits(credits.openai)}
+              ZHI 1: {formatCredits(credits.openai)}
             </span>
             <span className="text-gray-700 dark:text-gray-300" data-testid="anthropic-credits">
-              Claude: {formatCredits(credits.anthropic)}
-            </span>
-            <span className="text-gray-700 dark:text-gray-300" data-testid="perplexity-credits">
-              Perplexity: {formatCredits(credits.perplexity)}
+              ZHI 2: {formatCredits(credits.anthropic)}
             </span>
             <span className="text-gray-700 dark:text-gray-300" data-testid="deepseek-credits">
-              DeepSeek: {formatCredits(credits.deepseek)}
+              ZHI 3: {formatCredits(credits.deepseek)}
+            </span>
+            <span className="text-gray-700 dark:text-gray-300" data-testid="perplexity-credits">
+              ZHI 4: {formatCredits(credits.perplexity)}
             </span>
           </div>
         </div>

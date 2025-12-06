@@ -51,7 +51,7 @@ const CalibrationTester: React.FC = () => {
     setApiStatus({
       isChecking: true,
       isConnected: false,
-      message: 'Checking OpenAI API connection...'
+      message: 'Checking ZHI API connection...'
     });
 
     try {

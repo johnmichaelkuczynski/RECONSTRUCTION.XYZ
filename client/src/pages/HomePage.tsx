@@ -132,7 +132,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [humanizerCustomInstructions, setHumanizerCustomInstructions] = useState("");
   const [selectedStylePresets, setSelectedStylePresets] = useState<string[]>([]);
   const [selectedWritingSample, setSelectedWritingSample] = useState("Content-Neutral|Formal and Functional Relationships");
-  const [humanizerProvider, setHumanizerProvider] = useState<LLMProvider>("zhi2"); // Anthropic default
+  const [humanizerProvider, setHumanizerProvider] = useState<LLMProvider>("zhi2"); // ZHI 2 default
   const [isHumanizerLoading, setIsHumanizerLoading] = useState(false);
   const [isReRewriteLoading, setIsReRewriteLoading] = useState(false);
   const [writingSamples, setWritingSamples] = useState<any>({});
@@ -158,7 +158,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [validatorTruthMapping, setValidatorTruthMapping] = useState<"false-to-true" | "true-to-true" | "true-to-false">("false-to-true");
   const [validatorMathTruthMapping, setValidatorMathTruthMapping] = useState<"make-true" | "keep-true" | "make-false">("make-true");
   const [validatorLiteralTruth, setValidatorLiteralTruth] = useState(false);
-  const [validatorLLMProvider, setValidatorLLMProvider] = useState<string>("zhi5"); // Default to Grok
+  const [validatorLLMProvider, setValidatorLLMProvider] = useState<string>("zhi5"); // Default to ZHI 5
   
   // Coherence Meter State
   const [coherenceInputText, setCoherenceInputText] = useState("");
@@ -586,11 +586,11 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setFinanceResult(null);
 
     const providerNames: Record<string, string> = {
-      'zhi1': 'OpenAI GPT-4',
-      'zhi2': 'Anthropic Claude',
-      'zhi3': 'DeepSeek',
-      'zhi4': 'Perplexity',
-      'zhi5': 'Grok'
+      'zhi1': 'ZHI 1',
+      'zhi2': 'ZHI 2',
+      'zhi3': 'ZHI 3',
+      'zhi4': 'ZHI 4',
+      'zhi5': 'ZHI 5'
     };
 
     try {
@@ -4858,7 +4858,7 @@ Examples:
               </SelectContent>
             </Select>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              Choose which AI model powers the validation. Grok is recommended for most tasks.
+              Choose which ZHI model powers the validation. ZHI 5 is recommended for most tasks.
             </p>
           </div>
 

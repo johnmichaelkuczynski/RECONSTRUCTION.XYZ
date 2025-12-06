@@ -14,8 +14,25 @@ interface MultiProviderResultsProps {
   documentId?: number;
 }
 
+// ZHI branding mapping - never expose actual LLM names
+const getZhiDisplayName = (provider: string): string => {
+  const providerMap: { [key: string]: string } = {
+    'openai': 'ZHI 1',
+    'anthropic': 'ZHI 2', 
+    'deepseek': 'ZHI 3',
+    'perplexity': 'ZHI 4',
+    'grok': 'ZHI 5',
+    'zhi1': 'ZHI 1',
+    'zhi2': 'ZHI 2',
+    'zhi3': 'ZHI 3',
+    'zhi4': 'ZHI 4',
+    'zhi5': 'ZHI 5'
+  };
+  return providerMap[provider.toLowerCase()] || 'ZHI';
+};
+
 export function MultiProviderResults({ results, documentId }: MultiProviderResultsProps) {
-  const [activeProvider, setActiveProvider] = useState<string>("openai");
+  const [activeProvider, setActiveProvider] = useState<string>("zhi1");
   const [isModalOpen, setIsModalOpen] = useState(false);
   
   if (!results || results.length === 0) {
@@ -26,18 +43,20 @@ export function MultiProviderResults({ results, documentId }: MultiProviderResul
           <CardDescription>No results available</CardDescription>
         </CardHeader>
         <CardContent>
-          <p>No analysis results are available. Please try again or select a different provider.</p>
+          <p>No analysis results are available. Please try again or select a different model.</p>
         </CardContent>
       </Card>
     );
   }
   
-  // Extract provider ids for tab triggers
+  // Extract provider ids for tab triggers - map to ZHI names
   const providerIds = results.map(r => {
     const providerName = r.provider?.toLowerCase() || '';
-    if (providerName.includes('openai')) return 'openai';
-    if (providerName.includes('anthropic') || providerName.includes('claude')) return 'anthropic';
-    if (providerName.includes('perplexity')) return 'perplexity';
+    if (providerName.includes('openai') || providerName.includes('zhi1')) return 'zhi1';
+    if (providerName.includes('anthropic') || providerName.includes('claude') || providerName.includes('zhi2')) return 'zhi2';
+    if (providerName.includes('deepseek') || providerName.includes('zhi3')) return 'zhi3';
+    if (providerName.includes('perplexity') || providerName.includes('zhi4')) return 'zhi4';
+    if (providerName.includes('grok') || providerName.includes('zhi5')) return 'zhi5';
     return 'unknown';
   });
   
@@ -85,7 +104,7 @@ export function MultiProviderResults({ results, documentId }: MultiProviderResul
           <div className="flex justify-between items-center">
             <div>
               <CardTitle>Intelligence Assessment</CardTitle>
-              <CardDescription>Analysis from multiple AI providers</CardDescription>
+              <CardDescription>Analysis from multiple ZHI models</CardDescription>
             </div>
             <div className="flex space-x-2">
               <Button 
@@ -114,7 +133,7 @@ export function MultiProviderResults({ results, documentId }: MultiProviderResul
           </div>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="openai" value={activeProvider} onValueChange={setActiveProvider}>
+          <Tabs defaultValue="zhi1" value={activeProvider} onValueChange={setActiveProvider}>
             <TabsList className="mb-4">
               {results.map((result, index) => (
                 <TabsTrigger 
@@ -122,7 +141,7 @@ export function MultiProviderResults({ results, documentId }: MultiProviderResul
                   value={providerIds[index] || 'unknown'}
                   className="relative flex items-center"
                 >
-                  {result.provider?.split(' ')[0] || 'Unknown Provider'}
+                  {getZhiDisplayName(result.provider || 'unknown')}
                   {result.formattedReport?.toLowerCase().includes('intelligence score') && (
                     <Badge variant="outline" className="ml-2 bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300">
                       Scored
@@ -136,7 +155,7 @@ export function MultiProviderResults({ results, documentId }: MultiProviderResul
               <TabsContent key={index} value={providerIds[index] || 'unknown'} className="space-y-4">
                 <div className="p-4 rounded-md border bg-muted/40">
                   <div className="mb-4 flex items-center justify-between">
-                    <h3 className="text-lg font-semibold">{result.provider}</h3>
+                    <h3 className="text-lg font-semibold">{getZhiDisplayName(result.provider || 'unknown')}</h3>
                   </div>
                   <Separator className="my-2" />
                   <div className="prose prose-sm dark:prose-invert max-w-none">

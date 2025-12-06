@@ -198,16 +198,16 @@ ${fictionText}`;
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Fiction Text to Analyze</h3>
               <div className="flex items-center gap-3">
-                <label className="text-sm font-medium">AI Provider:</label>
+                <label className="text-sm font-medium">ZHI Model:</label>
                 <Select value={selectedProvider} onValueChange={setSelectedProvider}>
                   <SelectTrigger className="w-32">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="openai">OpenAI</SelectItem>
-                    <SelectItem value="anthropic">Anthropic</SelectItem>
-                    <SelectItem value="perplexity">Perplexity</SelectItem>
-                    <SelectItem value="deepseek">DeepSeek</SelectItem>
+                    <SelectItem value="openai">ZHI 1</SelectItem>
+                    <SelectItem value="anthropic">ZHI 2</SelectItem>
+                    <SelectItem value="deepseek">ZHI 3</SelectItem>
+                    <SelectItem value="perplexity">ZHI 4</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

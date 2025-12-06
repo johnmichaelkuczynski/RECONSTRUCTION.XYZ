@@ -10,15 +10,21 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import jsPDF from 'jspdf';
 import { cleanAIResponse } from "@/lib/textUtils";
 
-// Provider name mapping
+// Provider name mapping - ZHI branding only, never expose actual LLM names
 const getProviderDisplayName = (provider: string): string => {
   const providerMap: { [key: string]: string } = {
-    'deepseek': 'Zhi 3',
-    'openai': 'Zhi 2', 
-    'anthropic': 'Zhi 1',
-    'perplexity': 'Zhi 4'
+    'openai': 'ZHI 1',
+    'anthropic': 'ZHI 2', 
+    'deepseek': 'ZHI 3',
+    'perplexity': 'ZHI 4',
+    'grok': 'ZHI 5',
+    'zhi1': 'ZHI 1',
+    'zhi2': 'ZHI 2',
+    'zhi3': 'ZHI 3',
+    'zhi4': 'ZHI 4',
+    'zhi5': 'ZHI 5'
   };
-  return providerMap[provider.toLowerCase()] || provider;
+  return providerMap[provider.toLowerCase()] || 'ZHI';
 };
 
 interface CaseAssessmentResult {

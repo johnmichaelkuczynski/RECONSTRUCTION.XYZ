@@ -133,7 +133,7 @@ const DirectAIRequest: React.FC<DirectAIRequestProps> = ({
           </Label>
           <Textarea
             id="direct-instructions"
-            placeholder="Example: ASK CLAUDE ABOUT ceteris paribus in physics. ASK PERPLEXITY for the most recent research on this topic."
+            placeholder="Example: ASK ZHI 2 ABOUT ceteris paribus in physics. ASK ZHI 4 for the most recent research on this topic."
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
             className="min-h-[100px] resize-y"
@@ -151,7 +151,7 @@ const DirectAIRequest: React.FC<DirectAIRequestProps> = ({
                   onCheckedChange={(checked) => setQueryOpenAI(checked as boolean)}
                 />
                 <Label htmlFor="openai-checkbox" className="text-sm cursor-pointer">
-                  OpenAI (GPT-4o)
+                  ZHI 1
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
@@ -161,7 +161,7 @@ const DirectAIRequest: React.FC<DirectAIRequestProps> = ({
                   onCheckedChange={(checked) => setQueryClaude(checked as boolean)}
                 />
                 <Label htmlFor="claude-checkbox" className="text-sm cursor-pointer">
-                  Claude 3.7
+                  ZHI 2
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
@@ -171,7 +171,7 @@ const DirectAIRequest: React.FC<DirectAIRequestProps> = ({
                   onCheckedChange={(checked) => setQueryPerplexity(checked as boolean)}
                 />
                 <Label htmlFor="perplexity-checkbox" className="text-sm cursor-pointer">
-                  Perplexity
+                  ZHI 4
                 </Label>
               </div>
             </div>
@@ -206,21 +206,21 @@ const DirectAIRequest: React.FC<DirectAIRequestProps> = ({
                 disabled={!results.openai}
                 className="flex items-center justify-center"
               >
-                OpenAI GPT-4o
+                ZHI 1
               </TabsTrigger>
               <TabsTrigger 
                 value="claude" 
                 disabled={!results.claude}
                 className="flex items-center justify-center"
               >
-                Claude
+                ZHI 2
               </TabsTrigger>
               <TabsTrigger 
                 value="perplexity" 
                 disabled={!results.perplexity}
                 className="flex items-center justify-center"
               >
-                Perplexity
+                ZHI 4
               </TabsTrigger>
             </TabsList>
 

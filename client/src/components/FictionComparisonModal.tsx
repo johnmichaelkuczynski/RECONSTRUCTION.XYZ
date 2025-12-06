@@ -105,13 +105,13 @@ ${result.detailedBreakdown}`;
           <div className="flex items-center gap-4">
             <Select value={selectedProvider} onValueChange={setSelectedProvider}>
               <SelectTrigger className="w-48">
-                <SelectValue placeholder="Select AI Provider" />
+                <SelectValue placeholder="Select ZHI Model" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="openai">OpenAI (GPT-4)</SelectItem>
-                <SelectItem value="anthropic">Anthropic (Claude)</SelectItem>
-                <SelectItem value="perplexity">Perplexity</SelectItem>
-                <SelectItem value="deepseek">DeepSeek</SelectItem>
+                <SelectItem value="openai">ZHI 1</SelectItem>
+                <SelectItem value="anthropic">ZHI 2</SelectItem>
+                <SelectItem value="deepseek">ZHI 3</SelectItem>
+                <SelectItem value="perplexity">ZHI 4</SelectItem>
               </SelectContent>
             </Select>
             

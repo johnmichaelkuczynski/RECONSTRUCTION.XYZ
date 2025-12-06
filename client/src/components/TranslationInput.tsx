@@ -168,7 +168,7 @@ export function TranslationInput() {
     const options: TranslationOptions = {
       sourceLanguage,
       targetLanguage,
-      model: "gpt-4o", // Default to GPT-4o
+      model: "gpt-4o", // Default ZHI 1 model
     };
 
     try {

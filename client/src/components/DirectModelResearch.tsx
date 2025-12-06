@@ -36,21 +36,32 @@ const DirectModelResearch: React.FC<DirectModelResearchProps> = ({
     setIsLoading(true);
 
     try {
-      // First, extract any model-specific instructions
-      const modelsToQuery = [];
-      if (instructions.toLowerCase().includes("ask openai") || 
+      // First, extract any model-specific instructions - support both ZHI names and legacy names
+      const modelsToQuery: string[] = [];
+      if (instructions.toLowerCase().includes("ask zhi 1") || 
+          instructions.toLowerCase().includes("ask openai") || 
           instructions.toLowerCase().includes("ask gpt")) {
         modelsToQuery.push("openai");
       }
-      if (instructions.toLowerCase().includes("ask claude") || 
+      if (instructions.toLowerCase().includes("ask zhi 2") ||
+          instructions.toLowerCase().includes("ask claude") || 
           instructions.toLowerCase().includes("ask anthropic")) {
         modelsToQuery.push("anthropic");
       }
-      if (instructions.toLowerCase().includes("ask perplexity")) {
+      if (instructions.toLowerCase().includes("ask zhi 3") ||
+          instructions.toLowerCase().includes("ask deepseek")) {
+        modelsToQuery.push("deepseek");
+      }
+      if (instructions.toLowerCase().includes("ask zhi 4") ||
+          instructions.toLowerCase().includes("ask perplexity")) {
         modelsToQuery.push("perplexity");
       }
+      if (instructions.toLowerCase().includes("ask zhi 5") ||
+          instructions.toLowerCase().includes("ask grok")) {
+        modelsToQuery.push("grok");
+      }
 
-      // If no specific models mentioned, query all
+      // If no specific models mentioned, query ZHI 1, 2, and 4 by default
       if (modelsToQuery.length === 0) {
         modelsToQuery.push("openai", "anthropic", "perplexity");
       }
@@ -61,7 +72,7 @@ const DirectModelResearch: React.FC<DirectModelResearchProps> = ({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            document: { content: instructions.replace(/ask openai|ask gpt|ask claude|ask anthropic|ask perplexity/gi, "").trim() },
+            document: { content: instructions.replace(/ask zhi \d|ask openai|ask gpt|ask claude|ask anthropic|ask perplexity|ask deepseek|ask grok/gi, "").trim() },
             provider: model
           })
         }).then(response => {
@@ -85,14 +96,14 @@ const DirectModelResearch: React.FC<DirectModelResearchProps> = ({
       const modelResults = await Promise.all(modelPromises);
 
       // Format results
-      const formattedResults = modelResults.reduce((acc, { model, data }) => {
+      const formattedResults = modelResults.reduce((acc: Record<string, { content: string; error?: string; provider: string }>, { model, data }) => {
         acc[model] = {
           content: data.analysis || "No analysis available",
           error: data.error,
           provider: model
         };
         return acc;
-      }, {});
+      }, {} as Record<string, { content: string; error?: string; provider: string }>);
 
       setResults(formattedResults);
       setActiveTab(modelsToQuery[0] || "all");
@@ -104,7 +115,7 @@ const DirectModelResearch: React.FC<DirectModelResearchProps> = ({
 
       toast({
         title: "Research complete",
-        description: `Got responses from ${Object.keys(formattedResults).length} AI models`
+        description: `Got responses from ${Object.keys(formattedResults).length} ZHI models`
       });
 
     } catch (error) {
@@ -133,7 +144,7 @@ const DirectModelResearch: React.FC<DirectModelResearchProps> = ({
         <Label htmlFor="research-instructions">Direct Research Instructions</Label>
         <Textarea
           id="research-instructions"
-          placeholder="Example: ASK CLAUDE ABOUT ceteris paribus clauses in physics. ASK PERPLEXITY to find recent research papers."
+          placeholder="Example: ASK ZHI 2 ABOUT ceteris paribus clauses in physics. ASK ZHI 4 to find recent research papers."
           value={instructions}
           onChange={(e) => setInstructions(e.target.value)}
           className="min-h-[100px]"
@@ -175,7 +186,7 @@ const DirectModelResearch: React.FC<DirectModelResearchProps> = ({
             <TabsList className="w-full">
               {availableModels.map(model => (
                 <TabsTrigger key={model} value={model} className="flex-1 capitalize">
-                  {model === 'openai' ? 'GPT-4o' : model === 'anthropic' ? 'Claude' : 'Perplexity'}
+                  {model === 'openai' ? 'ZHI 1' : model === 'anthropic' ? 'ZHI 2' : model === 'perplexity' ? 'ZHI 4' : model === 'deepseek' ? 'ZHI 3' : model === 'grok' ? 'ZHI 5' : model}
                 </TabsTrigger>
               ))}
             </TabsList>
