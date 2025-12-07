@@ -991,6 +991,12 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setFinanceLoadingPhase("");
   };
 
+  const handleFinanceReanalyze = () => {
+    setFinanceResult(null);
+    setShowFinanceCustomization(true);
+    setFinanceLoadingPhase("");
+  };
+
   // Data Science Panel Handlers
   const handleDataScienceProcess = async (modelType: "regression" | "ml" | "forecasting" | "predictive") => {
     if (!dataScienceInputText.trim()) {
@@ -3158,7 +3164,7 @@ Examples:
           {/* DCF Results Display */}
           {financeResult && financeResult.success && financeModelType === "dcf" && financeResult.valuation && (
             <div className="mb-6 space-y-6">
-              {/* Header with company name and download/copy buttons */}
+              {/* Header with company name and download/copy/reanalyze buttons */}
               <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-700">
                 <div>
                   <h3 className="text-xl font-bold text-blue-900 dark:text-blue-100">
@@ -3169,6 +3175,15 @@ Examples:
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleFinanceReanalyze}
+                    variant="outline"
+                    className="border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-300 dark:hover:bg-orange-900/20"
+                    data-testid="button-reanalyze-dcf"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Re-analyze
+                  </Button>
                   <Button
                     onClick={handleFinanceCopyAsText}
                     variant="outline"
@@ -3411,7 +3426,7 @@ Examples:
           {/* LBO Results Display */}
           {financeResult && financeResult.success && financeModelType === "lbo" && financeResult.returns && (
             <div className="mb-6 space-y-6">
-              {/* Header with company name and download/copy buttons */}
+              {/* Header with company name and download/copy/reanalyze buttons */}
               <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-purple-200 dark:border-purple-700">
                 <div>
                   <h3 className="text-xl font-bold text-purple-900 dark:text-purple-100">
@@ -3422,6 +3437,15 @@ Examples:
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleFinanceReanalyze}
+                    variant="outline"
+                    className="border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-300 dark:hover:bg-orange-900/20"
+                    data-testid="button-reanalyze-lbo"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Re-analyze
+                  </Button>
                   <Button
                     onClick={handleFinanceCopyAsText}
                     variant="outline"
@@ -3709,7 +3733,7 @@ Examples:
           {/* M&A Results Display */}
           {financeResult && financeResult.success && financeModelType === "ma" && financeResult.accretionDilution && (
             <div className="mb-6 space-y-6">
-              {/* Header with company names and download/copy buttons */}
+              {/* Header with company names and download/copy/reanalyze buttons */}
               <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-purple-200 dark:border-purple-700">
                 <div>
                   <h3 className="text-xl font-bold text-purple-900 dark:text-purple-100">
@@ -3720,6 +3744,15 @@ Examples:
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleFinanceReanalyze}
+                    variant="outline"
+                    className="border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-300 dark:hover:bg-orange-900/20"
+                    data-testid="button-reanalyze-ma"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Re-analyze
+                  </Button>
                   <Button
                     onClick={handleFinanceCopyAsText}
                     variant="outline"
@@ -3947,7 +3980,7 @@ Examples:
           {/* 3-Statement Model Results Display */}
           {financeResult && financeResult.success && financeModelType === "threestatement" && financeResult.incomeStatement && (
             <div className="mb-6 space-y-6">
-              {/* Header with company name and download/copy buttons */}
+              {/* Header with company name and download/copy/reanalyze buttons */}
               <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-indigo-200 dark:border-indigo-700">
                 <div>
                   <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-100">
@@ -3961,6 +3994,15 @@ Examples:
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleFinanceReanalyze}
+                    variant="outline"
+                    className="border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-300 dark:hover:bg-orange-900/20"
+                    data-testid="button-reanalyze-3statement"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Re-analyze
+                  </Button>
                   <Button
                     onClick={handleFinanceCopyAsText}
                     variant="outline"
@@ -4266,7 +4308,7 @@ Examples:
           {/* IPO Pricing Results Display */}
           {financeResult && financeResult.success && financeModelType === "ipo" && financeResult.offerPrice && (
             <div className="mb-6 space-y-6">
-              {/* Header with company name and download/copy buttons */}
+              {/* Header with company name and download/copy/reanalyze buttons */}
               <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-teal-200 dark:border-teal-700">
                 <div>
                   <h3 className="text-xl font-bold text-teal-900 dark:text-teal-100">
@@ -4277,6 +4319,15 @@ Examples:
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleFinanceReanalyze}
+                    variant="outline"
+                    className="border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-300 dark:hover:bg-orange-900/20"
+                    data-testid="button-reanalyze-ipo"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Re-analyze
+                  </Button>
                   <Button
                     onClick={handleFinanceCopyAsText}
                     variant="outline"
