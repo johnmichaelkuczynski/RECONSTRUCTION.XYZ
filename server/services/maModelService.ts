@@ -81,12 +81,42 @@ export interface MAAssumptions {
 
 const MA_PARSING_PROMPT = `You are a financial analyst expert in M&A transactions. Parse the following natural language description of a merger or acquisition and extract ALL relevant parameters.
 
-CRITICAL RULES:
-1. If the user explicitly states an EPS value (e.g., "earns $3.20 per share"), extract it as acquirerExplicitEPS. DO NOT IGNORE THIS.
-2. Revenue synergies and cost synergies have DIFFERENT phase-in schedules. Extract both separately.
-3. If a "flow-through margin" or "margin on revenue synergies" is mentioned, extract it as revenueSynergyMargin.
-4. For Purchase Price Allocation, extract ALL components separately if provided.
-5. Extract explicit transaction fees if mentioned (e.g., "forty-five million in transaction costs").
+CRITICAL PARSING RULES - MUST EXTRACT THESE:
+
+1. PURCHASE PRICE: Extract the dollar amount in millions!
+   - "11.0× LTM EBITDA of $85M" → purchasePrice = 85 × 11.0 = 935
+   - "Equity Value = $935M" → purchasePrice = 935
+   - "purchase price of $935 million" → purchasePrice = 935
+   
+2. CONSIDERATION MIX: Extract cash vs stock percentages!
+   - "70% cash, 30% stock" → cashPercent = 0.70, stockPercent = 0.30
+   - "all cash" → cashPercent = 1.0, stockPercent = 0.0
+   - "all stock" → cashPercent = 0.0, stockPercent = 1.0
+   
+3. NEW DEBT FINANCING: Extract debt amount and rate!
+   - "$500M new debt at 6.25% interest" → newDebtAmount = 500, newDebtRate = 0.0625
+   - "borrow $400 million at 5.5%" → newDebtAmount = 400, newDebtRate = 0.055
+   
+4. BUYER SHARE PRICE: Critical for stock issuance calculation!
+   - "Buyer share price = $50" → acquirerStockPrice = 50
+   - "acquirer trades at $42 per share" → acquirerStockPrice = 42
+   
+5. SYNERGIES: Extract amounts separately!
+   - "Cost synergies: $40M annually" → costSynergies = 40
+   - "Revenue synergies: $25M" → revenueSynergies = 25
+   
+6. INTEGRATION COSTS: Extract the one-time cost!
+   - "One-time integration cost: $30M" → integrationCostsY1 = 30 (or spread across years)
+   
+7. FORECAST PERIOD: Extract the number of years!
+   - "5-year forecast" → (use 5-year projections)
+   
+8. SHARES OUTSTANDING: Critical for EPS!
+   - "Shares outstanding: 160M" → acquirerSharesOutstanding = 160
+   - "160 million shares" → acquirerSharesOutstanding = 160
+
+9. EXPLICIT EPS: If user states EPS directly, use it!
+   - "earns $3.20 per share" → acquirerExplicitEPS = 3.20
 
 Return a JSON object with the following structure:
 {
@@ -283,7 +313,138 @@ export async function parseMADescription(
   
   jsonStr = jsonStr.trim();
 
-  const assumptions: MAAssumptions = JSON.parse(jsonStr);
+  const rawAssumptions = JSON.parse(jsonStr);
+  
+  // ============ ROBUST POST-PARSING VALIDATION WITH DEFAULTS ============
+  // Ensure NO critical values are ever undefined
+  
+  // Base financials - needed for derived calculations
+  const acquirerRevenue = rawAssumptions.acquirerRevenue ?? 1000;
+  const acquirerEBITDAMargin = rawAssumptions.acquirerEBITDAMargin ?? 0.20;
+  const acquirerSharesOutstanding = rawAssumptions.acquirerSharesOutstanding ?? 100;
+  const acquirerStockPrice = rawAssumptions.acquirerStockPrice ?? 50;
+  
+  const targetRevenue = rawAssumptions.targetRevenue ?? 500;
+  const targetEBITDAMargin = rawAssumptions.targetEBITDAMargin ?? 0.20;
+  const targetEBITDA = targetRevenue * targetEBITDAMargin;
+  
+  // Purchase price - calculate from multiple if not explicitly provided
+  let purchasePrice = rawAssumptions.purchasePrice;
+  const entryMultiple = rawAssumptions.entryMultiple ?? 10.0;
+  
+  if (purchasePrice === undefined || purchasePrice === null || purchasePrice === 0) {
+    purchasePrice = targetEBITDA * entryMultiple;
+    console.log(`[M&A Validation] Purchase price not found, calculated from ${targetEBITDA.toFixed(1)}M EBITDA × ${entryMultiple}x = ${purchasePrice.toFixed(1)}M`);
+  }
+  
+  // Consideration mix - default to 50/50 if not specified
+  let cashPercent = rawAssumptions.cashPercent;
+  let stockPercent = rawAssumptions.stockPercent;
+  
+  if ((cashPercent === undefined || cashPercent === null) && (stockPercent === undefined || stockPercent === null)) {
+    cashPercent = 0.5;
+    stockPercent = 0.5;
+    console.log(`[M&A Validation] Consideration mix not found, defaulting to 50% cash / 50% stock`);
+  } else if (cashPercent !== undefined && cashPercent !== null && (stockPercent === undefined || stockPercent === null)) {
+    stockPercent = 1.0 - cashPercent;
+  } else if (stockPercent !== undefined && stockPercent !== null && (cashPercent === undefined || cashPercent === null)) {
+    cashPercent = 1.0 - stockPercent;
+  }
+  
+  // New debt financing
+  const newDebtAmount = rawAssumptions.newDebtAmount ?? 0;
+  const newDebtRate = rawAssumptions.newDebtRate ?? 0.06;
+  
+  // Synergies
+  const costSynergies = rawAssumptions.costSynergies ?? 0;
+  const revenueSynergies = rawAssumptions.revenueSynergies ?? 0;
+  
+  // Integration costs
+  const integrationCostsY1 = rawAssumptions.integrationCostsY1 ?? 0;
+  const integrationCostsY2 = rawAssumptions.integrationCostsY2 ?? 0;
+  const integrationCostsY3 = rawAssumptions.integrationCostsY3 ?? 0;
+  
+  console.log(`[M&A Validation] Parsed values:`);
+  console.log(`  Acquirer: Revenue=${acquirerRevenue}M, EBITDA Margin=${(acquirerEBITDAMargin * 100).toFixed(1)}%, Shares=${acquirerSharesOutstanding}M, Price=$${acquirerStockPrice}`);
+  console.log(`  Target: Revenue=${targetRevenue}M, EBITDA=${targetEBITDA.toFixed(1)}M`);
+  console.log(`  Purchase Price: ${purchasePrice}M`);
+  console.log(`  Consideration: ${(cashPercent * 100).toFixed(0)}% cash / ${(stockPercent * 100).toFixed(0)}% stock`);
+  console.log(`  New Debt: ${newDebtAmount}M at ${(newDebtRate * 100).toFixed(2)}%`);
+  console.log(`  Synergies: Cost=${costSynergies}M, Revenue=${revenueSynergies}M`);
+  console.log(`  Integration: Y1=${integrationCostsY1}M, Y2=${integrationCostsY2}M, Y3=${integrationCostsY3}M`);
+  if (rawAssumptions.acquirerExplicitEPS) {
+    console.log(`  Explicit EPS: $${rawAssumptions.acquirerExplicitEPS}`);
+  }
+  
+  const assumptions: MAAssumptions = {
+    acquirerName: rawAssumptions.acquirerName ?? "Acquirer",
+    targetName: rawAssumptions.targetName ?? "Target",
+    transactionDate: rawAssumptions.transactionDate ?? new Date().toISOString().split('T')[0],
+    
+    acquirerRevenue: acquirerRevenue,
+    acquirerRevenueGrowth: rawAssumptions.acquirerRevenueGrowth ?? [0.05, 0.05, 0.05, 0.05, 0.05],
+    acquirerEBITDAMargin: acquirerEBITDAMargin,
+    acquirerDAPercent: rawAssumptions.acquirerDAPercent ?? 0.03,
+    acquirerInterestExpense: rawAssumptions.acquirerInterestExpense ?? 0,
+    acquirerTaxRate: rawAssumptions.acquirerTaxRate ?? 0.25,
+    acquirerSharesOutstanding: acquirerSharesOutstanding,
+    acquirerStockPrice: acquirerStockPrice,
+    acquirerExplicitEPS: rawAssumptions.acquirerExplicitEPS,
+    acquirerCash: rawAssumptions.acquirerCash ?? 0,
+    acquirerExistingDebt: rawAssumptions.acquirerExistingDebt ?? 0,
+    
+    targetRevenue: targetRevenue,
+    targetRevenueGrowth: rawAssumptions.targetRevenueGrowth ?? [0.05, 0.05, 0.05, 0.05, 0.05],
+    targetEBITDAMargin: targetEBITDAMargin,
+    targetDAPercent: rawAssumptions.targetDAPercent ?? 0.03,
+    targetInterestExpense: rawAssumptions.targetInterestExpense ?? 0,
+    targetTaxRate: rawAssumptions.targetTaxRate ?? 0.25,
+    targetNetDebt: rawAssumptions.targetNetDebt ?? 0,
+    
+    purchasePrice: purchasePrice,
+    cashPercent: cashPercent,
+    stockPercent: stockPercent,
+    premium: rawAssumptions.premium ?? 0.25,
+    transactionFeePercent: rawAssumptions.transactionFeePercent ?? 0.025,
+    transactionFees: rawAssumptions.transactionFees,
+    
+    cashFromBalance: rawAssumptions.cashFromBalance ?? 0,
+    newDebtAmount: newDebtAmount,
+    newDebtRate: newDebtRate,
+    debtAmortizationRate: rawAssumptions.debtAmortizationRate ?? 0.05,
+    debtMaturityYears: rawAssumptions.debtMaturityYears ?? 5,
+    
+    revenueSynergies: revenueSynergies,
+    revenueSynergyRealizationY1: rawAssumptions.revenueSynergyRealizationY1 ?? 0.0,
+    revenueSynergyRealizationY2: rawAssumptions.revenueSynergyRealizationY2 ?? 0.5,
+    revenueSynergyRealizationY3: rawAssumptions.revenueSynergyRealizationY3 ?? 1.0,
+    revenueSynergyRealizationY4: rawAssumptions.revenueSynergyRealizationY4 ?? 1.0,
+    revenueSynergyRealizationY5: rawAssumptions.revenueSynergyRealizationY5 ?? 1.0,
+    revenueSynergyMargin: rawAssumptions.revenueSynergyMargin ?? 1.0,
+    
+    costSynergies: costSynergies,
+    costSynergyRealizationY1: rawAssumptions.costSynergyRealizationY1 ?? 0.2,
+    costSynergyRealizationY2: rawAssumptions.costSynergyRealizationY2 ?? 0.6,
+    costSynergyRealizationY3: rawAssumptions.costSynergyRealizationY3 ?? 1.0,
+    costSynergyRealizationY4: rawAssumptions.costSynergyRealizationY4 ?? 1.0,
+    costSynergyRealizationY5: rawAssumptions.costSynergyRealizationY5 ?? 1.0,
+    
+    integrationCostsY1: integrationCostsY1,
+    integrationCostsY2: integrationCostsY2,
+    integrationCostsY3: integrationCostsY3,
+    
+    targetBookValueNetAssets: rawAssumptions.targetBookValueNetAssets,
+    targetFairValueNetAssets: rawAssumptions.targetFairValueNetAssets,
+    customerRelationships: rawAssumptions.customerRelationships,
+    customerRelationshipsLife: rawAssumptions.customerRelationshipsLife ?? 10,
+    developedTechnology: rawAssumptions.developedTechnology,
+    developedTechnologyLife: rawAssumptions.developedTechnologyLife ?? 5,
+    otherIntangibles: rawAssumptions.otherIntangibles,
+    otherIntangiblesLife: rawAssumptions.otherIntangiblesLife ?? 7,
+    intangibleAssets: rawAssumptions.intangibleAssets ?? 0,
+    intangibleAmortYears: rawAssumptions.intangibleAmortYears ?? 7,
+  };
+  
   return { assumptions, providerUsed };
 }
 
