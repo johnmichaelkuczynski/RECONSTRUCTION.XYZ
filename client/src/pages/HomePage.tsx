@@ -836,7 +836,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     
     if (financeModelType === "dcf") {
       text = `${modelName} - DCF Valuation\n`;
-      text += `${"=".repeat(50)}\n\n`;
+      text += `${"=".repeat(60)}\n\n`;
+      
       text += `VALUATION SUMMARY\n`;
       text += `-----------------\n`;
       text += `Base Case Share Price: $${financeResult.valuation?.base?.sharePrice?.toFixed(2) || "N/A"}\n`;
@@ -845,19 +846,110 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       text += `Enterprise Value: $${financeResult.valuation?.base?.enterpriseValue?.toLocaleString()}M\n`;
       text += `Equity Value: $${financeResult.valuation?.base?.equityValue?.toLocaleString()}M\n`;
       text += `Net Debt: $${financeResult.valuation?.base?.netDebt?.toLocaleString()}M\n\n`;
+      
       text += `KEY ASSUMPTIONS\n`;
-      text += `---------------\n`;
-      text += `WACC: ${((financeResult.assumptions?.wacc || 0) * 100).toFixed(1)}%\n`;
-      text += `Terminal Growth: ${((financeResult.assumptions?.terminalGrowthRate || 0) * 100).toFixed(1)}%\n`;
-      text += `Base EBITDA Margin: ${((financeResult.assumptions?.baseEBITDAMargin || 0) * 100).toFixed(1)}%\n`;
-      text += `Target EBITDA Margin: ${((financeResult.assumptions?.targetEBITDAMargin || 0) * 100).toFixed(1)}%\n\n`;
+      text += `${"=".repeat(60)}\n\n`;
+      
+      text += `Revenue Assumptions:\n`;
+      text += `  Base Year Revenue: $${financeResult.assumptions?.baseYearRevenue?.toLocaleString()}M\n`;
+      text += `  Revenue Growth Rates: `;
+      financeResult.assumptions?.revenueGrowthRates?.forEach((rate: number, idx: number) => {
+        text += `Y${idx + 1}: ${(rate * 100).toFixed(1)}%  `;
+      });
+      text += `\n\n`;
+      
+      text += `Margin Assumptions:\n`;
+      text += `  Starting EBITDA Margin: ${((financeResult.assumptions?.baseEBITDAMargin || 0) * 100).toFixed(1)}%\n`;
+      text += `  Target EBITDA Margin: ${((financeResult.assumptions?.targetEBITDAMargin || 0) * 100).toFixed(1)}%\n`;
+      text += `  Margin Expansion: Linear ramp over ${financeResult.assumptions?.marginExpansionYears || 5} years\n`;
+      text += `  Tax Rate: ${((financeResult.assumptions?.taxRate || 0) * 100).toFixed(1)}%\n\n`;
+      
+      text += `Capital Intensity (% of Revenue):\n`;
+      text += `  D&A (Year 1): ${((financeResult.assumptions?.daPercent || 0) * 100).toFixed(1)}%\n`;
+      text += `  D&A (Terminal): ${((financeResult.assumptions?.daPercentTerminal || financeResult.assumptions?.daPercent * 0.8 || 0) * 100).toFixed(1)}%\n`;
+      text += `  CapEx (Year 1): ${((financeResult.assumptions?.capexPercent || 0) * 100).toFixed(1)}%\n`;
+      text += `  CapEx (Terminal): ${((financeResult.assumptions?.capexPercentTerminal || financeResult.assumptions?.capexPercent * 0.5 || 0) * 100).toFixed(1)}%\n`;
+      text += `  NWC (% of Revenue Change): ${((financeResult.assumptions?.nwcPercent || 0) * 100).toFixed(1)}%\n\n`;
+      
+      text += `Valuation Assumptions:\n`;
+      text += `  WACC: ${((financeResult.assumptions?.wacc || 0) * 100).toFixed(1)}%\n`;
+      text += `  Terminal Growth Rate: ${((financeResult.assumptions?.terminalGrowthRate || 0) * 100).toFixed(1)}%\n`;
+      text += `  Net Debt: $${(financeResult.assumptions?.totalDebt - financeResult.assumptions?.cashAndEquivalents)?.toLocaleString()}M\n`;
+      text += `  Shares Outstanding: ${financeResult.assumptions?.sharesOutstanding?.toLocaleString()}M\n\n`;
+      
+      text += `Valuation Bridge (Base Case):\n`;
+      text += `  PV of FCFs: $${financeResult.valuation?.base?.pvFCF?.toLocaleString(undefined, {maximumFractionDigits: 0})}M\n`;
+      text += `  Terminal Value: $${financeResult.valuation?.base?.terminalValue?.toLocaleString(undefined, {maximumFractionDigits: 0})}M\n`;
+      text += `  PV of Terminal: $${financeResult.valuation?.base?.pvTerminal?.toLocaleString(undefined, {maximumFractionDigits: 0})}M\n`;
+      text += `  Enterprise Value: $${financeResult.valuation?.base?.enterpriseValue?.toLocaleString(undefined, {maximumFractionDigits: 0})}M\n`;
+      text += `  Equity Value: $${financeResult.valuation?.base?.equityValue?.toLocaleString(undefined, {maximumFractionDigits: 0})}M\n\n`;
+      
       if (financeResult.projections?.revenue) {
-        text += `5-YEAR PROJECTIONS\n`;
-        text += `------------------\n`;
-        text += `Year\tRevenue\t\tEBITDA\t\tFCF\n`;
-        for (let i = 0; i < financeResult.projections.revenue.length; i++) {
-          text += `${i + 1}\t$${financeResult.projections.revenue[i]?.toLocaleString()}M\t$${financeResult.projections.ebitda?.[i]?.toLocaleString()}M\t$${financeResult.projections.fcf?.[i]?.toLocaleString()}M\n`;
-        }
+        text += `FREE CASH FLOW BUILDUP\n`;
+        text += `${"=".repeat(60)}\n\n`;
+        text += `Line Item\t\t\t`;
+        financeResult.projections.years?.forEach((y: number) => { text += `Year ${y}\t`; });
+        text += `\n${"─".repeat(60)}\n`;
+        
+        text += `Revenue ($M)\t\t\t`;
+        financeResult.projections.revenue.forEach((v: number) => { text += `$${Math.round(v || 0).toLocaleString()}\t`; });
+        text += `\n`;
+        
+        text += `EBITDA ($M)\t\t\t`;
+        financeResult.projections.ebitda?.forEach((v: number) => { text += `$${Math.round(v || 0).toLocaleString()}\t`; });
+        text += `\n`;
+        
+        text += `  EBITDA Margin\t\t\t`;
+        financeResult.projections.ebitdaMargin?.forEach((v: number) => { text += `${((v || 0) * 100).toFixed(1)}%\t`; });
+        text += `\n`;
+        
+        text += `Less: D&A ($M)\t\t\t`;
+        financeResult.projections.da?.forEach((v: number) => { text += `($${Math.round(v || 0).toLocaleString()})\t`; });
+        text += `\n`;
+        
+        text += `EBIT ($M)\t\t\t`;
+        financeResult.projections.ebit?.forEach((v: number) => { text += `$${Math.round(v || 0).toLocaleString()}\t`; });
+        text += `\n`;
+        
+        text += `Less: Taxes ($M)\t\t`;
+        financeResult.projections.taxes?.forEach((v: number) => { text += `($${Math.round(v || 0).toLocaleString()})\t`; });
+        text += `\n`;
+        
+        text += `NOPAT ($M)\t\t\t`;
+        financeResult.projections.nopat?.forEach((v: number) => { text += `$${Math.round(v || 0).toLocaleString()}\t`; });
+        text += `\n`;
+        
+        text += `Plus: D&A ($M)\t\t\t`;
+        financeResult.projections.da?.forEach((v: number) => { text += `$${Math.round(v || 0).toLocaleString()}\t`; });
+        text += `\n`;
+        
+        text += `Less: CapEx ($M)\t\t`;
+        financeResult.projections.capex?.forEach((v: number) => { text += `($${Math.round(v || 0).toLocaleString()})\t`; });
+        text += `\n`;
+        
+        text += `Less: Change in NWC ($M)\t`;
+        financeResult.projections.nwcChange?.forEach((v: number) => { text += `($${Math.round(v || 0).toLocaleString()})\t`; });
+        text += `\n${"─".repeat(60)}\n`;
+        
+        text += `Unlevered FCF ($M)\t\t`;
+        financeResult.projections.fcf?.forEach((v: number) => { text += `$${Math.round(v || 0).toLocaleString()}\t`; });
+        text += `\n\n`;
+      }
+      
+      if (financeResult.sensitivityAnalysis) {
+        text += `SENSITIVITY ANALYSIS: Share Price by WACC & Terminal Growth\n`;
+        text += `${"=".repeat(60)}\n\n`;
+        text += `Terminal Growth / WACC\t`;
+        financeResult.sensitivityAnalysis.waccValues?.forEach((w: number) => { text += `${(w * 100).toFixed(1)}%\t`; });
+        text += `\n${"─".repeat(60)}\n`;
+        financeResult.sensitivityAnalysis.terminalGrowthValues?.forEach((tg: number, rowIdx: number) => {
+          text += `${(tg * 100).toFixed(1)}%\t\t\t`;
+          financeResult.sensitivityAnalysis.sharePriceMatrix?.[rowIdx]?.forEach((price: number) => {
+            text += `$${price?.toFixed(2)}\t`;
+          });
+          text += `\n`;
+        });
+        text += `\n`;
       }
     } else if (financeModelType === "lbo") {
       text = `${modelName} - LBO Analysis\n`;
@@ -3301,92 +3393,187 @@ Examples:
                 </div>
               </div>
 
-              {/* Key Assumptions Table */}
+              {/* Complete Key Assumptions Section */}
               <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-700">
                 <h4 className="text-lg font-semibold text-blue-800 dark:text-blue-200 mb-4">
-                  Extracted Assumptions
+                  Key Assumptions
                 </h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
-                    <div className="text-xs text-gray-500 dark:text-gray-400">Base Revenue</div>
-                    <div className="font-semibold text-gray-900 dark:text-gray-100">
-                      ${financeResult.assumptions.baseYearRevenue?.toLocaleString()}M
+                
+                {/* Revenue Section */}
+                <div className="mb-4">
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Revenue Assumptions</div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Base Revenue</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        ${financeResult.assumptions.baseYearRevenue?.toLocaleString()}M
+                      </div>
                     </div>
-                  </div>
-                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
-                    <div className="text-xs text-gray-500 dark:text-gray-400">WACC</div>
-                    <div className="font-semibold text-gray-900 dark:text-gray-100">
-                      {(financeResult.assumptions.wacc * 100)?.toFixed(1)}%
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
-                    <div className="text-xs text-gray-500 dark:text-gray-400">Terminal Growth</div>
-                    <div className="font-semibold text-gray-900 dark:text-gray-100">
-                      {(financeResult.assumptions.terminalGrowthRate * 100)?.toFixed(1)}%
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
-                    <div className="text-xs text-gray-500 dark:text-gray-400">Tax Rate</div>
-                    <div className="font-semibold text-gray-900 dark:text-gray-100">
-                      {(financeResult.assumptions.taxRate * 100)?.toFixed(1)}%
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
-                    <div className="text-xs text-gray-500 dark:text-gray-400">Base EBITDA Margin</div>
-                    <div className="font-semibold text-gray-900 dark:text-gray-100">
-                      {(financeResult.assumptions.baseEBITDAMargin * 100)?.toFixed(1)}%
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
-                    <div className="text-xs text-gray-500 dark:text-gray-400">Target EBITDA Margin</div>
-                    <div className="font-semibold text-gray-900 dark:text-gray-100">
-                      {(financeResult.assumptions.targetEBITDAMargin * 100)?.toFixed(1)}%
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
-                    <div className="text-xs text-gray-500 dark:text-gray-400">Net Debt</div>
-                    <div className="font-semibold text-gray-900 dark:text-gray-100">
-                      ${(financeResult.assumptions.totalDebt - financeResult.assumptions.cashAndEquivalents)?.toLocaleString()}M
-                    </div>
-                  </div>
-                  <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded">
-                    <div className="text-xs text-gray-500 dark:text-gray-400">Shares Outstanding</div>
-                    <div className="font-semibold text-gray-900 dark:text-gray-100">
-                      {financeResult.assumptions.sharesOutstanding?.toLocaleString()}M
-                    </div>
-                  </div>
-                </div>
-
-                {/* Revenue Growth Rates */}
-                <div className="mt-4">
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Revenue Growth Rates (Y1-Y5)</div>
-                  <div className="flex gap-2">
                     {financeResult.assumptions.revenueGrowthRates?.map((rate: number, idx: number) => (
-                      <div key={idx} className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 rounded text-sm font-medium text-blue-800 dark:text-blue-200">
-                        Y{idx + 1}: {(rate * 100).toFixed(0)}%
+                      <div key={idx} className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">Y{idx + 1} Growth</div>
+                        <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                          {(rate * 100).toFixed(1)}%
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
+
+                {/* Margin Section */}
+                <div className="mb-4">
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Margin Assumptions</div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Starting EBITDA Margin</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        {(financeResult.assumptions.baseEBITDAMargin * 100)?.toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Target EBITDA Margin</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        {(financeResult.assumptions.targetEBITDAMargin * 100)?.toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Margin Expansion</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        Linear ramp over {financeResult.assumptions.marginExpansionYears || 5} years
+                      </div>
+                    </div>
+                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Tax Rate</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        {(financeResult.assumptions.taxRate * 100)?.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Capital Intensity Section */}
+                <div className="mb-4">
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Capital Intensity (% of Revenue)</div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">D&A (Year 1)</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        {(financeResult.assumptions.daPercent * 100)?.toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">D&A (Terminal)</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        {((financeResult.assumptions.daPercentTerminal || financeResult.assumptions.daPercent * 0.8) * 100)?.toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">CapEx (Year 1)</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        {(financeResult.assumptions.capexPercent * 100)?.toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">CapEx (Terminal)</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        {((financeResult.assumptions.capexPercentTerminal || financeResult.assumptions.capexPercent * 0.5) * 100)?.toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">NWC (% of Revenue Change)</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        {(financeResult.assumptions.nwcPercent * 100)?.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Valuation Assumptions Section */}
+                <div className="mb-4">
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Valuation Assumptions</div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded border border-blue-200 dark:border-blue-700">
+                      <div className="text-xs text-blue-600 dark:text-blue-400">WACC</div>
+                      <div className="font-bold text-blue-800 dark:text-blue-200 text-sm">
+                        {(financeResult.assumptions.wacc * 100)?.toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded border border-blue-200 dark:border-blue-700">
+                      <div className="text-xs text-blue-600 dark:text-blue-400">Terminal Growth Rate</div>
+                      <div className="font-bold text-blue-800 dark:text-blue-200 text-sm">
+                        {(financeResult.assumptions.terminalGrowthRate * 100)?.toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Net Debt</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        ${(financeResult.assumptions.totalDebt - financeResult.assumptions.cashAndEquivalents)?.toLocaleString()}M
+                      </div>
+                    </div>
+                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Shares Outstanding</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        {financeResult.assumptions.sharesOutstanding?.toLocaleString()}M
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Valuation Bridge */}
+                <div>
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Valuation Bridge (Base Case)</div>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">PV of FCFs</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        ${(financeResult.valuation?.base?.pvFCF ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </div>
+                    </div>
+                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Terminal Value</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        ${(financeResult.valuation?.base?.terminalValue ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </div>
+                    </div>
+                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">PV of Terminal</div>
+                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                        ${(financeResult.valuation?.base?.pvTerminal ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </div>
+                    </div>
+                    <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded border border-blue-200 dark:border-blue-700">
+                      <div className="text-xs text-blue-600 dark:text-blue-400">Enterprise Value</div>
+                      <div className="font-bold text-blue-800 dark:text-blue-200 text-sm">
+                        ${(financeResult.valuation?.base?.enterpriseValue ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </div>
+                    </div>
+                    <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded border border-blue-200 dark:border-blue-700">
+                      <div className="text-xs text-blue-600 dark:text-blue-400">Equity Value</div>
+                      <div className="font-bold text-blue-800 dark:text-blue-200 text-sm">
+                        ${(financeResult.valuation?.base?.equityValue ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}M
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              {/* Projections Table */}
+              {/* Full FCF Buildup Table */}
               <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-700 overflow-x-auto">
                 <h4 className="text-lg font-semibold text-blue-800 dark:text-blue-200 mb-4">
-                  5-Year Projections
+                  Free Cash Flow Buildup
                 </h4>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-200 dark:border-gray-600">
-                      <th className="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Metric</th>
+                    <tr className="border-b-2 border-gray-300 dark:border-gray-500">
+                      <th className="text-left py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Line Item</th>
                       {financeResult.projections?.years?.map((year: number) => (
-                        <th key={year} className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Year {year}</th>
+                        <th key={year} className="text-right py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Year {year}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-b border-gray-100 dark:border-gray-700">
-                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Revenue ($M)</td>
+                    <tr className="border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-750">
+                      <td className="py-2 px-3 text-gray-800 dark:text-gray-200 font-medium">Revenue</td>
                       {financeResult.projections?.revenue?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
                           ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
@@ -3394,25 +3581,89 @@ Examples:
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
-                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">EBITDA ($M)</td>
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">EBITDA</td>
                       {financeResult.projections?.ebitda?.map((val: number | null, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 text-gray-900 dark:text-gray-100">
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-500 dark:text-gray-400 pl-6">EBITDA Margin</td>
+                      {financeResult.projections?.ebitdaMargin?.map((val: number | null, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 text-gray-600 dark:text-gray-400 italic">
+                          {((val ?? 0) * 100).toFixed(1)}%
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Less: D&A</td>
+                      {financeResult.projections?.da?.map((val: number | null, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 text-red-600 dark:text-red-400">
+                          (${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})})
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-750">
+                      <td className="py-2 px-3 text-gray-800 dark:text-gray-200 font-medium">EBIT</td>
+                      {financeResult.projections?.ebit?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
                           ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
                     </tr>
                     <tr className="border-b border-gray-100 dark:border-gray-700">
-                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">EBITDA Margin</td>
-                      {financeResult.projections?.ebitdaMargin?.map((val: number | null, idx: number) => (
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Less: Taxes ({(financeResult.assumptions.taxRate * 100).toFixed(0)}%)</td>
+                      {financeResult.projections?.taxes?.map((val: number | null, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 text-red-600 dark:text-red-400">
+                          (${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})})
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-750">
+                      <td className="py-2 px-3 text-gray-800 dark:text-gray-200 font-medium">NOPAT</td>
+                      {financeResult.projections?.nopat?.map((val: number | null, idx: number) => (
                         <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Plus: D&A</td>
+                      {financeResult.projections?.da?.map((val: number | null, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 text-green-600 dark:text-green-400">
+                          ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Less: CapEx</td>
+                      {financeResult.projections?.capex?.map((val: number | null, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 text-red-600 dark:text-red-400">
+                          (${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})})
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-500 dark:text-gray-400 pl-6">CapEx % Rev</td>
+                      {financeResult.projections?.capexPercent?.map((val: number | null, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 text-gray-600 dark:text-gray-400 italic">
                           {((val ?? 0) * 100).toFixed(1)}%
                         </td>
                       ))}
                     </tr>
-                    <tr>
-                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Free Cash Flow ($M)</td>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Less: Change in NWC</td>
+                      {financeResult.projections?.nwcChange?.map((val: number | null, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 text-red-600 dark:text-red-400">
+                          (${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})})
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-t-2 border-blue-300 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/30">
+                      <td className="py-3 px-3 text-blue-800 dark:text-blue-200 font-bold">Unlevered Free Cash Flow</td>
                       {financeResult.projections?.fcf?.map((val: number | null, idx: number) => (
-                        <td key={idx} className="text-right py-2 px-3 font-bold text-blue-700 dark:text-blue-300">
+                        <td key={idx} className="text-right py-3 px-3 font-bold text-blue-700 dark:text-blue-300 text-base">
                           ${(val ?? 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
                         </td>
                       ))}
@@ -3420,6 +3671,44 @@ Examples:
                   </tbody>
                 </table>
               </div>
+
+              {/* Sensitivity Analysis Table */}
+              {financeResult.sensitivityAnalysis && (
+                <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-700 overflow-x-auto">
+                  <h4 className="text-lg font-semibold text-blue-800 dark:text-blue-200 mb-4">
+                    Sensitivity Analysis: Share Price by WACC & Terminal Growth
+                  </h4>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b-2 border-gray-300 dark:border-gray-500">
+                        <th className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold text-left">Terminal Growth / WACC</th>
+                        {financeResult.sensitivityAnalysis.waccValues?.map((wacc: number, idx: number) => (
+                          <th key={idx} className={`text-center py-2 px-3 font-semibold ${idx === 2 ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200' : 'text-gray-700 dark:text-gray-300'}`}>
+                            {(wacc * 100).toFixed(1)}%
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {financeResult.sensitivityAnalysis.terminalGrowthValues?.map((tg: number, rowIdx: number) => (
+                        <tr key={rowIdx} className={`border-b border-gray-100 dark:border-gray-700 ${rowIdx === 2 ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
+                          <td className={`py-2 px-3 font-semibold ${rowIdx === 2 ? 'text-blue-800 dark:text-blue-200 bg-blue-100 dark:bg-blue-900/40' : 'text-gray-700 dark:text-gray-300'}`}>
+                            {(tg * 100).toFixed(1)}%
+                          </td>
+                          {financeResult.sensitivityAnalysis.sharePriceMatrix[rowIdx]?.map((price: number, colIdx: number) => (
+                            <td key={colIdx} className={`text-center py-2 px-3 font-medium ${rowIdx === 2 && colIdx === 2 ? 'bg-blue-200 dark:bg-blue-800 text-blue-900 dark:text-blue-100 font-bold' : rowIdx === 2 || colIdx === 2 ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200' : 'text-gray-900 dark:text-gray-100'}`}>
+                              ${(price ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    Highlighted row/column represents base case assumptions. Center cell is the base case share price.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

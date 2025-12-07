@@ -218,6 +218,14 @@ export interface DCFValuationResult {
     revenue: number[];
     ebitda: number[];
     ebitdaMargin: number[];
+    da: number[];
+    daPercent: number[];
+    ebit: number[];
+    taxes: number[];
+    nopat: number[];
+    capex: number[];
+    capexPercent: number[];
+    nwcChange: number[];
     fcf: number[];
   };
   valuation: {
@@ -226,6 +234,9 @@ export interface DCFValuationResult {
       netDebt: number;
       equityValue: number;
       sharePrice: number;
+      pvFCF: number;
+      pvTerminal: number;
+      terminalValue: number;
     };
     bull: {
       enterpriseValue: number;
@@ -239,6 +250,11 @@ export interface DCFValuationResult {
       equityValue: number;
       sharePrice: number;
     };
+  };
+  sensitivityAnalysis: {
+    waccValues: number[];
+    terminalGrowthValues: number[];
+    sharePriceMatrix: number[][];
   };
   providerUsed: string;
 }
@@ -265,14 +281,20 @@ export function calculateDCFValuation(assumptions: DCFAssumptions, providerUsed:
     sharesOutstanding
   } = assumptions;
 
-  // Calculate projections
+  // Calculate projections with full FCF buildup
   const years: number[] = [];
   const revenue: number[] = [];
   const ebitda: number[] = [];
   const ebitdaMargin: number[] = [];
+  const da: number[] = [];
+  const daPercentByYear: number[] = [];
+  const ebit: number[] = [];
+  const taxes: number[] = [];
+  const nopat: number[] = [];
+  const capex: number[] = [];
+  const capexPercentByYear: number[] = [];
+  const nwcChange: number[] = [];
   const fcf: number[] = [];
-  const daByYear: number[] = [];
-  const capexByYear: number[] = [];
 
   let currentRevenue = baseYearRevenue;
   
@@ -294,35 +316,48 @@ export function calculateDCFValuation(assumptions: DCFAssumptions, providerUsed:
     ebitda.push(ebitdaValue);
     
     // RAMPING D&A: Linear decline from daPercent to daPercentTerminal
-    // Handle division by zero when projectionYears = 1
     const daStep = projectionYears > 1 ? (daPercentTerminal - daPercent) / (projectionYears - 1) : 0;
     const currentDaPercent = daPercent + daStep * i;
-    const da = currentRevenue * currentDaPercent;
-    daByYear.push(da);
+    const daValue = currentRevenue * currentDaPercent;
+    da.push(daValue);
+    daPercentByYear.push(currentDaPercent);
+    
+    // EBIT
+    const ebitValue = ebitdaValue - daValue;
+    ebit.push(ebitValue);
+    
+    // Taxes on EBIT
+    const taxValue = ebitValue * taxRate;
+    taxes.push(taxValue);
+    
+    // NOPAT
+    const nopatValue = ebitValue - taxValue;
+    nopat.push(nopatValue);
     
     // RAMPING CapEx: Linear decline from capexPercent to capexPercentTerminal
-    // CRITICAL: CapEx should approach or be <= D&A by terminal year
-    // Handle division by zero when projectionYears = 1
     const capexStep = projectionYears > 1 ? (capexPercentTerminal - capexPercent) / (projectionYears - 1) : 0;
     const currentCapexPercent = capexPercent + capexStep * i;
-    const capex = currentRevenue * currentCapexPercent;
-    capexByYear.push(capex);
+    const capexValue = currentRevenue * currentCapexPercent;
+    capex.push(capexValue);
+    capexPercentByYear.push(currentCapexPercent);
     
-    const ebit = ebitdaValue - da;
-    const nopat = ebit * (1 - taxRate);
-    const nwcChange = i === 0 
+    // Change in NWC
+    const nwcChangeValue = i === 0 
       ? currentRevenue * nwcPercent - baseYearRevenue * nwcPercent 
       : currentRevenue * nwcPercent - revenue[i - 1] * nwcPercent;
-    const fcfValue = nopat + da - capex - nwcChange;
+    nwcChange.push(nwcChangeValue);
+    
+    // Unlevered Free Cash Flow
+    const fcfValue = nopatValue + daValue - capexValue - nwcChangeValue;
     fcf.push(fcfValue);
     
-    console.log(`[DCF] Year ${i + 1}: Rev=${currentRevenue.toFixed(1)}M, EBITDA=${ebitdaValue.toFixed(1)}M (${(margin*100).toFixed(1)}%), D&A=${da.toFixed(1)}M (${(currentDaPercent*100).toFixed(1)}%), CapEx=${capex.toFixed(1)}M (${(currentCapexPercent*100).toFixed(1)}%), FCF=${fcfValue.toFixed(1)}M`);
+    console.log(`[DCF] Year ${i + 1}: Rev=${currentRevenue.toFixed(1)}M, EBITDA=${ebitdaValue.toFixed(1)}M (${(margin*100).toFixed(1)}%), D&A=${daValue.toFixed(1)}M (${(currentDaPercent*100).toFixed(1)}%), CapEx=${capexValue.toFixed(1)}M (${(currentCapexPercent*100).toFixed(1)}%), FCF=${fcfValue.toFixed(1)}M`);
   }
   
   console.log(`[DCF] Terminal year FCF margin: ${((fcf[fcf.length-1] / revenue[revenue.length-1]) * 100).toFixed(1)}%`);
 
-  // Calculate DCF valuation for base case
-  const calculateValuation = (waccRate: number, termGrowth: number) => {
+  // Calculate DCF valuation with full breakdown
+  const calculateValuationFull = (waccRate: number, termGrowth: number) => {
     // PV of FCFs
     let pvFCF = 0;
     for (let i = 0; i < fcf.length; i++) {
@@ -339,17 +374,47 @@ export function calculateDCFValuation(assumptions: DCFAssumptions, providerUsed:
     const equityValue = enterpriseValue - netDebt;
     const sharePrice = equityValue / sharesOutstanding;
     
-    return { enterpriseValue, netDebt, equityValue, sharePrice };
+    return { enterpriseValue, netDebt, equityValue, sharePrice, pvFCF, pvTerminal, terminalValue };
+  };
+  
+  const calculateValuationSimple = (waccRate: number, termGrowth: number) => {
+    const result = calculateValuationFull(waccRate, termGrowth);
+    return { 
+      enterpriseValue: result.enterpriseValue, 
+      netDebt: result.netDebt, 
+      equityValue: result.equityValue, 
+      sharePrice: result.sharePrice 
+    };
   };
 
-  // Base case
-  const base = calculateValuation(wacc, terminalGrowthRate);
+  // Base case with full breakdown
+  const base = calculateValuationFull(wacc, terminalGrowthRate);
   
   // Bull case: lower WACC (-1%), higher terminal growth (+0.5%)
-  const bull = calculateValuation(wacc - 0.01, terminalGrowthRate + 0.005);
+  const bull = calculateValuationSimple(wacc - 0.01, terminalGrowthRate + 0.005);
   
   // Bear case: higher WACC (+1%), lower terminal growth (-0.5%)
-  const bear = calculateValuation(wacc + 0.01, terminalGrowthRate - 0.005);
+  const bear = calculateValuationSimple(wacc + 0.01, terminalGrowthRate - 0.005);
+
+  // Generate sensitivity analysis matrix
+  const waccValues = [wacc - 0.02, wacc - 0.01, wacc, wacc + 0.01, wacc + 0.02];
+  const terminalGrowthValues = [
+    terminalGrowthRate - 0.01, 
+    terminalGrowthRate - 0.005, 
+    terminalGrowthRate, 
+    terminalGrowthRate + 0.005, 
+    terminalGrowthRate + 0.01
+  ];
+  
+  const sharePriceMatrix: number[][] = [];
+  for (const tg of terminalGrowthValues) {
+    const row: number[] = [];
+    for (const w of waccValues) {
+      const result = calculateValuationSimple(w, tg);
+      row.push(result.sharePrice);
+    }
+    sharePriceMatrix.push(row);
+  }
 
   return {
     assumptions,
@@ -358,9 +423,22 @@ export function calculateDCFValuation(assumptions: DCFAssumptions, providerUsed:
       revenue,
       ebitda,
       ebitdaMargin,
+      da,
+      daPercent: daPercentByYear,
+      ebit,
+      taxes,
+      nopat,
+      capex,
+      capexPercent: capexPercentByYear,
+      nwcChange,
       fcf
     },
     valuation: { base, bull, bear },
+    sensitivityAnalysis: {
+      waccValues,
+      terminalGrowthValues,
+      sharePriceMatrix
+    },
     providerUsed
   };
 }
