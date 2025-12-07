@@ -342,17 +342,27 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
   console.log(`  Sources: Senior=${seniorDebtAmount.toFixed(2)}M + Sub=${subDebtAmount.toFixed(2)}M + Sponsor=${sponsorEquity.toFixed(2)}M + Rollover=${managementRollover.toFixed(2)}M = ${totalSources.toFixed(2)}M`);
 
   // Calculate projections
-  const years = [0, 1, 2, 3, 4, 5];
+  // IMPORTANT: Projection period must cover at least the exit year
+  const maxYear = Math.max(5, exitYear);
+  const years = Array.from({ length: maxYear + 1 }, (_, i) => i);
   const revenue: number[] = [baseYearRevenue];
   const ebitdaMargins: number[] = [baseEBITDAMargin];
   const ebitda: number[] = [baseYearRevenue * baseEBITDAMargin];
   
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= maxYear; i++) {
     const growthRate = revenueGrowthRates[i - 1] || 0.05;
     revenue.push(revenue[i - 1] * (1 + growthRate));
     
-    const marginStep = (targetEBITDAMargin - baseEBITDAMargin) / marginExpansionYears;
-    const margin = Math.min(baseEBITDAMargin + marginStep * i, targetEBITDAMargin);
+    // FIX: Handle case where marginExpansionYears is 0 or undefined
+    // If no expansion period, use the target margin immediately (or base if they're the same)
+    let margin: number;
+    if (!marginExpansionYears || marginExpansionYears <= 0) {
+      // No margin expansion - use target margin immediately
+      margin = targetEBITDAMargin || baseEBITDAMargin || 0.20;
+    } else {
+      const marginStep = (targetEBITDAMargin - baseEBITDAMargin) / marginExpansionYears;
+      margin = Math.min(baseEBITDAMargin + marginStep * i, targetEBITDAMargin);
+    }
     ebitdaMargins.push(margin);
     ebitda.push(revenue[i] * margin);
   }
@@ -396,7 +406,7 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
   console.log(`[LBO Model] Tax Shield = Interest × TaxRate (adds ~5-7% to CFADS)`);
   console.log(`[LBO Model] Initial: Senior=${seniorDebtAmount.toFixed(2)}M, Sub=${subDebtAmount.toFixed(2)}M, Sweep=${(sweepPercent * 100).toFixed(0)}%`);
   
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= maxYear; i++) {
     // ========== STEP 1: Calculate operating metrics (before financing) ==========
     da.push(revenue[i] * daPercent);
     ebit.push(ebitda[i] - da[i]);

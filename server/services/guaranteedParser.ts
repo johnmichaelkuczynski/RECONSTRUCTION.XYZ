@@ -460,13 +460,17 @@ export function parseLBOGuaranteed(text: string): LBOGuaranteedValues {
   }
   
   // ============ PURCHASE PRICE ============
+  // IMPORTANT: Must NOT match multiples like "8.2×" - only actual dollar amounts
+  // The (?![×x]) negative lookahead prevents matching "8.2×" as $8.2M
   const purchasePricePatterns = [
-    /(?:ev|enterprise\s+value|purchase\s+price|equity\s+value)\s*[=:]\s*\$?([\d,.]+)\s*(?:m|mm|million)?/i,
-    /(?:buy(?:ing)?|acquir(?:e|ing))\s+(?:for|at)\s+\$?([\d,.]+)\s*(?:m|mm|million)?/i,
-    /\$?([\d,.]+)\s*(?:m|mm|million)?\s+(?:purchase\s+price|ev|enterprise\s+value)/i,
+    /(?:ev|enterprise\s+value)\s*[=:]\s*\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?(?![×x])/i,
+    /(?:buy(?:ing)?|acquir(?:e|ing))\s+(?:for|at)\s+\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?(?![×x])/i,
+    /\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)\s+(?:purchase\s+price|ev|enterprise\s+value)/i,
+    /\(EV\s*=\s*\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\)/i,
   ];
   const purchasePrice = extractMoney(text, purchasePricePatterns);
-  if (purchasePrice !== null) {
+  if (purchasePrice !== null && purchasePrice > 50) {
+    // Only use if it looks like a reasonable EV (>$50M)
     result.purchasePrice = purchasePrice;
     console.log(`[GuaranteedParser] Purchase price: $${purchasePrice}M`);
   } else if (result.ltmEBITDA !== LBO_DEFAULTS.ltmEBITDA && result.entryMultiple !== LBO_DEFAULTS.entryMultiple) {
