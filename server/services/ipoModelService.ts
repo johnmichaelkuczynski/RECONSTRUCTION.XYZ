@@ -654,7 +654,7 @@ export async function parseIPODescription(
       probability: c.probability ?? 1.0,
       interestRate: c.interestRate || undefined,
     }));
-    console.log(`[IPO Parser] Parsed ${convertibles.length} convertible instruments`);
+    console.log(`[IPO Parser] Parsed ${convertibles?.length ?? 0} convertible instruments`);
   }
   
   let contingencies: ContingentLiability[] | undefined = undefined;
@@ -668,8 +668,8 @@ export async function parseIPODescription(
       condition: c.condition || undefined,
       probability: c.probability ?? 0.5,
     }));
-    console.log(`[IPO Parser] Parsed ${contingencies.length} contingent liabilities:`);
-    contingencies.forEach((cont, idx) => {
+    console.log(`[IPO Parser] Parsed ${contingencies?.length ?? 0} contingent liabilities:`);
+    contingencies?.forEach((cont, idx) => {
       console.log(`  [${idx + 1}] ${cont.name} (${cont.type}): ${cont.sharesMillions ?? 0}M shares, $${cont.paymentMillions ?? 0}M payment, ${(cont.probability * 100).toFixed(0)}% probability`);
     });
   } else {
@@ -688,7 +688,7 @@ export async function parseIPODescription(
       probability: d.probability ?? 1.0,
       isAnchorOrder: d.isAnchorOrder ?? false,
     }));
-    console.log(`[IPO Parser] Parsed ${strategicDeals.length} strategic deals`);
+    console.log(`[IPO Parser] Parsed ${strategicDeals?.length ?? 0} strategic deals`);
   }
   
   let anchorOrders: AnchorOrder[] | undefined = undefined;
@@ -700,7 +700,7 @@ export async function parseIPODescription(
       pricePremium: a.pricePremium || undefined,
       priceDiscount: a.priceDiscount || undefined,
     }));
-    console.log(`[IPO Parser] Parsed ${anchorOrders.length} anchor orders`);
+    console.log(`[IPO Parser] Parsed ${anchorOrders?.length ?? 0} anchor orders`);
   }
   
   let employeeOptions: EmployeeOptionPool | undefined = undefined;
@@ -721,7 +721,7 @@ export async function parseIPODescription(
       multiple: m.multiple || 0,
       weight: m.weight || 0,
     }));
-    console.log(`[IPO Parser] Parsed ${valuationMultiples.length} valuation multiples`);
+    console.log(`[IPO Parser] Parsed ${valuationMultiples?.length ?? 0} valuation multiples`);
   }
   
   // Apply defaults with normalization

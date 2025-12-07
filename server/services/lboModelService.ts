@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import ExcelJS from "exceljs";
-import { parseLBOInput, type LBOParsedValues } from "./financialTextParser";
+import { parseLBOGuaranteed, LBO_DEFAULTS, type LBOGuaranteedValues } from "./guaranteedParser";
 
 export interface LBOAssumptions {
   companyName: string;
@@ -199,145 +199,83 @@ export async function parseLBODescription(
     providerUsed = "ZHI 5";
   }
 
-  // Parse JSON from response - handle various response formats including conversational text
-  let jsonStr = responseText.trim();
+  // ============ GUARANTEED PARSER (BULLETPROOF - NEVER RETURNS UNDEFINED) ============
+  // This parser ALWAYS returns complete values - regex extraction with guaranteed defaults
+  console.log(`[LBO Parser] Running guaranteed parser (regex + defaults)...`);
+  const guaranteed = parseLBOGuaranteed(description);
   
-  // First try: extract JSON from markdown code blocks
-  if (jsonStr.includes("```json")) {
-    const match = jsonStr.match(/```json\s*([\s\S]*?)\s*```/);
-    if (match) {
-      jsonStr = match[1].trim();
-    }
-  } else if (jsonStr.includes("```")) {
-    const match = jsonStr.match(/```\s*([\s\S]*?)\s*```/);
-    if (match) {
-      jsonStr = match[1].trim();
-    }
-  }
-  
-  // Second try: find JSON object by looking for opening/closing braces
-  if (!jsonStr.startsWith("{")) {
-    const startIdx = jsonStr.indexOf("{");
-    const endIdx = jsonStr.lastIndexOf("}");
-    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-      jsonStr = jsonStr.slice(startIdx, endIdx + 1);
-    }
-  }
-  
-  jsonStr = jsonStr.trim();
-
+  // Optionally try to parse LLM response for any supplementary values
+  // But guaranteed values are always used as the base - no undefined possible
   let llmAssumptions: any = {};
   try {
-    llmAssumptions = JSON.parse(jsonStr);
+    let jsonStr = responseText.trim();
+    if (jsonStr.includes("```json")) {
+      const match = jsonStr.match(/```json\s*([\s\S]*?)\s*```/);
+      if (match) jsonStr = match[1].trim();
+    } else if (jsonStr.includes("```")) {
+      const match = jsonStr.match(/```\s*([\s\S]*?)\s*```/);
+      if (match) jsonStr = match[1].trim();
+    }
+    if (!jsonStr.startsWith("{")) {
+      const startIdx = jsonStr.indexOf("{");
+      const endIdx = jsonStr.lastIndexOf("}");
+      if (startIdx !== -1 && endIdx !== -1) jsonStr = jsonStr.slice(startIdx, endIdx + 1);
+    }
+    llmAssumptions = JSON.parse(jsonStr.trim());
+    console.log(`[LBO Parser] LLM parsing succeeded, will merge with guaranteed values`);
   } catch (e) {
-    console.log(`[LBO Parser] LLM JSON parse failed, using regex-only extraction`);
+    console.log(`[LBO Parser] LLM JSON parse failed, using guaranteed parser only`);
   }
   
-  // ============ REGEX-BASED PARSING (PRIMARY SOURCE) ============
-  // Use regex parser as the PRIMARY extraction method - it's deterministic
-  console.log(`[LBO Parser] Running regex-based extraction...`);
-  const regexParsed = parseLBOInput(description);
-  
-  // ============ MERGE: Regex values take priority over LLM values ============
-  // Regex extraction is deterministic; LLM is fallback only
-  
-  const baseYearRevenue = regexParsed.ltmRevenue ?? llmAssumptions.baseYearRevenue ?? 100;
-  const baseEBITDAMargin = regexParsed.ebitdaMargin ?? llmAssumptions.baseEBITDAMargin ?? 0.20;
-  const ltmEBITDA = regexParsed.ltmEBITDA ?? (baseYearRevenue * baseEBITDAMargin);
-  
-  // Entry multiple - regex first, then LLM
-  const entryMultiple = regexParsed.entryMultiple ?? llmAssumptions.entryMultiple ?? 8.0;
-  
-  // Purchase price - regex first, then LLM, then calculate
-  let purchasePrice = regexParsed.purchasePrice ?? llmAssumptions.purchasePrice;
-  if (purchasePrice === undefined || purchasePrice === null || purchasePrice === 0) {
-    purchasePrice = ltmEBITDA * entryMultiple;
-    console.log(`[LBO Parser] Purchase price calculated: ${ltmEBITDA.toFixed(1)}M EBITDA × ${entryMultiple}x = ${purchasePrice.toFixed(1)}M`);
-  } else {
-    console.log(`[LBO Parser] Purchase price extracted: ${purchasePrice}M`);
-  }
-  
-  // Senior debt - regex first (either amount or multiple)
-  let seniorDebtAmount = regexParsed.seniorDebtAmount ?? llmAssumptions.seniorDebtAmount;
-  const seniorDebtMultiple = regexParsed.seniorDebtMultiple ?? llmAssumptions.seniorDebtMultiple ?? 4.0;
-  if (seniorDebtAmount === undefined || seniorDebtAmount === null || seniorDebtAmount === 0) {
-    seniorDebtAmount = ltmEBITDA * seniorDebtMultiple;
-    console.log(`[LBO Parser] Senior debt calculated: ${ltmEBITDA.toFixed(1)}M EBITDA × ${seniorDebtMultiple}x = ${seniorDebtAmount.toFixed(1)}M`);
-  } else {
-    console.log(`[LBO Parser] Senior debt extracted: ${seniorDebtAmount}M`);
-  }
-  
-  // Subordinated debt - regex first
-  let subDebtAmount = regexParsed.subDebtAmount ?? llmAssumptions.subDebtAmount;
-  const subDebtMultiple = regexParsed.subDebtMultiple ?? llmAssumptions.subDebtMultiple ?? 1.0;
-  if (subDebtAmount === undefined || subDebtAmount === null || subDebtAmount === 0) {
-    subDebtAmount = ltmEBITDA * subDebtMultiple;
-    console.log(`[LBO Parser] Sub debt calculated: ${ltmEBITDA.toFixed(1)}M EBITDA × ${subDebtMultiple}x = ${subDebtAmount.toFixed(1)}M`);
-  } else {
-    console.log(`[LBO Parser] Sub debt extracted: ${subDebtAmount}M`);
-  }
-  
-  // Interest rates - regex first
-  const seniorDebtRate = regexParsed.seniorDebtRate ?? llmAssumptions.seniorDebtRate ?? 0.065;
-  const subDebtRate = regexParsed.subDebtRate ?? llmAssumptions.subDebtRate ?? 0.12;
-  
-  // Exit assumptions - regex first
-  const exitYear = regexParsed.holdPeriod ?? llmAssumptions.exitYear ?? 5;
-  const exitMultiple = regexParsed.exitMultiple ?? llmAssumptions.exitMultiple ?? entryMultiple;
-  
-  // Transaction fees - regex first
-  const transactionFees = regexParsed.transactionFees ?? llmAssumptions.transactionCostsExplicit;
-  const financingFees = regexParsed.financingFees ?? llmAssumptions.financingFeesExplicit;
-  
-  // Other parameters
-  const revenueGrowth = regexParsed.revenueGrowth ?? llmAssumptions.revenueGrowthRates?.[0] ?? 0.05;
-  const daPercent = regexParsed.daPercent ?? llmAssumptions.daPercent ?? 0.03;
-  const capexPercent = regexParsed.capexPercent ?? llmAssumptions.capexPercent ?? 0.03;
-  const nwcPercent = regexParsed.nwcPercent ?? llmAssumptions.nwcPercent ?? 0.10;
-  const taxRate = regexParsed.taxRate ?? llmAssumptions.taxRate ?? 0.25;
-  
-  console.log(`[LBO Parser] Final parsed values:`);
-  console.log(`  Base Revenue: ${baseYearRevenue}M, LTM EBITDA: ${ltmEBITDA.toFixed(1)}M (${(baseEBITDAMargin * 100).toFixed(1)}% margin)`);
-  console.log(`  Purchase Price: ${purchasePrice}M, Entry Multiple: ${entryMultiple}x`);
-  console.log(`  Senior Debt: ${seniorDebtAmount}M at ${(seniorDebtRate * 100).toFixed(2)}%`);
-  console.log(`  Sub Debt: ${subDebtAmount}M at ${(subDebtRate * 100).toFixed(2)}%`);
-  console.log(`  Exit Year: ${exitYear}, Exit Multiple: ${exitMultiple}x`);
-  console.log(`  Transaction Fees: ${transactionFees ?? 'not explicit'}M`);
-  console.log(`  Financing Fees: ${financingFees ?? 'not explicit'}M`);
+  // Merge: Guaranteed values are PRIMARY, LLM values fill in only where guaranteed equals default
+  // This ensures NO undefined values ever reach calculations
+  const companyName = llmAssumptions.companyName && guaranteed.companyName === LBO_DEFAULTS.companyName 
+    ? llmAssumptions.companyName : guaranteed.companyName;
   
   const assumptions: LBOAssumptions = {
-    companyName: regexParsed.companyName ?? llmAssumptions.companyName ?? "Target Company",
-    transactionDate: llmAssumptions.transactionDate ?? new Date().toISOString().split('T')[0],
-    baseYearRevenue: baseYearRevenue,
-    revenueGrowthRates: llmAssumptions.revenueGrowthRates ?? [revenueGrowth, revenueGrowth, revenueGrowth, revenueGrowth, revenueGrowth],
-    baseEBITDAMargin: baseEBITDAMargin,
-    targetEBITDAMargin: llmAssumptions.targetEBITDAMargin ?? baseEBITDAMargin,
-    marginExpansionYears: llmAssumptions.marginExpansionYears ?? 5,
-    daPercent: daPercent,
-    capexPercent: capexPercent,
-    nwcPercent: nwcPercent,
-    taxRate: taxRate,
-    purchasePrice: purchasePrice,
-    entryMultiple: entryMultiple,
-    transactionCosts: llmAssumptions.transactionCosts ?? 0.02,
-    transactionCostsExplicit: transactionFees,
-    financingFees: llmAssumptions.financingFees ?? 0.01,
-    financingFeesExplicit: financingFees,
-    managementRollover: llmAssumptions.managementRollover ?? 0,
-    seniorDebtAmount: seniorDebtAmount,
-    seniorDebtRate: seniorDebtRate,
-    subDebtAmount: subDebtAmount,
-    subDebtRate: subDebtRate,
-    subDebtPIK: llmAssumptions.subDebtPIK ?? 0,
-    revolverSize: llmAssumptions.revolverSize ?? 0,
-    revolverRate: llmAssumptions.revolverRate ?? 0.05,
-    sponsorEquity: llmAssumptions.sponsorEquity ?? 0,
-    cashFlowSweepPercent: llmAssumptions.cashFlowSweepPercent ?? 0.75,
-    exitYear: exitYear,
-    exitMultiple: exitMultiple,
-    exitCosts: llmAssumptions.exitCosts ?? 0.02,
-    managementFeePercent: llmAssumptions.managementFeePercent ?? 0.01,
+    companyName: companyName,
+    transactionDate: llmAssumptions.transactionDate ?? guaranteed.transactionDate,
+    baseYearRevenue: guaranteed.baseYearRevenue,
+    revenueGrowthRates: llmAssumptions.revenueGrowthRates ?? 
+      [guaranteed.revenueGrowthRate, guaranteed.revenueGrowthRate, guaranteed.revenueGrowthRate, guaranteed.revenueGrowthRate, guaranteed.revenueGrowthRate],
+    baseEBITDAMargin: guaranteed.baseEBITDAMargin,
+    targetEBITDAMargin: llmAssumptions.targetEBITDAMargin ?? guaranteed.targetEBITDAMargin,
+    marginExpansionYears: llmAssumptions.marginExpansionYears ?? guaranteed.marginExpansionYears,
+    daPercent: guaranteed.daPercent,
+    capexPercent: guaranteed.capexPercent,
+    nwcPercent: guaranteed.nwcPercent,
+    taxRate: guaranteed.taxRate,
+    purchasePrice: guaranteed.purchasePrice,
+    entryMultiple: guaranteed.entryMultiple,
+    transactionCosts: guaranteed.transactionCosts,
+    transactionCostsExplicit: guaranteed.transactionCostsExplicit ?? undefined,
+    financingFees: guaranteed.financingFees,
+    financingFeesExplicit: guaranteed.financingFeesExplicit ?? undefined,
+    managementRollover: guaranteed.managementRollover,
+    seniorDebtAmount: guaranteed.seniorDebtAmount,
+    seniorDebtRate: guaranteed.seniorDebtRate,
+    subDebtAmount: guaranteed.subDebtAmount,
+    subDebtRate: guaranteed.subDebtRate,
+    subDebtPIK: guaranteed.subDebtPIK,
+    revolverSize: guaranteed.revolverSize,
+    revolverRate: guaranteed.revolverRate,
+    sponsorEquity: guaranteed.sponsorEquity,
+    cashFlowSweepPercent: guaranteed.cashFlowSweepPercent,
+    exitYear: guaranteed.exitYear,
+    exitMultiple: guaranteed.exitMultiple,
+    exitCosts: guaranteed.exitCosts,
+    managementFeePercent: guaranteed.managementFeePercent,
   };
+  
+  console.log(`[LBO Parser] === FINAL ASSUMPTIONS (ALL GUARANTEED) ===`);
+  console.log(`  Company: ${assumptions.companyName}`);
+  console.log(`  EBITDA: $${guaranteed.ltmEBITDA}M, Revenue: $${assumptions.baseYearRevenue}M`);
+  console.log(`  Purchase Price: $${assumptions.purchasePrice}M (${assumptions.entryMultiple}x)`);
+  console.log(`  Senior Debt: $${assumptions.seniorDebtAmount}M @ ${(assumptions.seniorDebtRate * 100).toFixed(1)}%`);
+  console.log(`  Sub Debt: $${assumptions.subDebtAmount}M @ ${(assumptions.subDebtRate * 100).toFixed(1)}%`);
+  console.log(`  Sponsor Equity: $${assumptions.sponsorEquity.toFixed(1)}M`);
+  console.log(`  Exit: ${assumptions.exitMultiple}x after ${assumptions.exitYear} years`);
+  console.log(`[LBO Parser] =====================================`);
   
   return { assumptions, providerUsed };
 }

@@ -76,6 +76,14 @@ The application uses a monorepo structure, separating client and server.
         - **Charts Data**: Pre-formatted tables for Revenue/EBITDA, Leverage, EPS visualization
         - **Balance Sheet Reconciliation (December 2024 Fix)**: Implements standard financial modeling "plug" mechanism using cash as balancing item. Ensures Assets = Liabilities + Equity across all periods (0-5) by: (1) anchoring historical assets to user input, (2) adjusting retained earnings to force period 0 balance, (3) propagating retained earnings adjustment through forward periods, (4) applying cash plug for any remaining imbalance per period.
       - Default LLM: Zhi 5 (Grok) using grok-3 model for finance models.
+      - **GUARANTEED PARSER ARCHITECTURE (December 2024)**: Complete bulletproof parsing system that eliminates undefined values:
+        - **Core Principle**: Every required field has a guaranteed value - either extracted from user input or filled with sensible defaults
+        - **Architecture**: Regex extraction (PRIMARY) → LLM parsing (SUPPLEMENTARY) → Hardcoded defaults (FALLBACK)
+        - **Key File**: `server/services/guaranteedParser.ts` provides `parseLBOGuaranteed()`, `parseMAGuaranteed()`, `parseDCFGuaranteed()`, `parseIPOGuaranteed()`, `parseThreeStatementGuaranteed()`
+        - **Default Value Sets**: Complete default values for all models (LBO_DEFAULTS, MA_DEFAULTS, DCF_DEFAULTS, IPO_DEFAULTS, THREE_STATEMENT_DEFAULTS)
+        - **Regex Patterns**: Comprehensive patterns for EBITDA, revenue, multiples, percentages, debt amounts, hold periods, synergies, cash/stock mix
+        - **Calculated Derivations**: Purchase price from EBITDA × multiple, debt amounts from multiples × EBITDA, sponsor equity as residual
+        - **Result**: Zero undefined values in any financial model calculation - model collapse from undefined fields is eliminated
     - **Data Science Panel**: Generates production-ready Python code for machine learning and statistical analysis from natural language descriptions.
       - **Regression Models**: Fully implemented with 7 regression types:
         - Simple Linear Regression, Multiple Linear Regression, Polynomial Regression

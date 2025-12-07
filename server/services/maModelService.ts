@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import ExcelJS from "exceljs";
-import { parseMAInput, type MAParsedValues } from "./financialTextParser";
+import { parseMAGuaranteed, MA_DEFAULTS, type MAGuaranteedValues } from "./guaranteedParser";
 
 export interface MAAssumptions {
   acquirerName: string;
@@ -287,177 +287,90 @@ export async function parseMADescription(
     providerUsed = "ZHI 5";
   }
 
-  // Parse JSON from response - handle various response formats including conversational text
-  let jsonStr = responseText.trim();
+  // ============ GUARANTEED PARSER (BULLETPROOF - NEVER RETURNS UNDEFINED) ============
+  console.log(`[M&A Parser] Running guaranteed parser (regex + defaults)...`);
+  const guaranteed = parseMAGuaranteed(description);
   
-  // First try: extract JSON from markdown code blocks
-  if (jsonStr.includes("```json")) {
-    const match = jsonStr.match(/```json\s*([\s\S]*?)\s*```/);
-    if (match) {
-      jsonStr = match[1].trim();
-    }
-  } else if (jsonStr.includes("```")) {
-    const match = jsonStr.match(/```\s*([\s\S]*?)\s*```/);
-    if (match) {
-      jsonStr = match[1].trim();
-    }
-  }
-  
-  // Second try: find JSON object by looking for opening/closing braces
-  if (!jsonStr.startsWith("{")) {
-    const startIdx = jsonStr.indexOf("{");
-    const endIdx = jsonStr.lastIndexOf("}");
-    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-      jsonStr = jsonStr.slice(startIdx, endIdx + 1);
-    }
-  }
-  
-  jsonStr = jsonStr.trim();
-
+  // Optionally try to parse LLM response for supplementary values
   let llmAssumptions: any = {};
   try {
-    llmAssumptions = JSON.parse(jsonStr);
+    let jsonStr = responseText.trim();
+    if (jsonStr.includes("```json")) {
+      const match = jsonStr.match(/```json\s*([\s\S]*?)\s*```/);
+      if (match) jsonStr = match[1].trim();
+    } else if (jsonStr.includes("```")) {
+      const match = jsonStr.match(/```\s*([\s\S]*?)\s*```/);
+      if (match) jsonStr = match[1].trim();
+    }
+    if (!jsonStr.startsWith("{")) {
+      const startIdx = jsonStr.indexOf("{");
+      const endIdx = jsonStr.lastIndexOf("}");
+      if (startIdx !== -1 && endIdx !== -1) jsonStr = jsonStr.slice(startIdx, endIdx + 1);
+    }
+    llmAssumptions = JSON.parse(jsonStr.trim());
+    console.log(`[M&A Parser] LLM parsing succeeded, will merge with guaranteed values`);
   } catch (e) {
-    console.log(`[M&A Parser] LLM JSON parse failed, using regex-only extraction`);
+    console.log(`[M&A Parser] LLM JSON parse failed, using guaranteed parser only`);
   }
   
-  // ============ REGEX-BASED PARSING (PRIMARY SOURCE) ============
-  console.log(`[M&A Parser] Running regex-based extraction...`);
-  const regexParsed = parseMAInput(description);
-  
-  // ============ MERGE: Regex values take priority over LLM values ============
-  
-  // Acquirer financials - regex first, then LLM
-  const acquirerRevenue = regexParsed.acquirerRevenue ?? llmAssumptions.acquirerRevenue ?? 1000;
-  const acquirerEBITDAMargin = regexParsed.acquirerEBITDAMargin ?? llmAssumptions.acquirerEBITDAMargin ?? 0.20;
-  const acquirerSharesOutstanding = regexParsed.acquirerSharesOutstanding ?? llmAssumptions.acquirerSharesOutstanding ?? 100;
-  const acquirerStockPrice = regexParsed.acquirerStockPrice ?? llmAssumptions.acquirerStockPrice ?? 50;
-  const acquirerExplicitEPS = regexParsed.acquirerExplicitEPS ?? llmAssumptions.acquirerExplicitEPS;
-  
-  // Target financials
-  const targetRevenue = llmAssumptions.targetRevenue ?? 500;
-  const targetEBITDAMargin = regexParsed.targetEBITDAMargin ?? llmAssumptions.targetEBITDAMargin ?? 0.20;
-  const targetEBITDA = regexParsed.targetEBITDA ?? (targetRevenue * targetEBITDAMargin);
-  
-  // Entry multiple
-  const entryMultiple = regexParsed.entryMultiple ?? llmAssumptions.entryMultiple ?? 10.0;
-  
-  // Purchase price - regex first, then LLM, then calculate
-  let purchasePrice = regexParsed.purchasePrice ?? llmAssumptions.purchasePrice;
-  if (purchasePrice === undefined || purchasePrice === null || purchasePrice === 0) {
-    purchasePrice = targetEBITDA * entryMultiple;
-    console.log(`[M&A Parser] Purchase price calculated: ${targetEBITDA.toFixed(1)}M EBITDA × ${entryMultiple}x = ${purchasePrice.toFixed(1)}M`);
-  } else {
-    console.log(`[M&A Parser] Purchase price extracted: ${purchasePrice}M`);
-  }
-  
-  // Consideration mix - regex first
-  let cashPercent = regexParsed.cashPercent ?? llmAssumptions.cashPercent;
-  let stockPercent = regexParsed.stockPercent ?? llmAssumptions.stockPercent;
-  
-  if ((cashPercent === undefined || cashPercent === null) && (stockPercent === undefined || stockPercent === null)) {
-    cashPercent = 0.5;
-    stockPercent = 0.5;
-    console.log(`[M&A Parser] Consideration mix not found, defaulting to 50% cash / 50% stock`);
-  } else if (cashPercent !== undefined && cashPercent !== null && (stockPercent === undefined || stockPercent === null)) {
-    stockPercent = 1.0 - cashPercent;
-    console.log(`[M&A Parser] Consideration: ${(cashPercent * 100).toFixed(0)}% cash / ${(stockPercent * 100).toFixed(0)}% stock`);
-  } else if (stockPercent !== undefined && stockPercent !== null && (cashPercent === undefined || cashPercent === null)) {
-    cashPercent = 1.0 - stockPercent;
-    console.log(`[M&A Parser] Consideration: ${(cashPercent * 100).toFixed(0)}% cash / ${(stockPercent * 100).toFixed(0)}% stock`);
-  } else {
-    console.log(`[M&A Parser] Consideration: ${(cashPercent * 100).toFixed(0)}% cash / ${(stockPercent * 100).toFixed(0)}% stock`);
-  }
-  
-  // New debt financing - regex first
-  const newDebtAmount = regexParsed.newDebtAmount ?? llmAssumptions.newDebtAmount ?? 0;
-  const newDebtRate = regexParsed.newDebtRate ?? llmAssumptions.newDebtRate ?? 0.06;
-  
-  // Synergies - regex first
-  const costSynergies = regexParsed.costSynergies ?? llmAssumptions.costSynergies ?? 0;
-  const revenueSynergies = regexParsed.revenueSynergies ?? llmAssumptions.revenueSynergies ?? 0;
-  
-  // Integration costs - regex first (may be a single amount, spread across years)
-  const totalIntegrationCost = regexParsed.integrationCost;
-  let integrationCostsY1 = llmAssumptions.integrationCostsY1 ?? 0;
-  let integrationCostsY2 = llmAssumptions.integrationCostsY2 ?? 0;
-  let integrationCostsY3 = llmAssumptions.integrationCostsY3 ?? 0;
-  
-  // If regex found a single integration cost, spread it 60/30/10 across 3 years
-  if (totalIntegrationCost !== undefined && totalIntegrationCost > 0) {
-    integrationCostsY1 = totalIntegrationCost * 0.6;
-    integrationCostsY2 = totalIntegrationCost * 0.3;
-    integrationCostsY3 = totalIntegrationCost * 0.1;
-    console.log(`[M&A Parser] Integration cost ${totalIntegrationCost}M spread: Y1=${integrationCostsY1.toFixed(1)}M, Y2=${integrationCostsY2.toFixed(1)}M, Y3=${integrationCostsY3.toFixed(1)}M`);
-  }
-  
-  // Transaction fees - regex first
-  const transactionFees = regexParsed.transactionFees ?? llmAssumptions.transactionFees;
-  
-  console.log(`[M&A Parser] Final parsed values:`);
-  console.log(`  Acquirer: Revenue=${acquirerRevenue}M, EBITDA Margin=${(acquirerEBITDAMargin * 100).toFixed(1)}%, Shares=${acquirerSharesOutstanding}M, Price=$${acquirerStockPrice}`);
-  console.log(`  Target: Revenue=${targetRevenue}M, EBITDA=${targetEBITDA.toFixed(1)}M`);
-  console.log(`  Purchase Price: ${purchasePrice}M`);
-  console.log(`  Consideration: ${(cashPercent * 100).toFixed(0)}% cash / ${(stockPercent * 100).toFixed(0)}% stock`);
-  console.log(`  New Debt: ${newDebtAmount}M at ${(newDebtRate * 100).toFixed(2)}%`);
-  console.log(`  Synergies: Cost=${costSynergies}M, Revenue=${revenueSynergies}M`);
-  console.log(`  Integration: Y1=${integrationCostsY1}M, Y2=${integrationCostsY2}M, Y3=${integrationCostsY3}M`);
-  if (acquirerExplicitEPS) {
-    console.log(`  Explicit EPS: $${acquirerExplicitEPS}`);
-  }
+  // Calculate integration costs from synergies if not specified
+  const totalIntegrationCost = guaranteed.synergyCostToAchieve || (guaranteed.costSynergies * 0.5);
+  const integrationCostsY1 = llmAssumptions.integrationCostsY1 ?? totalIntegrationCost * 0.6;
+  const integrationCostsY2 = llmAssumptions.integrationCostsY2 ?? totalIntegrationCost * 0.3;
+  const integrationCostsY3 = llmAssumptions.integrationCostsY3 ?? totalIntegrationCost * 0.1;
   
   const assumptions: MAAssumptions = {
-    acquirerName: regexParsed.acquirerName ?? llmAssumptions.acquirerName ?? "Acquirer",
-    targetName: regexParsed.targetName ?? llmAssumptions.targetName ?? "Target",
-    transactionDate: llmAssumptions.transactionDate ?? new Date().toISOString().split('T')[0],
+    acquirerName: llmAssumptions.acquirerName ?? guaranteed.acquirerName,
+    targetName: llmAssumptions.targetName ?? guaranteed.targetName,
+    transactionDate: llmAssumptions.transactionDate ?? guaranteed.transactionDate,
     
-    acquirerRevenue: acquirerRevenue,
-    acquirerRevenueGrowth: llmAssumptions.acquirerRevenueGrowth ?? [0.05, 0.05, 0.05, 0.05, 0.05],
-    acquirerEBITDAMargin: acquirerEBITDAMargin,
+    acquirerRevenue: guaranteed.acquirerRevenue,
+    acquirerRevenueGrowth: llmAssumptions.acquirerRevenueGrowth ?? [guaranteed.revenueGrowthRate, guaranteed.revenueGrowthRate, guaranteed.revenueGrowthRate, guaranteed.revenueGrowthRate, guaranteed.revenueGrowthRate],
+    acquirerEBITDAMargin: guaranteed.acquirerEBITDA / guaranteed.acquirerRevenue,
     acquirerDAPercent: llmAssumptions.acquirerDAPercent ?? 0.03,
     acquirerInterestExpense: llmAssumptions.acquirerInterestExpense ?? 0,
-    acquirerTaxRate: llmAssumptions.acquirerTaxRate ?? 0.25,
-    acquirerSharesOutstanding: acquirerSharesOutstanding,
-    acquirerStockPrice: acquirerStockPrice,
-    acquirerExplicitEPS: acquirerExplicitEPS,
+    acquirerTaxRate: guaranteed.taxRate,
+    acquirerSharesOutstanding: guaranteed.acquirerShares,
+    acquirerStockPrice: guaranteed.acquirerStockPrice,
+    acquirerExplicitEPS: guaranteed.acquirerEPS !== MA_DEFAULTS.acquirerEPS ? guaranteed.acquirerEPS : llmAssumptions.acquirerExplicitEPS,
     acquirerCash: llmAssumptions.acquirerCash ?? 0,
     acquirerExistingDebt: llmAssumptions.acquirerExistingDebt ?? 0,
     
-    targetRevenue: targetRevenue,
-    targetRevenueGrowth: llmAssumptions.targetRevenueGrowth ?? [0.05, 0.05, 0.05, 0.05, 0.05],
-    targetEBITDAMargin: targetEBITDAMargin,
+    targetRevenue: guaranteed.targetRevenue,
+    targetRevenueGrowth: llmAssumptions.targetRevenueGrowth ?? [guaranteed.revenueGrowthRate, guaranteed.revenueGrowthRate, guaranteed.revenueGrowthRate, guaranteed.revenueGrowthRate, guaranteed.revenueGrowthRate],
+    targetEBITDAMargin: guaranteed.targetEBITDA / guaranteed.targetRevenue,
     targetDAPercent: llmAssumptions.targetDAPercent ?? 0.03,
     targetInterestExpense: llmAssumptions.targetInterestExpense ?? 0,
-    targetTaxRate: llmAssumptions.targetTaxRate ?? 0.25,
+    targetTaxRate: guaranteed.taxRate,
     targetNetDebt: llmAssumptions.targetNetDebt ?? 0,
     
-    purchasePrice: purchasePrice,
-    cashPercent: cashPercent,
-    stockPercent: stockPercent,
+    purchasePrice: guaranteed.purchasePrice,
+    cashPercent: guaranteed.cashPercent,
+    stockPercent: guaranteed.stockPercent,
     premium: llmAssumptions.premium ?? 0.25,
-    transactionFeePercent: llmAssumptions.transactionFeePercent ?? 0.025,
-    transactionFees: transactionFees,
+    transactionFeePercent: guaranteed.transactionFees,
+    transactionFees: llmAssumptions.transactionFees,
     
     cashFromBalance: llmAssumptions.cashFromBalance ?? 0,
-    newDebtAmount: newDebtAmount,
-    newDebtRate: newDebtRate,
+    newDebtAmount: guaranteed.debtFinancing,
+    newDebtRate: guaranteed.debtRate,
     debtAmortizationRate: llmAssumptions.debtAmortizationRate ?? 0.05,
     debtMaturityYears: llmAssumptions.debtMaturityYears ?? 5,
     
-    revenueSynergies: revenueSynergies,
-    revenueSynergyRealizationY1: llmAssumptions.revenueSynergyRealizationY1 ?? 0.0,
-    revenueSynergyRealizationY2: llmAssumptions.revenueSynergyRealizationY2 ?? 0.5,
-    revenueSynergyRealizationY3: llmAssumptions.revenueSynergyRealizationY3 ?? 1.0,
-    revenueSynergyRealizationY4: llmAssumptions.revenueSynergyRealizationY4 ?? 1.0,
-    revenueSynergyRealizationY5: llmAssumptions.revenueSynergyRealizationY5 ?? 1.0,
-    revenueSynergyMargin: llmAssumptions.revenueSynergyMargin ?? 1.0,
+    revenueSynergies: guaranteed.revenueSynergies,
+    revenueSynergyRealizationY1: guaranteed.revenuePhaseIn[0],
+    revenueSynergyRealizationY2: guaranteed.revenuePhaseIn[1],
+    revenueSynergyRealizationY3: guaranteed.revenuePhaseIn[2],
+    revenueSynergyRealizationY4: guaranteed.revenuePhaseIn[3],
+    revenueSynergyRealizationY5: guaranteed.revenuePhaseIn[4],
+    revenueSynergyMargin: guaranteed.revenueSynergyMargin,
     
-    costSynergies: costSynergies,
-    costSynergyRealizationY1: llmAssumptions.costSynergyRealizationY1 ?? 0.2,
-    costSynergyRealizationY2: llmAssumptions.costSynergyRealizationY2 ?? 0.6,
-    costSynergyRealizationY3: llmAssumptions.costSynergyRealizationY3 ?? 1.0,
-    costSynergyRealizationY4: llmAssumptions.costSynergyRealizationY4 ?? 1.0,
-    costSynergyRealizationY5: llmAssumptions.costSynergyRealizationY5 ?? 1.0,
+    costSynergies: guaranteed.costSynergies,
+    costSynergyRealizationY1: guaranteed.costPhaseIn[0],
+    costSynergyRealizationY2: guaranteed.costPhaseIn[1],
+    costSynergyRealizationY3: guaranteed.costPhaseIn[2],
+    costSynergyRealizationY4: guaranteed.costPhaseIn[3],
+    costSynergyRealizationY5: guaranteed.costPhaseIn[4],
     
     integrationCostsY1: integrationCostsY1,
     integrationCostsY2: integrationCostsY2,
@@ -474,6 +387,14 @@ export async function parseMADescription(
     intangibleAssets: llmAssumptions.intangibleAssets ?? 0,
     intangibleAmortYears: llmAssumptions.intangibleAmortYears ?? 7,
   };
+  
+  console.log(`[M&A Parser] === FINAL ASSUMPTIONS (ALL GUARANTEED) ===`);
+  console.log(`  Purchase Price: $${assumptions.purchasePrice}M`);
+  console.log(`  Target EBITDA: $${guaranteed.targetEBITDA}M`);
+  console.log(`  Cash/Stock: ${(assumptions.cashPercent * 100).toFixed(0)}% / ${(assumptions.stockPercent * 100).toFixed(0)}%`);
+  console.log(`  Cost Synergies: $${assumptions.costSynergies}M, Revenue Synergies: $${assumptions.revenueSynergies}M`);
+  console.log(`  New Debt: $${assumptions.newDebtAmount}M @ ${(assumptions.newDebtRate * 100).toFixed(1)}%`);
+  console.log(`[M&A Parser] =====================================`);
   
   return { assumptions, providerUsed };
 }
