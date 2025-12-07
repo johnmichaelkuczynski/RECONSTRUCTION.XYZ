@@ -858,17 +858,21 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       });
       text += `\n\n`;
       
+      const isConstant = financeResult.assumptions?.constantAssumptions !== false;
       text += `Margin Assumptions:\n`;
-      text += `  Starting EBITDA Margin: ${((financeResult.assumptions?.baseEBITDAMargin || 0) * 100).toFixed(1)}%\n`;
-      text += `  Target EBITDA Margin: ${((financeResult.assumptions?.targetEBITDAMargin || 0) * 100).toFixed(1)}%\n`;
-      text += `  Margin Expansion: Linear ramp over ${financeResult.assumptions?.marginExpansionYears || 5} years\n`;
+      text += `  EBITDA Margin: ${((financeResult.assumptions?.baseEBITDAMargin || 0) * 100).toFixed(1)}%`;
+      text += financeResult.assumptions?.userProvidedEBITMargin ? ` (calculated from EBIT + D&A)\n` : `\n`;
+      text += `  Mode: ${isConstant ? 'Constant (all years including terminal)' : 'Expansion (' + ((financeResult.assumptions?.baseEBITDAMargin || 0) * 100).toFixed(0) + '% → ' + ((financeResult.assumptions?.targetEBITDAMargin || 0) * 100).toFixed(0) + '%)'}\n`;
       text += `  Tax Rate: ${((financeResult.assumptions?.taxRate || 0) * 100).toFixed(1)}%\n\n`;
       
       text += `Capital Intensity (% of Revenue):\n`;
-      text += `  D&A (Year 1): ${((financeResult.assumptions?.daPercent || 0) * 100).toFixed(1)}%\n`;
-      text += `  D&A (Terminal): ${((financeResult.assumptions?.daPercentTerminal || financeResult.assumptions?.daPercent * 0.8 || 0) * 100).toFixed(1)}%\n`;
-      text += `  CapEx (Year 1): ${((financeResult.assumptions?.capexPercent || 0) * 100).toFixed(1)}%\n`;
-      text += `  CapEx (Terminal): ${((financeResult.assumptions?.capexPercentTerminal || financeResult.assumptions?.capexPercent * 0.5 || 0) * 100).toFixed(1)}%\n`;
+      if (isConstant) {
+        text += `  D&A: ${((financeResult.assumptions?.daPercent || 0) * 100).toFixed(1)}% (constant all years)\n`;
+        text += `  CapEx: ${((financeResult.assumptions?.capexPercent || 0) * 100).toFixed(1)}% (constant all years)\n`;
+      } else {
+        text += `  D&A: ${((financeResult.assumptions?.daPercent || 0) * 100).toFixed(1)}% → ${((financeResult.assumptions?.daPercentTerminal || financeResult.assumptions?.daPercent * 0.8 || 0) * 100).toFixed(1)}% (terminal)\n`;
+        text += `  CapEx: ${((financeResult.assumptions?.capexPercent || 0) * 100).toFixed(1)}% → ${((financeResult.assumptions?.capexPercentTerminal || financeResult.assumptions?.capexPercent * 0.5 || 0) * 100).toFixed(1)}% (terminal)\n`;
+      }
       text += `  NWC (% of Revenue Change): ${((financeResult.assumptions?.nwcPercent || 0) * 100).toFixed(1)}%\n\n`;
       
       text += `Valuation Assumptions:\n`;
@@ -3425,21 +3429,24 @@ Examples:
                   <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Margin Assumptions</div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
-                      <div className="text-xs text-gray-500 dark:text-gray-400">Starting EBITDA Margin</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">EBITDA Margin</div>
                       <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
                         {(financeResult.assumptions.baseEBITDAMargin * 100)?.toFixed(1)}%
+                        {financeResult.assumptions.userProvidedEBITMargin && (
+                          <span className="text-xs text-blue-600 dark:text-blue-400 ml-1">(from EBIT + D&A)</span>
+                        )}
                       </div>
                     </div>
                     <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
-                      <div className="text-xs text-gray-500 dark:text-gray-400">Target EBITDA Margin</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Mode</div>
                       <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
-                        {(financeResult.assumptions.targetEBITDAMargin * 100)?.toFixed(1)}%
-                      </div>
-                    </div>
-                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
-                      <div className="text-xs text-gray-500 dark:text-gray-400">Margin Expansion</div>
-                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
-                        Linear ramp over {financeResult.assumptions.marginExpansionYears || 5} years
+                        {financeResult.assumptions.constantAssumptions !== false ? (
+                          <span className="text-green-600 dark:text-green-400">Constant</span>
+                        ) : (
+                          <span className="text-orange-600 dark:text-orange-400">
+                            Expansion ({(financeResult.assumptions.baseEBITDAMargin * 100)?.toFixed(0)}%→{(financeResult.assumptions.targetEBITDAMargin * 100)?.toFixed(0)}%)
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
@@ -3456,27 +3463,29 @@ Examples:
                   <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Capital Intensity (% of Revenue)</div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
-                      <div className="text-xs text-gray-500 dark:text-gray-400">D&A (Year 1)</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">D&A</div>
                       <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
                         {(financeResult.assumptions.daPercent * 100)?.toFixed(1)}%
+                        {financeResult.assumptions.constantAssumptions !== false ? (
+                          <span className="text-xs text-green-600 dark:text-green-400 ml-1">(constant)</span>
+                        ) : (
+                          <span className="text-xs text-orange-600 dark:text-orange-400 ml-1">
+                            →{((financeResult.assumptions.daPercentTerminal || financeResult.assumptions.daPercent * 0.8) * 100)?.toFixed(1)}%
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
-                      <div className="text-xs text-gray-500 dark:text-gray-400">D&A (Terminal)</div>
-                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
-                        {((financeResult.assumptions.daPercentTerminal || financeResult.assumptions.daPercent * 0.8) * 100)?.toFixed(1)}%
-                      </div>
-                    </div>
-                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
-                      <div className="text-xs text-gray-500 dark:text-gray-400">CapEx (Year 1)</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">CapEx</div>
                       <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
                         {(financeResult.assumptions.capexPercent * 100)?.toFixed(1)}%
-                      </div>
-                    </div>
-                    <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">
-                      <div className="text-xs text-gray-500 dark:text-gray-400">CapEx (Terminal)</div>
-                      <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
-                        {((financeResult.assumptions.capexPercentTerminal || financeResult.assumptions.capexPercent * 0.5) * 100)?.toFixed(1)}%
+                        {financeResult.assumptions.constantAssumptions !== false ? (
+                          <span className="text-xs text-green-600 dark:text-green-400 ml-1">(constant)</span>
+                        ) : (
+                          <span className="text-xs text-orange-600 dark:text-orange-400 ml-1">
+                            →{((financeResult.assumptions.capexPercentTerminal || financeResult.assumptions.capexPercent * 0.5) * 100)?.toFixed(1)}%
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded">

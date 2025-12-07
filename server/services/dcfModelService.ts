@@ -23,6 +23,10 @@ interface DCFAssumptions {
   totalDebt: number;
   cashAndEquivalents: number;
   sharesOutstanding: number;
+  // NEW: Constant assumptions mode - when true, no margin expansion or fade-to-mature ramps
+  constantAssumptions: boolean;
+  // NEW: Track if user provided EBIT margin (vs EBITDA margin) for correct interpretation
+  userProvidedEBITMargin: boolean;
 }
 
 export async function parseFinancialDescription(
@@ -34,51 +38,93 @@ export async function parseFinancialDescription(
   const systemPrompt = `You are a financial analyst expert at extracting DCF model assumptions from natural language descriptions.
 Extract ALL the following variables from the user's description. If a value is not explicitly stated, use reasonable defaults based on industry standards.
 
-Return a JSON object with EXACTLY these fields (all numbers, no strings except companyName):
+Return a JSON object with EXACTLY these fields (all numbers, no strings except companyName, booleans for flags):
 {
   "companyName": "string - company name or 'Target Company' if not specified",
   "baseYearRevenue": number in millions (e.g., 850 for $850 million),
   "revenueGrowthRates": array of 5 numbers representing Y1-Y5 growth rates as decimals (e.g., [0.35, 0.35, 0.28, 0.20, 0.20]),
   "terminalGrowthRate": number as decimal (e.g., 0.03 for 3%),
-  "baseEBITDAMargin": number as decimal (e.g., 0.18 for 18%),
-  "targetEBITDAMargin": number as decimal (e.g., 0.32 for 32%),
+  "baseEBITDAMargin": number as decimal (e.g., 0.18 for 18%) - SEE EBIT MARGIN RULE BELOW,
+  "targetEBITDAMargin": number as decimal - ONLY set different from baseEBITDAMargin if user explicitly requests margin expansion,
   "marginExpansionYears": number of years to reach target margin (usually 5),
-  "daPercent": D&A as decimal of revenue for Year 1 (e.g., 0.06 for 6%),
-  "daPercentTerminal": D&A as decimal of revenue at terminal year - should decline as company matures (e.g., 0.04 for 4%),
+  "daPercent": D&A as decimal of revenue (e.g., 0.06 for 6%),
+  "daPercentTerminal": D&A as decimal of revenue at terminal year - ONLY set different from daPercent if user explicitly requests fade-to-mature,
   "taxRate": number as decimal (e.g., 0.21 for 21%),
-  "capexPercent": CapEx as decimal of revenue for Year 1 (e.g., 0.08 for 8%),
-  "capexPercentTerminal": CapEx as decimal of revenue at terminal year - CRITICAL: must decline toward or below D&A in terminal (e.g., 0.04 for 4%),
+  "capexPercent": CapEx as decimal of revenue (e.g., 0.08 for 8%),
+  "capexPercentTerminal": CapEx as decimal of revenue at terminal year - ONLY set different from capexPercent if user explicitly requests fade-to-mature,
   "nwcPercent": NWC as decimal of revenue (e.g., 0.12 for 12%),
   "wacc": number as decimal (e.g., 0.10 for 10%),
   "projectionYears": number (usually 5),
   "totalDebt": number in millions,
   "cashAndEquivalents": number in millions,
-  "sharesOutstanding": number in millions
+  "sharesOutstanding": number in millions,
+  "constantAssumptions": boolean - TRUE by default unless user explicitly requests margin expansion or fade-to-mature model,
+  "userProvidedEBITMargin": boolean - TRUE if user said "EBIT margin" (not EBITDA margin)
 }
 
-CRITICAL FINANCIAL MODELING RULES:
-1. CapEx should DECLINE over time as the company matures - high-growth companies need more investment initially
-2. In terminal year, CapEx should approach or be LESS THAN D&A (maintenance mode)
-3. If CapEx > D&A forever, you're modeling a capital-destroying business (unrealistic for healthy companies)
-4. Typical mature company: CapEx = 3-5% of revenue, D&A = 4-6% of revenue (CapEx <= D&A)
+CRITICAL RULES FOR CONSTANT VS EXPANSION MODE:
+
+1. DEFAULT TO CONSTANT ASSUMPTIONS (constantAssumptions: true):
+   - When user provides simple inputs like "EBIT margin 20%, D&A 8%, CapEx 10%"
+   - Keep ALL percentages CONSTANT across all years INCLUDING terminal year
+   - Set daPercentTerminal = daPercent (same value)
+   - Set capexPercentTerminal = capexPercent (same value)
+   - Set targetEBITDAMargin = baseEBITDAMargin (no expansion)
+
+2. ONLY USE EXPANSION MODE (constantAssumptions: false) when user EXPLICITLY requests:
+   - "margin expansion" or "improving margins"
+   - "professional model" or "two-stage model"
+   - "fade to mature" or "declining capital intensity"
+   - Explicit terminal values different from projection values
+
+3. EBIT MARGIN INTERPRETATION (CRITICAL):
+   - If user says "EBIT margin X%", this is EBIT margin, NOT EBITDA margin
+   - To get EBITDA margin: EBITDA margin = EBIT margin + D&A%
+   - Example: "EBIT margin 20%, D&A 8%" → baseEBITDAMargin = 0.28 (20% + 8%)
+   - Set userProvidedEBITMargin: true when user says "EBIT margin"
+   - If user says "EBITDA margin X%", use that directly, set userProvidedEBITMargin: false
+
+4. CONSTANT MODE EXAMPLE:
+   Input: "Revenue $1B, growth 10%, EBIT margin 20%, D&A 8%, CapEx 10%, WACC 10%"
+   Output:
+   - baseEBITDAMargin: 0.28 (20% EBIT + 8% D&A = 28% EBITDA)
+   - targetEBITDAMargin: 0.28 (same - no expansion)
+   - daPercent: 0.08
+   - daPercentTerminal: 0.08 (same - constant)
+   - capexPercent: 0.10
+   - capexPercentTerminal: 0.10 (same - constant)
+   - constantAssumptions: true
+   - userProvidedEBITMargin: true
+
+5. EXPANSION MODE EXAMPLE:
+   Input: "Revenue $1B, starting EBITDA margin 18% improving to 25%, CapEx declining from 8% to 4%"
+   Output:
+   - baseEBITDAMargin: 0.18
+   - targetEBITDAMargin: 0.25 (different - expansion)
+   - capexPercent: 0.08
+   - capexPercentTerminal: 0.04 (different - fade)
+   - constantAssumptions: false
+   - userProvidedEBITMargin: false
 
 Default values if not specified:
 - revenueGrowthRates: [0.10, 0.08, 0.06, 0.05, 0.04] (declining growth)
 - terminalGrowthRate: 0.025 (2.5%)
-- baseEBITDAMargin: 0.18 (18%)
-- targetEBITDAMargin: 0.25 (25%)
+- baseEBITDAMargin: 0.20 (20%)
+- targetEBITDAMargin: same as baseEBITDAMargin (constant mode default)
 - marginExpansionYears: 5
-- daPercent: 0.05 (5% Year 1)
-- daPercentTerminal: 0.04 (4% terminal - declines as assets mature)
+- daPercent: 0.05 (5%)
+- daPercentTerminal: same as daPercent (constant mode default)
 - taxRate: 0.25 (25%)
-- capexPercent: 0.08 (8% Year 1 - growth phase)
-- capexPercentTerminal: 0.04 (4% terminal - MUST be <= D&A for maintenance mode)
+- capexPercent: 0.06 (6%)
+- capexPercentTerminal: same as capexPercent (constant mode default)
 - nwcPercent: 0.10 (10%)
 - wacc: 0.10 (10%)
 - projectionYears: 5
 - totalDebt: 0
 - cashAndEquivalents: 0
 - sharesOutstanding: 100
+- constantAssumptions: true (default to constant mode)
+- userProvidedEBITMargin: false
 
 IMPORTANT: Return ONLY valid JSON, no markdown, no explanations.`;
 
@@ -269,17 +315,36 @@ export function calculateDCFValuation(assumptions: DCFAssumptions, providerUsed:
     targetEBITDAMargin,
     marginExpansionYears,
     daPercent,
-    daPercentTerminal = daPercent * 0.8,
     taxRate,
     capexPercent,
-    capexPercentTerminal = Math.min(capexPercent * 0.5, daPercentTerminal || daPercent * 0.8),
     nwcPercent,
     wacc,
     projectionYears,
     totalDebt,
     cashAndEquivalents,
-    sharesOutstanding
+    sharesOutstanding,
+    constantAssumptions = true, // Default to constant mode
+    userProvidedEBITMargin = false
   } = assumptions;
+
+  // Determine effective terminal values based on constant vs expansion mode
+  let effectiveDaPercentTerminal: number;
+  let effectiveCapexPercentTerminal: number;
+  let effectiveTargetEBITDAMargin: number;
+
+  if (constantAssumptions) {
+    // CONSTANT MODE: All assumptions stay the same through terminal year
+    effectiveDaPercentTerminal = daPercent;
+    effectiveCapexPercentTerminal = capexPercent;
+    effectiveTargetEBITDAMargin = baseEBITDAMargin;
+    console.log(`[DCF] CONSTANT MODE: EBITDA margin=${(baseEBITDAMargin*100).toFixed(1)}%, D&A=${(daPercent*100).toFixed(1)}%, CapEx=${(capexPercent*100).toFixed(1)}% (all constant)`);
+  } else {
+    // EXPANSION MODE: Use terminal values from assumptions (with fallbacks)
+    effectiveDaPercentTerminal = assumptions.daPercentTerminal ?? daPercent * 0.8;
+    effectiveCapexPercentTerminal = assumptions.capexPercentTerminal ?? Math.min(capexPercent * 0.5, effectiveDaPercentTerminal);
+    effectiveTargetEBITDAMargin = targetEBITDAMargin;
+    console.log(`[DCF] EXPANSION MODE: EBITDA ${(baseEBITDAMargin*100).toFixed(1)}%→${(effectiveTargetEBITDAMargin*100).toFixed(1)}%, D&A ${(daPercent*100).toFixed(1)}%→${(effectiveDaPercentTerminal*100).toFixed(1)}%, CapEx ${(capexPercent*100).toFixed(1)}%→${(effectiveCapexPercentTerminal*100).toFixed(1)}%`);
+  }
 
   // Calculate projections with full FCF buildup
   const years: number[] = [];
@@ -306,18 +371,32 @@ export function calculateDCFValuation(assumptions: DCFAssumptions, providerUsed:
     currentRevenue = i === 0 ? baseYearRevenue * (1 + growthRate) : revenue[i - 1] * (1 + growthRate);
     revenue.push(currentRevenue);
     
-    // EBITDA Margin (linear expansion)
-    const marginStep = (targetEBITDAMargin - baseEBITDAMargin) / marginExpansionYears;
-    const margin = Math.min(baseEBITDAMargin + marginStep * (i + 1), targetEBITDAMargin);
+    // EBITDA Margin - depends on mode
+    let margin: number;
+    if (constantAssumptions) {
+      // CONSTANT: Same margin every year
+      margin = baseEBITDAMargin;
+    } else {
+      // EXPANSION: Linear ramp from base to target
+      const marginStep = (effectiveTargetEBITDAMargin - baseEBITDAMargin) / marginExpansionYears;
+      margin = Math.min(baseEBITDAMargin + marginStep * (i + 1), effectiveTargetEBITDAMargin);
+    }
     ebitdaMargin.push(margin);
     
     // EBITDA
     const ebitdaValue = currentRevenue * margin;
     ebitda.push(ebitdaValue);
     
-    // RAMPING D&A: Linear decline from daPercent to daPercentTerminal
-    const daStep = projectionYears > 1 ? (daPercentTerminal - daPercent) / (projectionYears - 1) : 0;
-    const currentDaPercent = daPercent + daStep * i;
+    // D&A - depends on mode
+    let currentDaPercent: number;
+    if (constantAssumptions) {
+      // CONSTANT: Same D&A% every year
+      currentDaPercent = daPercent;
+    } else {
+      // EXPANSION: Linear decline from daPercent to terminal
+      const daStep = projectionYears > 1 ? (effectiveDaPercentTerminal - daPercent) / (projectionYears - 1) : 0;
+      currentDaPercent = daPercent + daStep * i;
+    }
     const daValue = currentRevenue * currentDaPercent;
     da.push(daValue);
     daPercentByYear.push(currentDaPercent);
@@ -334,9 +413,16 @@ export function calculateDCFValuation(assumptions: DCFAssumptions, providerUsed:
     const nopatValue = ebitValue - taxValue;
     nopat.push(nopatValue);
     
-    // RAMPING CapEx: Linear decline from capexPercent to capexPercentTerminal
-    const capexStep = projectionYears > 1 ? (capexPercentTerminal - capexPercent) / (projectionYears - 1) : 0;
-    const currentCapexPercent = capexPercent + capexStep * i;
+    // CapEx - depends on mode
+    let currentCapexPercent: number;
+    if (constantAssumptions) {
+      // CONSTANT: Same CapEx% every year
+      currentCapexPercent = capexPercent;
+    } else {
+      // EXPANSION: Linear decline from capexPercent to terminal
+      const capexStep = projectionYears > 1 ? (effectiveCapexPercentTerminal - capexPercent) / (projectionYears - 1) : 0;
+      currentCapexPercent = capexPercent + capexStep * i;
+    }
     const capexValue = currentRevenue * currentCapexPercent;
     capex.push(capexValue);
     capexPercentByYear.push(currentCapexPercent);
@@ -457,17 +543,31 @@ export async function generateDCFExcel(assumptions: DCFAssumptions): Promise<Buf
     targetEBITDAMargin,
     marginExpansionYears,
     daPercent,
-    daPercentTerminal = daPercent * 0.8,
     taxRate,
     capexPercent,
-    capexPercentTerminal = Math.min(capexPercent * 0.5, daPercentTerminal || daPercent * 0.8),
     nwcPercent,
     wacc,
     projectionYears,
     totalDebt,
     cashAndEquivalents,
-    sharesOutstanding
+    sharesOutstanding,
+    constantAssumptions = true
   } = assumptions;
+
+  // Determine effective terminal values based on constant vs expansion mode
+  let effectiveDaPercentTerminal: number;
+  let effectiveCapexPercentTerminal: number;
+  let effectiveTargetEBITDAMargin: number;
+
+  if (constantAssumptions) {
+    effectiveDaPercentTerminal = daPercent;
+    effectiveCapexPercentTerminal = capexPercent;
+    effectiveTargetEBITDAMargin = baseEBITDAMargin;
+  } else {
+    effectiveDaPercentTerminal = assumptions.daPercentTerminal ?? daPercent * 0.8;
+    effectiveCapexPercentTerminal = assumptions.capexPercentTerminal ?? Math.min(capexPercent * 0.5, effectiveDaPercentTerminal);
+    effectiveTargetEBITDAMargin = targetEBITDAMargin;
+  }
 
   // Pre-calculate all values so Excel shows actual numbers
   const revenue: number[] = [baseYearRevenue];
@@ -484,23 +584,39 @@ export async function generateDCFExcel(assumptions: DCFAssumptions): Promise<Buf
     const newRevenue = revenue[i] * (1 + growthRate);
     revenue.push(newRevenue);
     
-    const marginStep = (targetEBITDAMargin - baseEBITDAMargin) / marginExpansionYears;
-    const margin = Math.min(baseEBITDAMargin + marginStep * (i + 1), targetEBITDAMargin);
+    // EBITDA Margin - depends on mode
+    let margin: number;
+    if (constantAssumptions) {
+      margin = baseEBITDAMargin;
+    } else {
+      const marginStep = (effectiveTargetEBITDAMargin - baseEBITDAMargin) / marginExpansionYears;
+      margin = Math.min(baseEBITDAMargin + marginStep * (i + 1), effectiveTargetEBITDAMargin);
+    }
     ebitdaMargins.push(margin);
     
     const ebitdaVal = newRevenue * margin;
     ebitda.push(ebitdaVal);
     
-    // RAMPING D&A: Linear decline from daPercent to daPercentTerminal
-    const daStep = (daPercentTerminal - daPercent) / 4; // 4 steps for 5 years
-    const currentDaPercent = daPercent + daStep * i;
+    // D&A - depends on mode
+    let currentDaPercent: number;
+    if (constantAssumptions) {
+      currentDaPercent = daPercent;
+    } else {
+      const daStep = (effectiveDaPercentTerminal - daPercent) / 4;
+      currentDaPercent = daPercent + daStep * i;
+    }
     const da = newRevenue * currentDaPercent;
     daValues.push(da);
     daPercentByYear.push(currentDaPercent);
     
-    // RAMPING CapEx: Linear decline from capexPercent to capexPercentTerminal
-    const capexStep = (capexPercentTerminal - capexPercent) / 4;
-    const currentCapexPercent = capexPercent + capexStep * i;
+    // CapEx - depends on mode
+    let currentCapexPercent: number;
+    if (constantAssumptions) {
+      currentCapexPercent = capexPercent;
+    } else {
+      const capexStep = (effectiveCapexPercentTerminal - capexPercent) / 4;
+      currentCapexPercent = capexPercent + capexStep * i;
+    }
     const capex = newRevenue * currentCapexPercent;
     capexValues.push(capex);
     capexPercentByYear.push(currentCapexPercent);
