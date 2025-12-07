@@ -48,6 +48,23 @@ export interface LBOAssumptions {
 
 const LBO_PARSING_PROMPT = `You are a financial analyst expert. Parse the following natural language description of an LBO (Leveraged Buyout) transaction and extract all relevant parameters.
 
+CRITICAL PARSING RULES:
+1. PURCHASE PRICE: If user says "7.5x EBITDA" or "EV = $900M" or "purchase price $900M", extract the dollar amount.
+   - If only multiple given, calculate: purchasePrice = EBITDA × multiple
+   - Example: "7.5x LTM EBITDA of $120M" → purchasePrice = 900 (millions)
+   
+2. DEBT AMOUNTS: Convert multiples to dollar amounts!
+   - If user says "4.0x Senior Debt", calculate: seniorDebtAmount = EBITDA × 4.0
+   - If user says "1.0x Sub Debt", calculate: subDebtAmount = EBITDA × 1.0
+   - Example: "4.0x Senior" with $120M EBITDA → seniorDebtAmount = 480 (millions)
+   
+3. FEES: Look for explicit dollar amounts like "$8M transaction fees"
+   - If found, use transactionCostsExplicit = 8
+   - Also look for "financing fees $4M" → financingFeesExplicit = 4
+   
+4. EXIT: Look for "exit at 8.0x" or "5-year hold" anywhere in the text
+   - Extract exitMultiple and exitYear even if at end of description
+
 Return a JSON object with the following structure:
 {
   "companyName": "Target Company Name",
@@ -63,50 +80,51 @@ Return a JSON object with the following structure:
   "nwcPercent": number (NWC as % of revenue, as decimal),
   "taxRate": number (as decimal, e.g., 0.25 for 25%),
   
-  "purchasePrice": number (in millions),
-  "entryMultiple": number (e.g., 10.5 for 10.5x EBITDA),
-  "transactionCosts": number (as decimal, e.g., 0.02 for 2% of purchase price - only use if no explicit amount given),
-  "transactionCostsExplicit": number or null (EXPLICIT dollar amount in millions if user states a specific fee like "$8M transaction fees" or "$8M transaction costs" - this OVERRIDES the percentage),
-  "financingFees": number (as decimal, default 0.01 for 1% of total debt - only use if no explicit amount given),
-  "financingFeesExplicit": number or null (EXPLICIT dollar amount in millions if user states a specific fee like "$5M financing fees" - this OVERRIDES the percentage),
-  "managementRollover": number (in millions),
+  "purchasePrice": number (ALWAYS in millions - calculate from multiple × EBITDA if needed),
+  "entryMultiple": number (e.g., 7.5 for 7.5x EBITDA),
+  "transactionCosts": number (as decimal, e.g., 0.02 for 2% - only if no explicit amount),
+  "transactionCostsExplicit": number or null (dollar amount in millions if explicitly stated like "$8M"),
+  "financingFees": number (as decimal, default 0.01 - only if no explicit amount),
+  "financingFeesExplicit": number or null (dollar amount in millions if explicitly stated),
+  "managementRollover": number (in millions, default 0),
   
-  "seniorDebtAmount": number (in millions),
-  "seniorDebtRate": number (as decimal, e.g., 0.06 for 6%),
-  "subDebtAmount": number (in millions),
-  "subDebtRate": number (as decimal),
+  "seniorDebtAmount": number (ALWAYS in millions - calculate from multiple × EBITDA),
+  "seniorDebtRate": number (as decimal, e.g., 0.065 for 6.5%),
+  "subDebtAmount": number (ALWAYS in millions - calculate from multiple × EBITDA),
+  "subDebtRate": number (as decimal, e.g., 0.12 for 12%),
   "subDebtPIK": number (PIK interest as decimal, 0 if cash pay),
-  "revolverSize": number (in millions),
+  "revolverSize": number (in millions, default 0),
   "revolverRate": number (as decimal),
-  "sponsorEquity": number (in millions - will be recalculated to balance sources=uses),
-  "cashFlowSweepPercent": number (as decimal, e.g., 0.75 for 75% FCF sweep to debt),
+  "sponsorEquity": number (will be recalculated),
+  "cashFlowSweepPercent": number (as decimal, e.g., 1.0 for 100% sweep, 0.75 for 75%),
   
-  "exitYear": number (typically 5),
-  "exitMultiple": number,
-  "exitCosts": number (as decimal),
+  "exitYear": number (look for "X-year hold" - default 5),
+  "exitMultiple": number (look for "exit at Xx" anywhere in text),
+  "exitCosts": number (as decimal, default 0.02),
   
-  "managementFeePercent": number (as decimal)
+  "managementFeePercent": number (as decimal, default 0.01)
 }
 
-If any value is not explicitly stated, use reasonable LBO industry defaults:
-- Revenue growth: 5-10% annually
-- EBITDA margin: 15-25%
-- Target margin expansion: 2-5% over 5 years
-- D&A: 3-5% of revenue
-- CapEx: 3-5% of revenue
-- NWC: 10-15% of revenue
+DEFAULT VALUES (use only if not stated):
+- Revenue growth: 5% annually
+- EBITDA margin: 20%
+- D&A: 3% of revenue
+- CapEx: 3% of revenue  
+- NWC: 10% of revenue
 - Tax rate: 25%
-- Entry multiple: 8-12x EBITDA
-- Transaction costs: 2-3% of purchase price
-- Financing fees: 1% of total debt (default 0.01)
-- Senior debt: 4-5x EBITDA at 5-7%
-- Subordinated debt: 1-2x EBITDA at 10-12%
-- Cash flow sweep: 75% of FCF to debt paydown (default 0.75)
-- Exit multiple: Similar to entry or slight expansion
-- Exit year: 5 years
-- Management fee: 1-2% of EBITDA
+- Entry multiple: 8.0x
+- Senior debt: 4.0x EBITDA at 6.5%
+- Sub debt: 1.0x EBITDA at 12%
+- Cash flow sweep: 75%
+- Exit multiple: same as entry
+- Exit year: 5
+- Transaction costs: 2%
+- Financing fees: 1%
 
-IMPORTANT: Return ONLY the JSON object, no markdown, no explanation.`;
+IMPORTANT: 
+- ALWAYS calculate debt amounts in millions (not multiples)
+- ALWAYS extract purchasePrice in millions
+- Return ONLY the JSON object, no markdown, no explanation.`;
 
 export async function parseLBODescription(
   description: string,
@@ -207,7 +225,87 @@ export async function parseLBODescription(
   
   jsonStr = jsonStr.trim();
 
-  const assumptions: LBOAssumptions = JSON.parse(jsonStr);
+  const rawAssumptions = JSON.parse(jsonStr);
+  
+  // ============ ROBUST POST-PARSING VALIDATION WITH DEFAULTS ============
+  // Ensure NO values are ever undefined - apply sensible defaults for any missing fields
+  
+  // Base financials
+  const baseYearRevenue = rawAssumptions.baseYearRevenue ?? 100;
+  const baseEBITDAMargin = rawAssumptions.baseEBITDAMargin ?? 0.20;
+  const baseEBITDA = baseYearRevenue * baseEBITDAMargin;
+  
+  // Calculate purchase price from multiple sources
+  let purchasePrice = rawAssumptions.purchasePrice;
+  const entryMultiple = rawAssumptions.entryMultiple ?? 8.0;
+  
+  // If purchasePrice is missing but we have entry multiple, calculate it
+  if (purchasePrice === undefined || purchasePrice === null || purchasePrice === 0) {
+    purchasePrice = baseEBITDA * entryMultiple;
+    console.log(`[LBO Validation] Purchase price not found, calculated from ${baseEBITDA.toFixed(1)}M EBITDA × ${entryMultiple}x = ${purchasePrice.toFixed(1)}M`);
+  }
+  
+  // Debt amounts - from explicit amounts or multiples
+  let seniorDebtAmount = rawAssumptions.seniorDebtAmount;
+  const seniorDebtMultiple = rawAssumptions.seniorDebtMultiple ?? 4.0;
+  if (seniorDebtAmount === undefined || seniorDebtAmount === null || seniorDebtAmount === 0) {
+    seniorDebtAmount = baseEBITDA * seniorDebtMultiple;
+    console.log(`[LBO Validation] Senior debt not found, calculated from ${baseEBITDA.toFixed(1)}M EBITDA × ${seniorDebtMultiple}x = ${seniorDebtAmount.toFixed(1)}M`);
+  }
+  
+  let subDebtAmount = rawAssumptions.subDebtAmount;
+  const subDebtMultiple = rawAssumptions.subDebtMultiple ?? 1.0;
+  if (subDebtAmount === undefined || subDebtAmount === null || subDebtAmount === 0) {
+    subDebtAmount = baseEBITDA * subDebtMultiple;
+    console.log(`[LBO Validation] Sub debt not found, calculated from ${baseEBITDA.toFixed(1)}M EBITDA × ${subDebtMultiple}x = ${subDebtAmount.toFixed(1)}M`);
+  }
+  
+  // Exit assumptions
+  const exitYear = rawAssumptions.exitYear ?? 5;
+  const exitMultiple = rawAssumptions.exitMultiple ?? entryMultiple; // Default to entry multiple if not specified
+  
+  console.log(`[LBO Validation] Parsed values:`);
+  console.log(`  Base Revenue: ${baseYearRevenue}M, Base EBITDA: ${baseEBITDA.toFixed(1)}M (${(baseEBITDAMargin * 100).toFixed(1)}% margin)`);
+  console.log(`  Purchase Price: ${purchasePrice}M, Entry Multiple: ${entryMultiple}x`);
+  console.log(`  Senior Debt: ${seniorDebtAmount}M, Sub Debt: ${subDebtAmount}M`);
+  console.log(`  Exit Year: ${exitYear}, Exit Multiple: ${exitMultiple}x`);
+  console.log(`  Transaction Costs: ${rawAssumptions.transactionCostsExplicit ?? 'not explicit'}M or ${((rawAssumptions.transactionCosts ?? 0.02) * 100).toFixed(1)}%`);
+  console.log(`  Financing Fees: ${rawAssumptions.financingFeesExplicit ?? 'not explicit'}M or ${((rawAssumptions.financingFees ?? 0.01) * 100).toFixed(1)}%`);
+  
+  const assumptions: LBOAssumptions = {
+    companyName: rawAssumptions.companyName ?? "Target Company",
+    transactionDate: rawAssumptions.transactionDate ?? new Date().toISOString().split('T')[0],
+    baseYearRevenue: baseYearRevenue,
+    revenueGrowthRates: rawAssumptions.revenueGrowthRates ?? [0.05, 0.05, 0.05, 0.05, 0.05],
+    baseEBITDAMargin: baseEBITDAMargin,
+    targetEBITDAMargin: rawAssumptions.targetEBITDAMargin ?? baseEBITDAMargin,
+    marginExpansionYears: rawAssumptions.marginExpansionYears ?? 5,
+    daPercent: rawAssumptions.daPercent ?? 0.03,
+    capexPercent: rawAssumptions.capexPercent ?? 0.03,
+    nwcPercent: rawAssumptions.nwcPercent ?? 0.10,
+    taxRate: rawAssumptions.taxRate ?? 0.25,
+    purchasePrice: purchasePrice,
+    entryMultiple: entryMultiple,
+    transactionCosts: rawAssumptions.transactionCosts ?? 0.02,
+    transactionCostsExplicit: rawAssumptions.transactionCostsExplicit,
+    financingFees: rawAssumptions.financingFees ?? 0.01,
+    financingFeesExplicit: rawAssumptions.financingFeesExplicit,
+    managementRollover: rawAssumptions.managementRollover ?? 0,
+    seniorDebtAmount: seniorDebtAmount,
+    seniorDebtRate: rawAssumptions.seniorDebtRate ?? 0.065,
+    subDebtAmount: subDebtAmount,
+    subDebtRate: rawAssumptions.subDebtRate ?? 0.12,
+    subDebtPIK: rawAssumptions.subDebtPIK ?? 0,
+    revolverSize: rawAssumptions.revolverSize ?? 0,
+    revolverRate: rawAssumptions.revolverRate ?? 0.05,
+    sponsorEquity: rawAssumptions.sponsorEquity ?? 0, // Will be recalculated
+    cashFlowSweepPercent: rawAssumptions.cashFlowSweepPercent ?? 0.75,
+    exitYear: exitYear,
+    exitMultiple: exitMultiple,
+    exitCosts: rawAssumptions.exitCosts ?? 0.02,
+    managementFeePercent: rawAssumptions.managementFeePercent ?? 0.01,
+  };
+  
   return { assumptions, providerUsed };
 }
 
