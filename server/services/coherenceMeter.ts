@@ -727,7 +727,7 @@ VALIDITY VERIFICATION:
   const message = await anthropic.messages.create({
     model: "claude-3-7-sonnet-20250219",
     max_tokens: 10000,
-    temperature: 0.2,
+    temperature: 1, // Must be 1 when extended thinking is enabled
     thinking: {
       type: "enabled",
       budget_tokens: 8000
