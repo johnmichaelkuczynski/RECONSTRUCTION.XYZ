@@ -1279,14 +1279,30 @@ export function parseThreeStatementGuaranteed(text: string): ThreeStatementGuara
   }
   
   // ============ MARGINS ============
+  // Accept "gross margin", "margin", "profit margin", etc.
   const grossMarginPatterns = [
     /gross\s+margin\s*(?:of\s+)?([\d.]+)\s*%/i,
     /([\d.]+)\s*%\s+gross\s+margin/i,
+    // Also accept plain "margin X%" when not preceded by specific qualifiers
+    /(?<!ebitda\s+)(?<!net\s+)(?<!profit\s+)margin\s+(?:of\s+)?([\d.]+)\s*%/i,
+    /([\d.]+)\s*%\s+(?<!ebitda\s+)(?<!net\s+)margin/i,
+    /margin\s*[=:,]\s*([\d.]+)\s*%/i,
   ];
   const grossMargin = extractPercent(text, grossMarginPatterns);
   if (grossMargin !== null) {
     result.grossMargin = grossMargin;
     console.log(`[GuaranteedParser] Gross margin: ${(grossMargin * 100).toFixed(1)}%`);
+  }
+  
+  // ============ TAX RATE ============
+  const taxPatterns = [
+    /tax\s+(?:rate\s+)?(?:of\s+)?([\d.]+)\s*%/i,
+    /([\d.]+)\s*%\s+tax/i,
+  ];
+  const taxRate = extractPercent(text, taxPatterns);
+  if (taxRate !== null) {
+    result.taxRate = taxRate;
+    console.log(`[GuaranteedParser] Tax rate: ${(taxRate * 100).toFixed(1)}%`);
   }
   
   console.log('[GuaranteedParser] === FINAL 3-STATEMENT VALUES ===');
