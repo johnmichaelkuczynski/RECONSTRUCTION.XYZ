@@ -3955,6 +3955,46 @@ Generated on: ${new Date().toLocaleString()}`;
                           </div>
                         </div>
                       )}
+                      {/* Copy All Cogency Results Button */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const fullOutput = [
+                            `MATHEMATICAL COGENCY ANALYSIS`,
+                            `=============================`,
+                            ``,
+                            `COGENCY SCORE: ${mathValidityScore}/10 - ${mathValidityVerdict}`,
+                            ``,
+                            mathValiditySubscores ? `SUBSCORES:` : '',
+                            mathValiditySubscores ? `- Claim Truth: ${mathValiditySubscores.claimTruth}/10` : '',
+                            mathValiditySubscores ? `- Inference Validity: ${mathValiditySubscores.inferenceValidity}/10` : '',
+                            mathValiditySubscores ? `- Boundary Conditions: ${mathValiditySubscores.boundaryConditions}/10` : '',
+                            mathValiditySubscores ? `- Overall Soundness: ${mathValiditySubscores.overallSoundness}/10` : '',
+                            ``,
+                            mathValidityCounterexamples.length > 0 ? `COUNTEREXAMPLES FOUND (${mathValidityCounterexamples.length}):` : '',
+                            ...mathValidityCounterexamples.map((ce, idx) => `${idx + 1}. ${ce}`),
+                            ``,
+                            mathValidityFlaws.length > 0 ? `MATHEMATICAL FLAWS IDENTIFIED (${mathValidityFlaws.length}):` : '',
+                            ...mathValidityFlaws.map((flaw, idx) => `${idx + 1}. ${flaw}`),
+                            ``,
+                            `DETAILED ANALYSIS:`,
+                            `------------------`,
+                            mathValidityAnalysis
+                          ].filter(line => line !== '').join('\n');
+                          
+                          navigator.clipboard.writeText(fullOutput);
+                          toast({
+                            title: "Copied!",
+                            description: "Full cogency analysis copied to clipboard"
+                          });
+                        }}
+                        className="bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:hover:bg-emerald-800/50 border-emerald-300"
+                        data-testid="button-copy-all-cogency"
+                      >
+                        <Copy className="w-4 h-4 mr-2" />
+                        Copy All Results
+                      </Button>
                     </div>
                   </div>
                   
