@@ -1,7 +1,7 @@
 # Cognitive Analysis Platform
 
 ## Overview
-The Cognitive Analysis Platform is designed to analyze written text to assess the intelligence and cognitive fingerprint of authors using multi-model AI evaluation. Its primary purpose is to offer deep insights into cognitive abilities and thought processes from written content. Key capabilities include document analysis, AI detection, multi-language translation, comprehensive cognitive profiling, and intelligent text rewriting with advanced features for maximizing intelligence scores. The platform also offers professional financial model generation and data science code generation.
+The Cognitive Analysis Platform is designed to analyze written text to assess the intelligence and cognitive fingerprint of authors using multi-model AI evaluation. Its primary purpose is to offer deep insights into cognitive abilities and thought processes from written content. Key capabilities include document analysis, AI detection, multi-language translation, comprehensive cognitive profiling, and intelligent text rewriting with advanced features for maximizing intelligence scores.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -27,21 +27,6 @@ The application employs a monorepo structure, separating client and server compo
     - **Text Model Validator**: Includes "Truth Select" and "Math Truth Select" for literal truth verification, configurable with various AI models (ZHI 1-5, default Grok).
     - **AI Chat Assistant**: Provides conversation history and context from the Zhi Database.
     - **Conservative Reconstruction**: "Charitable Interpretation" mode for generating coherent essays articulating a text's unified argument.
-    - **Finance Panel**: Generates professional Excel financial models (DCF, LBO, M&A, IPO Pricing, 3-Statement) from natural language. Features include:
-        - Comprehensive scenario analysis, sensitivity analysis, and debt scheduling.
-        - Accretion/dilution analysis, goodwill calculation, and Purchase Price Allocation (PPA) for M&A.
-        - Enhanced Multi-Instrument Engine for IPO models, handling complex convertible instruments, probability-weighted contingencies, and dual-class share structures.
-        - Guaranteed Parser Architecture ensures all required fields have values (regex → LLM → hardcoded defaults) for robust model generation.
-        - **Unified Numeric Parser (December 2024)**: Single extraction function (`server/services/unifiedNumericParser.ts`) replacing scattered parsers:
-          - Currency: "$1.25B", "$870m", "$900 million", "1.4bn", "750k" → raw floats
-          - Multiples: "8x", "6.5x EBITDA" → `{raw: 8, type: "multiple", unit: "EBITDA"}`
-          - Percentages: "17%", "12.5 %" → decimal (0.17)
-          - Shares: "4.5M shares" → raw count
-          - Ranges: "$28–$32" → midpoint
-          - 14/14 unit tests pass
-        - Default LLM: Zhi 5 (Grok).
-    - **Data Science Panel**: Generates production-ready Python code for machine learning and statistical analysis (e.g., 7 types of regression models). Output includes data loading, EDA, preprocessing, model training, evaluation, and visualizations.
-        - Default LLM: Zhi 5 (Grok).
 
 ## External Dependencies
 - **AI Service Providers**: OpenAI API (GPT-4), Anthropic API (Claude), DeepSeek API, Perplexity AI, Grok API (xAI).
