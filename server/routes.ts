@@ -3323,7 +3323,7 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
 
       console.log(`Coherence Meter - Mode: ${mode}, Type: ${coherenceType || 'default'}, Aggressiveness: ${aggressiveness}, Text length: ${text.length}`);
 
-      const { analyzeCoherence, rewriteForCoherence, analyzeMathProofValidity, analyzeScientificExplanatoryCoherence } = await import('./services/coherenceMeter');
+      const { analyzeCoherence, rewriteForCoherence, analyzeMathProofValidity, analyzeScientificExplanatoryCoherence, rewriteScientificExplanatory } = await import('./services/coherenceMeter');
 
       if (mode === "math-proof-validity") {
         const result = await analyzeMathProofValidity(text);
@@ -3363,13 +3363,27 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
           });
         }
       } else {
-        const result = await rewriteForCoherence(text, aggressiveness as "conservative" | "moderate" | "aggressive");
-        
-        res.json({
-          success: true,
-          rewrite: result.rewrittenText,
-          changes: result.changes
-        });
+        // Use specialized scientific rewrite for scientific-explanatory coherence type
+        if (coherenceType === "scientific-explanatory") {
+          const result = await rewriteScientificExplanatory(text, aggressiveness as "conservative" | "moderate" | "aggressive");
+          
+          res.json({
+            success: true,
+            rewrite: result.rewrittenText,
+            changes: result.changes,
+            correctionsApplied: result.correctionsApplied,
+            scientificAccuracyScore: result.scientificAccuracyScore,
+            isScientificExplanatory: true
+          });
+        } else {
+          const result = await rewriteForCoherence(text, aggressiveness as "conservative" | "moderate" | "aggressive");
+          
+          res.json({
+            success: true,
+            rewrite: result.rewrittenText,
+            changes: result.changes
+          });
+        }
       }
     } catch (error: any) {
       console.error("Coherence Meter error:", error);

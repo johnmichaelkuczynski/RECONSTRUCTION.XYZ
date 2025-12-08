@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy } from "lucide-react";
+import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle } from "lucide-react";
 import { analyzeDocument, compareDocuments, checkForAI } from "@/lib/analysis";
 import { AnalysisMode, DocumentInput as DocumentInputType, AIDetectionResult, DocumentAnalysis, DocumentComparison } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
@@ -174,6 +174,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [coherenceIsScientific, setCoherenceIsScientific] = useState(false);
   const [coherenceLogicalScore, setCoherenceLogicalScore] = useState<{score: number; assessment: string; analysis: string} | null>(null);
   const [coherenceScientificScore, setCoherenceScientificScore] = useState<{score: number; assessment: string; analysis: string; inaccuracies: string[]} | null>(null);
+  const [coherenceCorrectionsApplied, setCoherenceCorrectionsApplied] = useState<string[]>([]);
+  const [coherenceRewriteAccuracyScore, setCoherenceRewriteAccuracyScore] = useState<number | null>(null);
   const [coherenceProcessingMode, setCoherenceProcessingMode] = useState<"simple" | "outline-guided">("simple");
   const [coherenceChunks, setCoherenceChunks] = useState<Array<{id: string, text: string, preview: string}>>([]);
   const [selectedCoherenceChunks, setSelectedCoherenceChunks] = useState<string[]>([]);
@@ -689,6 +691,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setCoherenceMode("rewrite");
     setCoherenceRewrite("");
     setCoherenceChanges("");
+    setCoherenceCorrectionsApplied([]);
+    setCoherenceRewriteAccuracyScore(null);
 
     try {
       const response = await fetch('/api/coherence-meter', {
@@ -711,9 +715,19 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       if (data.success) {
         setCoherenceRewrite(data.rewrite);
         setCoherenceChanges(data.changes);
+        
+        // Handle scientific-explanatory specific data
+        if (data.isScientificExplanatory) {
+          setCoherenceIsScientific(true);
+          setCoherenceCorrectionsApplied(data.correctionsApplied || []);
+          setCoherenceRewriteAccuracyScore(data.scientificAccuracyScore || null);
+        }
+        
         toast({
-          title: "Coherence Rewrite Complete!",
-          description: `Text rewritten to maximize ${coherenceType} coherence`,
+          title: data.isScientificExplanatory ? "Scientific Accuracy Rewrite Complete!" : "Coherence Rewrite Complete!",
+          description: data.isScientificExplanatory 
+            ? `Text rewritten for scientific accuracy (Score: ${data.scientificAccuracyScore}/10)`
+            : `Text rewritten to maximize ${coherenceType} coherence`,
         });
       }
     } catch (error: any) {
@@ -885,6 +899,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setCoherenceIsScientific(false);
     setCoherenceLogicalScore(null);
     setCoherenceScientificScore(null);
+    setCoherenceCorrectionsApplied([]);
+    setCoherenceRewriteAccuracyScore(null);
   };
 
 
@@ -3551,8 +3567,23 @@ Generated on: ${new Date().toLocaleString()}`;
           {/* Rewrite Output */}
           {coherenceMode === "rewrite" && coherenceRewrite && (
             <div className="mt-8 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-100">Rewritten Version</h3>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-100">
+                    {coherenceIsScientific ? "Scientifically Corrected Version" : "Rewritten Version"}
+                  </h3>
+                  {coherenceRewriteAccuracyScore !== null && (
+                    <Badge 
+                      className={`text-sm ${
+                        coherenceRewriteAccuracyScore >= 8 ? 'bg-green-500 hover:bg-green-600' :
+                        coherenceRewriteAccuracyScore >= 5 ? 'bg-yellow-500 hover:bg-yellow-600' :
+                        'bg-red-500 hover:bg-red-600'
+                      } text-white`}
+                    >
+                      Scientific Accuracy: {coherenceRewriteAccuracyScore}/10
+                    </Badge>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -3595,10 +3626,30 @@ Generated on: ${new Date().toLocaleString()}`;
                 </pre>
               </div>
 
+              {/* Scientific Corrections Applied */}
+              {coherenceIsScientific && coherenceCorrectionsApplied.length > 0 && (
+                <div className="mt-6 bg-green-50 dark:bg-green-900/20 p-6 rounded-lg border-2 border-green-300 dark:border-green-700">
+                  <h4 className="text-lg font-bold text-green-900 dark:text-green-100 mb-4 flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5" />
+                    Scientific Corrections Applied ({coherenceCorrectionsApplied.length})
+                  </h4>
+                  <ul className="space-y-2">
+                    {coherenceCorrectionsApplied.map((correction, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-sm text-green-800 dark:text-green-200">
+                        <span className="font-bold text-green-600 dark:text-green-400">{idx + 1}.</span>
+                        <span>{correction}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* Changes Made */}
               {coherenceChanges && (
                 <div className="mt-6">
-                  <h4 className="text-lg font-semibold text-indigo-900 dark:text-indigo-100 mb-3">Changes Made</h4>
+                  <h4 className="text-lg font-semibold text-indigo-900 dark:text-indigo-100 mb-3">
+                    {coherenceIsScientific ? "Scientific Accuracy Changes" : "Changes Made"}
+                  </h4>
                   <div className="bg-indigo-50 dark:bg-indigo-900/20 p-6 rounded-lg border border-indigo-200 dark:border-indigo-700">
                     <pre className="whitespace-pre-wrap font-sans text-sm text-gray-800 dark:text-gray-200">
                       {coherenceChanges}

@@ -492,3 +492,151 @@ SUMMARY:
     fullAnalysis: output
   };
 }
+
+export interface ScientificRewriteResult {
+  rewrittenText: string;
+  changes: string;
+  correctionsApplied: string[];
+  scientificAccuracyScore: number;
+}
+
+export async function rewriteScientificExplanatory(
+  text: string,
+  aggressiveness: "conservative" | "moderate" | "aggressive" = "moderate"
+): Promise<ScientificRewriteResult> {
+  
+  let aggressivenessInstructions = "";
+  if (aggressiveness === "conservative") {
+    aggressivenessInstructions = `CONSERVATIVE MODE: Make minimal changes. Only correct the most egregious scientific errors while preserving the author's voice and structure. If a claim is merely unverified (not demonstrably false), leave it with appropriate hedging language.`;
+  } else if (aggressiveness === "moderate") {
+    aggressivenessInstructions = `MODERATE MODE: Correct all scientifically inaccurate claims. Replace pseudoscientific explanations with evidence-based alternatives. Add hedging language for claims that lack strong evidence. Preserve overall structure but rewrite passages as needed.`;
+  } else {
+    aggressivenessInstructions = `AGGRESSIVE MODE: Completely rewrite to achieve maximum scientific accuracy (target 9-10/10). Remove all pseudoscientific content. Replace speculative claims with established science. May significantly restructure or expand with accurate scientific content. Every claim must be defensible by current scientific consensus.`;
+  }
+
+  const systemPrompt = `You are a scientific accuracy editor specializing in correcting pseudoscience, misconceptions, and scientifically inaccurate claims. Your PRIMARY MISSION is to ensure the output is SCIENTIFICALLY ACCURATE according to established science, empirical evidence, and known natural mechanisms.
+
+CRITICAL RULES:
+1. You MUST NOT preserve false claims - coherence does NOT trump truth
+2. You MUST replace pseudoscientific explanations with actual scientific mechanisms
+3. You MUST correct claims that contradict established physics, chemistry, biology, etc.
+4. You MUST add appropriate uncertainty language for claims that lack strong evidence
+5. You MUST remove or reframe unfalsifiable claims
+6. Logical coherence is SECONDARY - a text can be coherent but wrong. Your job is to make it BOTH coherent AND scientifically accurate.
+
+WHAT COUNTS AS SCIENTIFICALLY INACCURATE:
+- Claims contradicting established physics, chemistry, biology, medicine
+- Pseudoscientific mechanisms (e.g., "quantum healing", "detox through feet", "water memory")
+- Misrepresentation of how natural systems work
+- Correlation-causation fallacies presented as fact
+- Appeals to "energy", "vibrations", "frequencies" without physical grounding
+- Claims that violate thermodynamics, conservation laws, or basic biology
+- Alternative medicine claims without evidence
+- Conspiracy-adjacent scientific claims
+
+${aggressivenessInstructions}`;
+
+  const userPrompt = `Rewrite this text to be SCIENTIFICALLY ACCURATE while maintaining logical coherence.
+
+TEXT TO REWRITE:
+${text}
+
+INSTRUCTIONS:
+1. Identify ALL scientifically inaccurate or pseudoscientific claims
+2. Replace them with accurate scientific explanations
+3. If a claim has no scientific basis, either remove it or explicitly frame it as speculation/belief
+4. Maintain the text's readability and flow
+5. Preserve the author's general intent where possible, but NEVER at the cost of scientific accuracy
+
+OUTPUT FORMAT:
+First, output the completely rewritten text with all scientific corrections applied.
+Then add a separator "---CORRECTIONS---" followed by a numbered list of the scientific corrections you made.
+
+REWRITTEN TEXT:`;
+
+  const message = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 8192,
+    temperature: 0.5,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }]
+  });
+
+  const fullOutput = message.content[0].type === 'text' ? message.content[0].text : '';
+  
+  // Parse the output to separate rewritten text from corrections
+  const separatorMatch = fullOutput.match(/---CORRECTIONS---/i);
+  let rewrittenText = fullOutput;
+  let correctionsSection = "";
+  
+  if (separatorMatch) {
+    const parts = fullOutput.split(/---CORRECTIONS---/i);
+    rewrittenText = parts[0].trim();
+    correctionsSection = parts[1] ? parts[1].trim() : "";
+  }
+
+  // Parse corrections into array
+  const correctionsApplied: string[] = [];
+  if (correctionsSection) {
+    const lines = correctionsSection.split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 5);
+    
+    for (const line of lines) {
+      const cleanedLine = line.replace(/^[-•*\d.)\]]+\s*/, '').trim();
+      if (cleanedLine.length > 5) {
+        correctionsApplied.push(cleanedLine);
+      }
+    }
+  }
+
+  // Generate a comparison of changes
+  const changesAnalysisPrompt = `Compare these two versions and explain what SCIENTIFIC ACCURACY changes were made:
+
+ORIGINAL (may contain inaccuracies):
+${text}
+
+CORRECTED VERSION:
+${rewrittenText}
+
+List the key scientific corrections made, focusing on:
+- What pseudoscientific or inaccurate claims were removed/corrected
+- What accurate scientific explanations replaced them
+- Any claims that were hedged with uncertainty language
+
+Provide concise bullet points.`;
+
+  const changesMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 2048,
+    temperature: 0.3,
+    messages: [{ role: "user", content: changesAnalysisPrompt }]
+  });
+
+  const changes = changesMessage.content[0].type === 'text' ? changesMessage.content[0].text : '';
+
+  // Quick validation pass to estimate accuracy score
+  const validationPrompt = `Rate the scientific accuracy of this text on a scale of 1-10, where 10 means every claim is supported by established science.
+
+TEXT:
+${rewrittenText}
+
+Respond with ONLY a number from 1-10.`;
+
+  const validationMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 10,
+    temperature: 0,
+    messages: [{ role: "user", content: validationPrompt }]
+  });
+
+  const scoreText = validationMessage.content[0].type === 'text' ? validationMessage.content[0].text : '5';
+  const scientificAccuracyScore = parseFloat(scoreText.match(/\d+(?:\.\d+)?/)?.[0] || '5');
+
+  return {
+    rewrittenText,
+    changes,
+    correctionsApplied,
+    scientificAccuracyScore: Math.min(10, Math.max(1, scientificAccuracyScore))
+  };
+}
