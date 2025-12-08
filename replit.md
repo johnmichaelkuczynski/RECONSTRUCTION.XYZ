@@ -23,7 +23,7 @@ The application employs a monorepo structure, separating client and server compo
     - **Multi-Model Intelligence Evaluation**: A 4-phase system assessing 17 cognitive dimensions, supporting genre-aware analysis.
     - **Intelligent Rewrite Function (MAXINTEL)**: Recursively optimizes text for intelligence scores, with custom instructions and external knowledge integration.
     - **GPT Bypass Humanizer**: Transforms AI-generated text to bypass AI detection.
-    - **Coherence Meter**: Offers simple chunking and outline-guided processing, including a `math-proof-validity` mode.
+    - **Coherence Meter**: Offers simple chunking and outline-guided processing, including a `math-proof-validity` mode. The `scientific-explanatory` coherence type performs dual assessment evaluating both logical consistency (internal contradictions, structural coherence) AND scientific accuracy (factual correctness, alignment with established science), displaying separate scores for each dimension.
     - **Text Model Validator**: Includes "Truth Select" and "Math Truth Select" for literal truth verification, configurable with various AI models (ZHI 1-5, default Grok).
     - **AI Chat Assistant**: Provides conversation history and context from the Zhi Database.
     - **Conservative Reconstruction**: "Charitable Interpretation" mode for generating coherent essays articulating a text's unified argument.
