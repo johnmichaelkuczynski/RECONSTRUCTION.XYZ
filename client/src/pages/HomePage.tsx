@@ -197,6 +197,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [selectedCoherenceChunks, setSelectedCoherenceChunks] = useState<string[]>([]);
   const [showCoherenceChunkSelector, setShowCoherenceChunkSelector] = useState(false);
   const [coherenceStageProgress, setCoherenceStageProgress] = useState<string>("");
+  const [detectedCoherenceType, setDetectedCoherenceType] = useState<string | null>(null);
   
   
   // Load writing samples and style presets on component mount
@@ -624,6 +625,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setCoherenceAnalysis("");
     setCoherenceScore(null);
     setCoherenceAssessment(null);
+    setDetectedCoherenceType(null);
 
     try {
       const response = await fetch('/api/coherence-meter', {
@@ -677,9 +679,16 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           setMathValiditySubscores(null);
           setMathValidityFlaws([]);
           setMathValidityCounterexamples([]);
+          
+          // Capture detected coherence type if auto-detected
+          if (data.wasAutoDetected && data.detectedCoherenceType) {
+            setDetectedCoherenceType(data.detectedCoherenceType);
+          }
+          
+          const autoDetectMsg = data.wasAutoDetected ? ' (Auto-Detected: Scientific-Explanatory)' : '';
           toast({
             title: "Scientific-Explanatory Analysis Complete!",
-            description: `Overall: ${data.score}/10 | Logical: ${data.logicalConsistency.score}/10 | Scientific: ${data.scientificAccuracy.score}/10`,
+            description: `Overall: ${data.score}/10 | Logical: ${data.logicalConsistency.score}/10 | Scientific: ${data.scientificAccuracy.score}/10${autoDetectMsg}`,
           });
         } else {
           setCoherenceIsMathematical(false);
@@ -693,9 +702,18 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           setMathValiditySubscores(null);
           setMathValidityFlaws([]);
           setMathValidityCounterexamples([]);
+          
+          // Capture detected coherence type if auto-detected
+          if (data.wasAutoDetected && data.detectedCoherenceType) {
+            setDetectedCoherenceType(data.detectedCoherenceType);
+          }
+          
+          const autoDetectMsg = data.wasAutoDetected && data.detectedCoherenceType 
+            ? ` (Applied: ${data.detectedCoherenceType.replace(/-/g, ' ')})` 
+            : '';
           toast({
             title: "Coherence Analysis Complete!",
-            description: `Score: ${data.score}/10 - ${data.assessment}`,
+            description: `Score: ${data.score}/10 - ${data.assessment}${autoDetectMsg}`,
           });
         }
       }
@@ -742,6 +760,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setCoherenceChanges("");
     setCoherenceCorrectionsApplied([]);
     setCoherenceRewriteAccuracyScore(null);
+    setDetectedCoherenceType(null);
 
     try {
       const response = await fetch('/api/coherence-meter', {
@@ -765,6 +784,11 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         setCoherenceRewrite(data.rewrite);
         setCoherenceChanges(data.changes);
         
+        // Capture detected coherence type if auto-detected
+        if (data.wasAutoDetected && data.detectedCoherenceType) {
+          setDetectedCoherenceType(data.detectedCoherenceType);
+        }
+        
         // Handle scientific-explanatory specific data
         if (data.isScientificExplanatory) {
           setCoherenceIsScientific(true);
@@ -772,11 +796,15 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           setCoherenceRewriteAccuracyScore(data.scientificAccuracyScore || null);
         }
         
+        const appliedType = data.wasAutoDetected && data.detectedCoherenceType 
+          ? data.detectedCoherenceType.replace(/-/g, ' ')
+          : coherenceType.replace(/-/g, ' ');
+        
         toast({
           title: data.isScientificExplanatory ? "Scientific Accuracy Rewrite Complete!" : "Coherence Rewrite Complete!",
           description: data.isScientificExplanatory 
-            ? `Text rewritten for scientific accuracy (Score: ${data.scientificAccuracyScore}/10)`
-            : `Text rewritten to maximize ${coherenceType} coherence`,
+            ? `Text rewritten for scientific accuracy (Score: ${data.scientificAccuracyScore}/10)${data.wasAutoDetected ? ' (Auto-Detected)' : ''}`
+            : `Text rewritten to maximize ${appliedType} coherence${data.wasAutoDetected ? ' (Auto-Detected)' : ''}`,
         });
       }
     } catch (error: any) {
@@ -3824,7 +3852,7 @@ Generated on: ${new Date().toLocaleString()}`;
                     </div>
                   )}
                   {coherenceScore !== null && !coherenceIsScientific && !coherenceIsMathematical && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium">Score:</span>
                       <Badge className={`text-lg px-3 py-1 ${
                         coherenceAssessment === "PASS" ? "bg-green-600" :
@@ -3833,6 +3861,11 @@ Generated on: ${new Date().toLocaleString()}`;
                       }`}>
                         {coherenceScore}/10 - {coherenceAssessment}
                       </Badge>
+                      {detectedCoherenceType && (
+                        <Badge variant="outline" className="bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200 border-purple-400">
+                          Auto-Detected: {detectedCoherenceType.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        </Badge>
+                      )}
                     </div>
                   )}
                   {coherenceIsScientific && coherenceLogicalScore && coherenceScientificScore && (
@@ -4112,6 +4145,11 @@ Generated on: ${new Date().toLocaleString()}`;
                       } text-white`}
                     >
                       Scientific Accuracy: {coherenceRewriteAccuracyScore}/10
+                    </Badge>
+                  )}
+                  {detectedCoherenceType && (
+                    <Badge variant="outline" className="bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200 border-purple-400">
+                      Auto-Detected: {detectedCoherenceType.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                     </Badge>
                   )}
                 </div>

@@ -3392,8 +3392,49 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
         });
       }
       else if (mode === "analyze") {
+        let appliedCoherenceType = coherenceType;
+        
+        // AUTO-DETECT: First determine which coherence type applies
+        if (coherenceType === "auto-detect") {
+          const Anthropic = (await import('@anthropic-ai/sdk')).default;
+          const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+          
+          const detectPrompt = `Analyze this text and determine which coherence type it is attempting to achieve. Choose the SINGLE BEST match from these options:
+
+- logical-consistency: Text focuses on avoiding contradictions and maintaining logical consistency
+- logical-cohesiveness: Text builds arguments where claims actively support each other
+- scientific-explanatory: Text explains phenomena using natural laws and scientific mechanisms
+- thematic-psychological: Text focuses on mood, imagery, emotional trajectory, or psychological feel
+- instructional: Text provides actionable instructions or directives
+- motivational: Text aims to inspire specific feelings or psychological states
+- mathematical: Text contains mathematical proofs, derivations, or quantitative arguments
+- philosophical: Text engages with conceptual rigor, distinctions, and philosophical arguments
+
+TEXT TO ANALYZE:
+${text.substring(0, 2000)}
+
+Respond with ONLY the coherence type (e.g., "logical-consistency" or "scientific-explanatory"). No explanation needed.`;
+
+          const detectMessage = await anthropic.messages.create({
+            model: "claude-3-7-sonnet-20250219",
+            max_tokens: 50,
+            temperature: 0,
+            messages: [{ role: "user", content: detectPrompt }]
+          });
+
+          const detectedType = detectMessage.content[0].type === 'text' 
+            ? detectMessage.content[0].text.trim().toLowerCase() 
+            : 'logical-consistency';
+          
+          // Validate detected type
+          const validTypes = ["logical-consistency", "logical-cohesiveness", "scientific-explanatory", "thematic-psychological", "instructional", "motivational", "mathematical", "philosophical"];
+          appliedCoherenceType = validTypes.includes(detectedType) ? detectedType : "logical-consistency";
+          
+          console.log(`Auto-detected coherence type: ${appliedCoherenceType}`);
+        }
+        
         // Use specialized analyzer for scientific-explanatory coherence
-        if (coherenceType === "scientific-explanatory") {
+        if (appliedCoherenceType === "scientific-explanatory") {
           const result = await analyzeScientificExplanatoryCoherence(text);
           
           res.json({
@@ -3403,7 +3444,9 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
             assessment: result.overallAssessment,
             isScientificExplanatory: true,
             logicalConsistency: result.logicalConsistency,
-            scientificAccuracy: result.scientificAccuracy
+            scientificAccuracy: result.scientificAccuracy,
+            detectedCoherenceType: coherenceType === "auto-detect" ? appliedCoherenceType : undefined,
+            wasAutoDetected: coherenceType === "auto-detect"
           });
         } else {
           const result = await analyzeCoherence(text);
@@ -3413,12 +3456,55 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
             analysis: result.analysis,
             score: result.score,
             assessment: result.assessment,
-            subscores: result.subscores
+            subscores: result.subscores,
+            detectedCoherenceType: coherenceType === "auto-detect" ? appliedCoherenceType : undefined,
+            wasAutoDetected: coherenceType === "auto-detect"
           });
         }
       } else {
+        let appliedCoherenceType = coherenceType;
+        
+        // AUTO-DETECT for rewrite mode
+        if (coherenceType === "auto-detect") {
+          const Anthropic = (await import('@anthropic-ai/sdk')).default;
+          const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+          
+          const detectPrompt = `Analyze this text and determine which coherence type it is attempting to achieve. Choose the SINGLE BEST match from these options:
+
+- logical-consistency: Text focuses on avoiding contradictions and maintaining logical consistency
+- logical-cohesiveness: Text builds arguments where claims actively support each other
+- scientific-explanatory: Text explains phenomena using natural laws and scientific mechanisms
+- thematic-psychological: Text focuses on mood, imagery, emotional trajectory, or psychological feel
+- instructional: Text provides actionable instructions or directives
+- motivational: Text aims to inspire specific feelings or psychological states
+- mathematical: Text contains mathematical proofs, derivations, or quantitative arguments
+- philosophical: Text engages with conceptual rigor, distinctions, and philosophical arguments
+
+TEXT TO ANALYZE:
+${text.substring(0, 2000)}
+
+Respond with ONLY the coherence type (e.g., "logical-consistency" or "scientific-explanatory"). No explanation needed.`;
+
+          const detectMessage = await anthropic.messages.create({
+            model: "claude-3-7-sonnet-20250219",
+            max_tokens: 50,
+            temperature: 0,
+            messages: [{ role: "user", content: detectPrompt }]
+          });
+
+          const detectedType = detectMessage.content[0].type === 'text' 
+            ? detectMessage.content[0].text.trim().toLowerCase() 
+            : 'logical-consistency';
+          
+          // Validate detected type
+          const validTypes = ["logical-consistency", "logical-cohesiveness", "scientific-explanatory", "thematic-psychological", "instructional", "motivational", "mathematical", "philosophical"];
+          appliedCoherenceType = validTypes.includes(detectedType) ? detectedType : "logical-consistency";
+          
+          console.log(`Auto-detected coherence type for rewrite: ${appliedCoherenceType}`);
+        }
+        
         // Use specialized scientific rewrite for scientific-explanatory coherence type
-        if (coherenceType === "scientific-explanatory") {
+        if (appliedCoherenceType === "scientific-explanatory") {
           const result = await rewriteScientificExplanatory(text, aggressiveness as "conservative" | "moderate" | "aggressive");
           
           res.json({
@@ -3427,7 +3513,9 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
             changes: result.changes,
             correctionsApplied: result.correctionsApplied,
             scientificAccuracyScore: result.scientificAccuracyScore,
-            isScientificExplanatory: true
+            isScientificExplanatory: true,
+            detectedCoherenceType: coherenceType === "auto-detect" ? appliedCoherenceType : undefined,
+            wasAutoDetected: coherenceType === "auto-detect"
           });
         } else {
           const result = await rewriteForCoherence(text, aggressiveness as "conservative" | "moderate" | "aggressive");
@@ -3435,7 +3523,9 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
           res.json({
             success: true,
             rewrite: result.rewrittenText,
-            changes: result.changes
+            changes: result.changes,
+            detectedCoherenceType: coherenceType === "auto-detect" ? appliedCoherenceType : undefined,
+            wasAutoDetected: coherenceType === "auto-detect"
           });
         }
       }
