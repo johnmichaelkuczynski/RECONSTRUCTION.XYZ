@@ -3763,13 +3763,13 @@ Generated on: ${new Date().toLocaleString()}`;
             </div>
           )}
 
-          {/* Analysis Output */}
-          {coherenceMode === "analyze" && coherenceAnalysis && (
+          {/* Analysis Output - show for coherenceAnalysis OR mathValidityAnalysis (cogency mode) */}
+          {coherenceMode === "analyze" && (coherenceAnalysis || mathValidityAnalysis) && (
             <div className="mt-8 space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-100">
                   {coherenceIsScientific ? "Scientific-Explanatory Analysis" : 
-                   coherenceIsMathematical ? "Mathematical Proof Analysis" : "Coherence Analysis"}
+                   coherenceIsMathematical ? (mathValidityAnalysis && !coherenceAnalysis ? "Mathematical Cogency Analysis" : "Mathematical Proof Analysis") : "Coherence Analysis"}
                 </h3>
                 <div className="flex items-center gap-4 flex-wrap">
                   {/* Mathematical dual scores: Coherence + Validity */}
@@ -3795,6 +3795,32 @@ Generated on: ${new Date().toLocaleString()}`;
                           {mathValidityScore}/10
                         </Badge>
                       </div>
+                    </div>
+                  )}
+                  {/* Cogency-only score display (when no coherence analysis) */}
+                  {coherenceIsMathematical && mathValidityScore !== null && coherenceScore === null && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Cogency Score:</span>
+                      <Badge className={`text-lg px-3 py-1 ${
+                        mathValidityVerdict === "VALID" ? "bg-green-600" :
+                        mathValidityVerdict === "FLAWED" ? "bg-yellow-600" :
+                        "bg-red-600"
+                      }`}>
+                        {mathValidityScore}/10 - {mathValidityVerdict}
+                      </Badge>
+                    </div>
+                  )}
+                  {/* Coherence-only score display (when no validity analysis) */}
+                  {coherenceIsMathematical && coherenceScore !== null && mathValidityScore === null && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Coherence Score:</span>
+                      <Badge className={`text-lg px-3 py-1 ${
+                        coherenceAssessment === "PASS" ? "bg-green-600" :
+                        coherenceAssessment === "WEAK" ? "bg-yellow-600" :
+                        "bg-red-600"
+                      }`}>
+                        {coherenceScore}/10 - {coherenceAssessment}
+                      </Badge>
                     </div>
                   )}
                   {coherenceScore !== null && !coherenceIsScientific && !coherenceIsMathematical && (
@@ -3880,11 +3906,14 @@ Generated on: ${new Date().toLocaleString()}`;
                   </div>
                 </div>
               </div>
-              <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border border-indigo-200 dark:border-indigo-700">
-                <pre className="whitespace-pre-wrap font-sans text-sm text-gray-800 dark:text-gray-200">
-                  {coherenceAnalysis}
-                </pre>
-              </div>
+              {/* Show coherence analysis text only if there is coherence analysis */}
+              {coherenceAnalysis && (
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border border-indigo-200 dark:border-indigo-700">
+                  <pre className="whitespace-pre-wrap font-sans text-sm text-gray-800 dark:text-gray-200">
+                    {coherenceAnalysis}
+                  </pre>
+                </div>
+              )}
               
               {/* Scientific Inaccuracies Section */}
               {coherenceIsScientific && coherenceScientificScore && coherenceScientificScore.inaccuracies.length > 0 && (
