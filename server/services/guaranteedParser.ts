@@ -788,35 +788,59 @@ export function parseMAGuaranteed(text: string): MAGuaranteedValues {
     }
   }
   
-  // ============ CASH/STOCK MIX ============
-  const cashPatterns = [
-    /([\d.]+)\s*%\s*cash/i,
-    /cash\s*[=:]\s*([\d.]+)\s*%/i,
-  ];
-  const cash = extractPercent(text, cashPatterns);
-  if (cash !== null) {
-    result.cashPercent = cash;
-    result.stockPercent = 1 - cash;
-    console.log(`[GuaranteedParser] Cash: ${(cash * 100).toFixed(0)}%, Stock: ${((1 - cash) * 100).toFixed(0)}%`);
-  } else if (lower.includes('all cash') || lower.includes('100% cash')) {
+  // ============ CASH/STOCK MIX (ENHANCED) ============
+  // Step 1: Check for qualitative descriptors first
+  if (lower.includes('all-cash') || lower.includes('all cash') || lower.includes('100% cash') || 
+      lower.includes('cash only') || lower.includes('entirely cash') || lower.includes('purely cash')) {
     result.cashPercent = 1.0;
     result.stockPercent = 0;
-    console.log(`[GuaranteedParser] All cash deal`);
-  } else if (lower.includes('all stock') || lower.includes('100% stock')) {
+    console.log(`[GuaranteedParser] All cash deal detected`);
+  } else if (lower.includes('all-stock') || lower.includes('all stock') || lower.includes('100% stock') ||
+             lower.includes('stock-for-stock') || lower.includes('stock for stock') ||
+             lower.includes('stock only') || lower.includes('entirely stock') || lower.includes('purely stock')) {
     result.cashPercent = 0;
     result.stockPercent = 1.0;
-    console.log(`[GuaranteedParser] All stock deal`);
-  }
-  
-  const stockPatterns = [
-    /([\d.]+)\s*%\s*stock/i,
-    /stock\s*[=:]\s*([\d.]+)\s*%/i,
-  ];
-  const stock = extractPercent(text, stockPatterns);
-  if (stock !== null && cash === null) {
-    result.stockPercent = stock;
-    result.cashPercent = 1 - stock;
-    console.log(`[GuaranteedParser] Stock: ${(stock * 100).toFixed(0)}%, Cash: ${((1 - stock) * 100).toFixed(0)}%`);
+    console.log(`[GuaranteedParser] All stock deal detected`);
+  } else {
+    // Step 2: Try to extract explicit percentages
+    const cashPatterns = [
+      /([\d.]+)\s*%\s*(?:in\s+)?cash/i,
+      /cash\s*(?:portion|consideration|component)?\s*[=:]\s*([\d.]+)\s*%/i,
+      /(?:pay|fund(?:ed)?)\s+(?:with\s+)?([\d.]+)\s*%\s*cash/i,
+      /cash\s+consideration\s+(?:of\s+)?([\d.]+)\s*%/i,
+    ];
+    const cash = extractPercent(text, cashPatterns);
+    
+    const stockPatterns = [
+      /([\d.]+)\s*%\s*(?:in\s+)?(?:stock|equity|shares)/i,
+      /(?:stock|equity)\s*(?:portion|consideration|component)?\s*[=:]\s*([\d.]+)\s*%/i,
+      /(?:pay|fund(?:ed)?)\s+(?:with\s+)?([\d.]+)\s*%\s*(?:stock|equity)/i,
+      /(?:stock|equity)\s+consideration\s+(?:of\s+)?([\d.]+)\s*%/i,
+      /(?:remaining|balance|rest)\s+(?:in|with)\s+(?:stock|equity)/i,
+    ];
+    const stock = extractPercent(text, stockPatterns);
+    
+    // Apply cash if found
+    if (cash !== null) {
+      result.cashPercent = cash;
+      result.stockPercent = 1 - cash;
+      console.log(`[GuaranteedParser] Cash: ${(cash * 100).toFixed(0)}%, Stock: ${((1 - cash) * 100).toFixed(0)}%`);
+    }
+    
+    // Apply stock if found (and cash wasn't)
+    if (stock !== null && cash === null) {
+      result.stockPercent = stock;
+      result.cashPercent = 1 - stock;
+      console.log(`[GuaranteedParser] Stock: ${(stock * 100).toFixed(0)}%, Cash: ${((1 - stock) * 100).toFixed(0)}%`);
+    }
+    
+    // Check for "remaining in stock/cash" patterns without explicit percent
+    if (cash === null && stock === null) {
+      if (/remaining\s+(?:in|with)\s+stock/i.test(text) || /balance\s+(?:in|with)\s+(?:stock|equity)/i.test(text)) {
+        // Default to 50/50 but user said remaining is stock, keep defaults
+        console.log(`[GuaranteedParser] "Remaining in stock" detected, using default 50/50 split`);
+      }
+    }
   }
   
   // ============ SYNERGIES ============
@@ -942,16 +966,83 @@ export function parseMAGuaranteed(text: string): MAGuaranteedValues {
     console.log(`[GuaranteedParser] Acquirer EBITDA margin: ${(ebitdaMargin * 100).toFixed(0)}% => $${result.acquirerEBITDA.toFixed(0)}M`);
   }
   
-  // ============ NEW DEBT FINANCING ============
+  // ============ NEW DEBT FINANCING (ENHANCED) ============
   const debtPatterns = [
+    // "new debt of $X" or "debt of $X"
     /(?:new\s+)?debt\s+(?:of\s+)?\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
-    /\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\s+(?:new\s+)?debt/i,
-    /borrow(?:ing)?\s+\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
+    // "$X debt" or "$X in debt"
+    /\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\s+(?:in\s+)?(?:new\s+)?debt/i,
+    // "borrow $X" or "borrowing $X"
+    /borrow(?:ing|s)?\s+\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
+    // "raise $X of debt" or "raise $X in debt financing"
+    /raise[ds]?\s+\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?(?:\s+(?:of|in))?\s*(?:new\s+)?debt/i,
+    // "issue $X term loan" or "issue $X in new debt"
+    /issue[ds]?\s+\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\s*(?:in\s+)?(?:term\s+loan|debt|senior\s+debt|credit)/i,
+    // "debt financing of $X" or "$X debt financing"
+    /debt\s+financing\s+(?:of\s+)?\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
+    /\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\s+debt\s+financing/i,
+    // "funded with $X of debt"
+    /funded?\s+(?:with\s+)?\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\s+(?:of\s+)?debt/i,
+    // "term loan of $X" or "$X term loan"
+    /(?:term\s+loan|credit\s+facility|senior\s+debt)\s+(?:of\s+)?\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
+    /\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\s+(?:term\s+loan|credit\s+facility|senior\s+debt)/i,
   ];
   const debtAmount = extractMoney(text, debtPatterns);
   if (debtAmount !== null) {
     result.debtFinancing = debtAmount;
     console.log(`[GuaranteedParser] Debt financing: $${debtAmount}M`);
+  }
+  
+  // ============ REFINANCE TARGET DEBT ============
+  const refinancePatterns = [
+    /refinance[ds]?\s+\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?(?:\s+(?:of|in))?\s*(?:target\s+)?debt/i,
+    /\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\s+(?:of\s+)?(?:target\s+)?debt\s+(?:to\s+be\s+)?refinanced?/i,
+    /pay\s+(?:off|down)\s+\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?(?:\s+(?:of|in))?\s*(?:target\s+)?debt/i,
+    /(?:retire|repay)\s+\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?(?:\s+(?:of|in))?\s*(?:existing|target)\s+debt/i,
+  ];
+  const refinanceAmount = extractMoney(text, refinancePatterns);
+  if (refinanceAmount !== null) {
+    // Add refinance to total debt financing (Sources = Uses principle)
+    result.debtFinancing = (result.debtFinancing || 0) + refinanceAmount;
+    console.log(`[GuaranteedParser] Refinance amount: $${refinanceAmount}M (added to debt financing)`);
+  }
+  
+  // ============ TRANSACTION FEES ============
+  // IMPORTANT: Check for percentage-based fees FIRST, then dollar amounts
+  // This prevents "2% transaction fees" from being parsed as $2M
+  const feePercentPatterns = [
+    /([\d.]+)\s*%\s+(?:transaction|advisory|deal)\s+fees?/i,
+    /fees?\s+(?:of\s+)?([\d.]+)\s*%/i,
+    /(?:transaction|advisory|deal)\s+fees?\s+(?:of\s+)?([\d.]+)\s*%/i,
+  ];
+  const feePercent = extractPercent(text, feePercentPatterns);
+  if (feePercent !== null && result.purchasePrice > 0) {
+    result.transactionFees = result.purchasePrice * feePercent;
+    console.log(`[GuaranteedParser] Transaction fees: ${(feePercent * 100).toFixed(1)}% of purchase = $${result.transactionFees.toFixed(1)}M`);
+  } else {
+    // Only check for dollar amounts if no percentage was found
+    const feeDollarPatterns = [
+      /(?:transaction|advisory|deal)\s+fees?\s+(?:of\s+)?\$?([\d,.]+)\s*(?:m|mm|million)/i,
+      /\$?([\d,.]+)\s*(?:m|mm|million)\s+(?:in\s+)?(?:transaction|advisory|deal)\s+fees?/i,
+      /\$([\d,.]+)\s*(?:m|mm|million)?\s+(?:transaction|advisory|deal)\s+fees?/i,
+    ];
+    const fees = extractMoney(text, feeDollarPatterns);
+    if (fees !== null) {
+      result.transactionFees = fees;
+      console.log(`[GuaranteedParser] Transaction fees: $${fees}M`);
+    }
+  }
+  
+  // ============ STOCK ISSUED (SHARES) ============
+  const stockIssuedPatterns = [
+    /issue[ds]?\s+([\d,.]+)\s*(?:m|mm|million)?\s*(?:new\s+)?shares/i,
+    /([\d,.]+)\s*(?:m|mm|million)?\s*(?:new\s+)?shares\s+issued/i,
+    /(?:new|additional)\s+shares\s+(?:of\s+)?([\d,.]+)\s*(?:m|mm|million)?/i,
+  ];
+  const stockIssued = extractNumber(text, stockIssuedPatterns);
+  if (stockIssued !== null) {
+    // This helps calculate the stock portion value
+    console.log(`[GuaranteedParser] Stock issued: ${stockIssued}M shares`);
   }
   
   // ============ DEBT RATE ============

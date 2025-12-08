@@ -348,8 +348,11 @@ export async function parseMADescription(
     cashPercent: guaranteed.cashPercent,
     stockPercent: guaranteed.stockPercent,
     premium: llmAssumptions.premium ?? 0.25,
-    transactionFeePercent: guaranteed.transactionFees,
-    transactionFees: llmAssumptions.transactionFees,
+    // FIX: guaranteed.transactionFees is a DOLLAR amount in millions, NOT a percentage
+    // If transactionFees > 1, treat as dollar amount (use as explicitTransactionFees)
+    // If transactionFees <= 1, treat as percentage (e.g., 0.02 = 2%)
+    transactionFeePercent: guaranteed.transactionFees <= 1 ? guaranteed.transactionFees : 0.0225,
+    transactionFees: guaranteed.transactionFees > 1 ? guaranteed.transactionFees : llmAssumptions.transactionFees,
     
     cashFromBalance: llmAssumptions.cashFromBalance ?? 0,
     newDebtAmount: guaranteed.debtFinancing,
