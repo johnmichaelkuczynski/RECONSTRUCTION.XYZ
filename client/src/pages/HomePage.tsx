@@ -171,6 +171,9 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [coherenceScore, setCoherenceScore] = useState<number | null>(null);
   const [coherenceAssessment, setCoherenceAssessment] = useState<"PASS" | "WEAK" | "FAIL" | null>(null);
   const [coherenceAggressiveness, setCoherenceAggressiveness] = useState<"conservative" | "moderate" | "aggressive">("aggressive");
+  const [coherenceIsScientific, setCoherenceIsScientific] = useState(false);
+  const [coherenceLogicalScore, setCoherenceLogicalScore] = useState<{score: number; assessment: string; analysis: string} | null>(null);
+  const [coherenceScientificScore, setCoherenceScientificScore] = useState<{score: number; assessment: string; analysis: string; inaccuracies: string[]} | null>(null);
   const [coherenceProcessingMode, setCoherenceProcessingMode] = useState<"simple" | "outline-guided">("simple");
   const [coherenceChunks, setCoherenceChunks] = useState<Array<{id: string, text: string, preview: string}>>([]);
   const [selectedCoherenceChunks, setSelectedCoherenceChunks] = useState<string[]>([]);
@@ -625,10 +628,25 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         setCoherenceAnalysis(data.analysis);
         setCoherenceScore(data.score);
         setCoherenceAssessment(data.assessment);
-        toast({
-          title: "Coherence Analysis Complete!",
-          description: `Score: ${data.score}/10 - ${data.assessment}`,
-        });
+        
+        // Handle scientific-explanatory dual assessment
+        if (data.isScientificExplanatory) {
+          setCoherenceIsScientific(true);
+          setCoherenceLogicalScore(data.logicalConsistency);
+          setCoherenceScientificScore(data.scientificAccuracy);
+          toast({
+            title: "Scientific-Explanatory Analysis Complete!",
+            description: `Overall: ${data.score}/10 | Logical: ${data.logicalConsistency.score}/10 | Scientific: ${data.scientificAccuracy.score}/10`,
+          });
+        } else {
+          setCoherenceIsScientific(false);
+          setCoherenceLogicalScore(null);
+          setCoherenceScientificScore(null);
+          toast({
+            title: "Coherence Analysis Complete!",
+            description: `Score: ${data.score}/10 - ${data.assessment}`,
+          });
+        }
       }
     } catch (error: any) {
       console.error('Coherence analysis error:', error);
@@ -864,6 +882,9 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setCoherenceChunks([]);
     setSelectedCoherenceChunks([]);
     setShowCoherenceChunkSelector(false);
+    setCoherenceIsScientific(false);
+    setCoherenceLogicalScore(null);
+    setCoherenceScientificScore(null);
   };
 
 
@@ -3413,10 +3434,12 @@ Generated on: ${new Date().toLocaleString()}`;
           {/* Analysis Output */}
           {coherenceMode === "analyze" && coherenceAnalysis && (
             <div className="mt-8 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-100">Coherence Analysis</h3>
-                <div className="flex items-center gap-4">
-                  {coherenceScore !== null && (
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-100">
+                  {coherenceIsScientific ? "Scientific-Explanatory Analysis" : "Coherence Analysis"}
+                </h3>
+                <div className="flex items-center gap-4 flex-wrap">
+                  {coherenceScore !== null && !coherenceIsScientific && (
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">Score:</span>
                       <Badge className={`text-lg px-3 py-1 ${
@@ -3426,6 +3449,40 @@ Generated on: ${new Date().toLocaleString()}`;
                       }`}>
                         {coherenceScore}/10 - {coherenceAssessment}
                       </Badge>
+                    </div>
+                  )}
+                  {coherenceIsScientific && coherenceLogicalScore && coherenceScientificScore && (
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Overall:</span>
+                        <Badge className={`px-2 py-1 ${
+                          coherenceAssessment === "PASS" ? "bg-green-600" :
+                          coherenceAssessment === "WEAK" ? "bg-yellow-600" :
+                          "bg-red-600"
+                        }`}>
+                          {coherenceScore}/10
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Logical:</span>
+                        <Badge className={`px-2 py-1 ${
+                          coherenceLogicalScore.assessment === "PASS" ? "bg-blue-600" :
+                          coherenceLogicalScore.assessment === "WEAK" ? "bg-blue-400" :
+                          "bg-blue-800"
+                        }`}>
+                          {coherenceLogicalScore.score}/10
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Scientific:</span>
+                        <Badge className={`px-2 py-1 ${
+                          coherenceScientificScore.assessment === "PASS" ? "bg-purple-600" :
+                          coherenceScientificScore.assessment === "WEAK" ? "bg-purple-400" :
+                          "bg-purple-800"
+                        }`}>
+                          {coherenceScientificScore.score}/10
+                        </Badge>
+                      </div>
                     </div>
                   )}
                   <div className="flex gap-2">
@@ -3470,6 +3527,24 @@ Generated on: ${new Date().toLocaleString()}`;
                   {coherenceAnalysis}
                 </pre>
               </div>
+              
+              {/* Scientific Inaccuracies Section */}
+              {coherenceIsScientific && coherenceScientificScore && coherenceScientificScore.inaccuracies.length > 0 && (
+                <div className="mt-6 bg-red-50 dark:bg-red-900/20 p-6 rounded-lg border-2 border-red-300 dark:border-red-700">
+                  <h4 className="text-lg font-bold text-red-900 dark:text-red-100 mb-4 flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5" />
+                    Scientific Inaccuracies Found ({coherenceScientificScore.inaccuracies.length})
+                  </h4>
+                  <ul className="space-y-2">
+                    {coherenceScientificScore.inaccuracies.map((inaccuracy, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-sm text-red-800 dark:text-red-200">
+                        <span className="font-bold text-red-600 dark:text-red-400">{idx + 1}.</span>
+                        <span>{inaccuracy}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 

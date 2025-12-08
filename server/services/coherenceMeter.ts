@@ -298,3 +298,197 @@ Provide concise bullet points of changes made to improve internal coherence.`;
     changes
   };
 }
+
+export interface ScientificExplanatoryResult {
+  overallScore: number;
+  overallAssessment: "PASS" | "WEAK" | "FAIL";
+  logicalConsistency: {
+    score: number;
+    assessment: "PASS" | "WEAK" | "FAIL";
+    analysis: string;
+  };
+  scientificAccuracy: {
+    score: number;
+    assessment: "PASS" | "WEAK" | "FAIL";
+    analysis: string;
+    inaccuracies: string[];
+  };
+  fullAnalysis: string;
+}
+
+export async function analyzeScientificExplanatoryCoherence(text: string): Promise<ScientificExplanatoryResult> {
+  const systemPrompt = `You are a scientific coherence analyzer that evaluates text on TWO SEPARATE DIMENSIONS:
+
+1. LOGICAL CONSISTENCY: Does the text avoid internal contradictions? Do the claims follow from each other logically? Is the argument structurally sound?
+
+2. SCIENTIFIC ACCURACY: Are the scientific claims factually correct? Do they align with established scientific knowledge, natural laws, and known mechanisms? Are there any scientific inaccuracies, misconceptions, or false claims?
+
+CRITICAL: These are INDEPENDENT dimensions. A text can be:
+- Logically consistent but scientifically false (e.g., "Dragons breathe fire because their stomachs contain methane, which ignites when exposed to oxygen in their throats" - internally coherent but scientifically fictional)
+- Logically inconsistent but scientifically accurate (e.g., mixing correct facts with contradictory statements)
+- Both consistent and accurate (ideal)
+- Neither consistent nor accurate (worst case)
+
+You must evaluate BOTH dimensions separately and provide distinct scores for each.`;
+
+  const userPrompt = `Analyze this text for BOTH logical consistency AND scientific accuracy.
+
+TEXT TO ANALYZE:
+${text}
+
+Provide your analysis in this EXACT format:
+
+=== LOGICAL CONSISTENCY ANALYSIS ===
+
+LOGICAL CONSISTENCY SCORE: [X]/10
+[10 = perfectly consistent, no contradictions; 1 = severe contradictions throughout]
+
+LOGICAL ASSESSMENT: [PASS if ≥8 / WEAK if 5-7 / FAIL if ≤4]
+
+LOGICAL ANALYSIS:
+[Detailed analysis of internal consistency, structural coherence, and logical flow. Check for:
+- Direct contradictions between statements
+- Logical gaps in reasoning
+- Terms used inconsistently
+- Claims that don't follow from premises]
+
+=== SCIENTIFIC ACCURACY ANALYSIS ===
+
+SCIENTIFIC ACCURACY SCORE: [X]/10
+[10 = all scientific claims are accurate and well-supported; 1 = major scientific errors throughout]
+
+SCIENTIFIC ASSESSMENT: [PASS if ≥8 / WEAK if 5-7 / FAIL if ≤4]
+
+SCIENTIFIC INACCURACIES FOUND:
+[List each scientific inaccuracy, misconception, or false claim. If none, state "None identified."]
+- [Inaccuracy 1]: [Explanation of why it's incorrect and what the actual scientific fact is]
+- [Inaccuracy 2]: ...
+
+SCIENTIFIC ANALYSIS:
+[Detailed analysis of scientific accuracy. Check for:
+- Alignment with established scientific knowledge
+- Correct understanding of natural laws and mechanisms
+- Accurate representation of scientific concepts
+- Proper use of scientific terminology
+- Claims that contradict empirical evidence]
+
+=== OVERALL ASSESSMENT ===
+
+OVERALL SCORE: [X]/10
+[Average of logical consistency and scientific accuracy scores]
+
+OVERALL ASSESSMENT: [PASS if both dimensions ≥8 / WEAK if either is 5-7 / FAIL if either is ≤4]
+
+SUMMARY:
+[Brief summary of the text's strengths and weaknesses in both dimensions]`;
+
+  const message = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 6000,
+    temperature: 0.3,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }]
+  });
+
+  const output = message.content[0].type === 'text' ? message.content[0].text : '';
+
+  // Helper function to derive assessment from score
+  const deriveAssessment = (score: number): "PASS" | "WEAK" | "FAIL" => {
+    if (score >= 8) return "PASS";
+    if (score >= 5) return "WEAK";
+    return "FAIL";
+  };
+
+  // Parse logical consistency section with multiple fallback patterns
+  const logicalScoreMatch = output.match(/LOGICAL CONSISTENCY SCORE:\s*(\d+(?:\.\d+)?)\/10/i) ||
+                            output.match(/LOGICAL.*SCORE:\s*(\d+(?:\.\d+)?)\/10/i) ||
+                            output.match(/CONSISTENCY SCORE:\s*(\d+(?:\.\d+)?)\/10/i);
+  const logicalAssessmentMatch = output.match(/LOGICAL ASSESSMENT:\s*(PASS|WEAK|FAIL)/i);
+  const logicalAnalysisMatch = output.match(/LOGICAL ANALYSIS:\s*([\s\S]*?)(?===\s*SCIENTIFIC|SCIENTIFIC ACCURACY|$)/i);
+
+  // Parse scientific accuracy section with multiple fallback patterns  
+  const scientificScoreMatch = output.match(/SCIENTIFIC ACCURACY SCORE:\s*(\d+(?:\.\d+)?)\/10/i) ||
+                               output.match(/SCIENTIFIC.*SCORE:\s*(\d+(?:\.\d+)?)\/10/i) ||
+                               output.match(/ACCURACY SCORE:\s*(\d+(?:\.\d+)?)\/10/i);
+  const scientificAssessmentMatch = output.match(/SCIENTIFIC ASSESSMENT:\s*(PASS|WEAK|FAIL)/i);
+  const scientificAnalysisMatch = output.match(/SCIENTIFIC ANALYSIS:\s*([\s\S]*?)(?===\s*OVERALL|OVERALL ASSESSMENT|$)/i);
+  
+  // Try multiple patterns for inaccuracies section
+  const inaccuraciesMatch = output.match(/SCIENTIFIC INACCURACIES FOUND:\s*([\s\S]*?)(?=SCIENTIFIC ANALYSIS:|===|$)/i) ||
+                            output.match(/INACCURACIES(?:\s+FOUND)?:\s*([\s\S]*?)(?=SCIENTIFIC ANALYSIS:|ANALYSIS:|===|$)/i);
+
+  // Parse overall assessment section
+  const overallScoreMatch = output.match(/OVERALL SCORE:\s*(\d+(?:\.\d+)?)\/10/i);
+  const overallAssessmentMatch = output.match(/OVERALL ASSESSMENT:\s*(PASS|WEAK|FAIL)/i);
+
+  // Extract scores with safe defaults
+  const logicalScore = logicalScoreMatch ? parseFloat(logicalScoreMatch[1]) : 5;
+  const scientificScore = scientificScoreMatch ? parseFloat(scientificScoreMatch[1]) : 5;
+  const overallScore = overallScoreMatch ? parseFloat(overallScoreMatch[1]) : (logicalScore + scientificScore) / 2;
+
+  // Derive assessments - use parsed value if available, otherwise derive from score
+  const logicalAssessment = logicalAssessmentMatch ? 
+    logicalAssessmentMatch[1].toUpperCase() as "PASS" | "WEAK" | "FAIL" : 
+    deriveAssessment(logicalScore);
+  
+  const scientificAssessment = scientificAssessmentMatch ? 
+    scientificAssessmentMatch[1].toUpperCase() as "PASS" | "WEAK" | "FAIL" : 
+    deriveAssessment(scientificScore);
+  
+  // Overall assessment: FAIL if either fails, WEAK if either is weak, else PASS
+  const overallAssessment = overallAssessmentMatch ? 
+    overallAssessmentMatch[1].toUpperCase() as "PASS" | "WEAK" | "FAIL" :
+    (logicalAssessment === "FAIL" || scientificAssessment === "FAIL") ? "FAIL" :
+    (logicalAssessment === "WEAK" || scientificAssessment === "WEAK") ? "WEAK" : "PASS";
+
+  // Parse inaccuracies with robust extraction
+  const inaccuracies: string[] = [];
+  if (inaccuraciesMatch && inaccuraciesMatch[1]) {
+    const inaccuracyText = inaccuraciesMatch[1].trim();
+    
+    // Skip if it explicitly says none
+    if (!inaccuracyText.toLowerCase().includes('none identified') && 
+        !inaccuracyText.toLowerCase().includes('no inaccuracies') &&
+        !inaccuracyText.toLowerCase().includes('none found') &&
+        inaccuracyText.length > 10) {
+      
+      // Try to extract bullet points or numbered items
+      const lines = inaccuracyText.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 5);
+      
+      for (const line of lines) {
+        // Remove bullet points, numbers, dashes at start
+        const cleanedLine = line.replace(/^[-•*\d.)\]]+\s*/, '').trim();
+        if (cleanedLine.length > 5 && 
+            !cleanedLine.toLowerCase().includes('none identified') &&
+            !cleanedLine.toLowerCase().includes('no inaccuracies')) {
+          inaccuracies.push(cleanedLine);
+        }
+      }
+    }
+  }
+
+  // Extract logical and scientific analysis text with fallbacks
+  const logicalAnalysisText = logicalAnalysisMatch ? logicalAnalysisMatch[1].trim() : 
+    'Logical consistency analysis not available in expected format. See full analysis below.';
+  const scientificAnalysisText = scientificAnalysisMatch ? scientificAnalysisMatch[1].trim() : 
+    'Scientific accuracy analysis not available in expected format. See full analysis below.';
+
+  return {
+    overallScore: Math.round(overallScore * 10) / 10,
+    overallAssessment,
+    logicalConsistency: {
+      score: Math.round(logicalScore * 10) / 10,
+      assessment: logicalAssessment,
+      analysis: logicalAnalysisText
+    },
+    scientificAccuracy: {
+      score: Math.round(scientificScore * 10) / 10,
+      assessment: scientificAssessment,
+      analysis: scientificAnalysisText,
+      inaccuracies
+    },
+    fullAnalysis: output
+  };
+}

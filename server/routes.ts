@@ -3305,7 +3305,7 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
   // Coherence Meter endpoint - Analyze and improve text coherence  
   app.post("/api/coherence-meter", async (req: Request, res: Response) => {
     try {
-      const { text, mode, aggressiveness = "moderate" } = req.body;
+      const { text, mode, aggressiveness = "moderate", coherenceType } = req.body;
 
       if (!text || !mode) {
         return res.status(400).json({
@@ -3321,9 +3321,9 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
         });
       }
 
-      console.log(`Coherence Meter - Mode: ${mode}, Aggressiveness: ${aggressiveness}, Text length: ${text.length}`);
+      console.log(`Coherence Meter - Mode: ${mode}, Type: ${coherenceType || 'default'}, Aggressiveness: ${aggressiveness}, Text length: ${text.length}`);
 
-      const { analyzeCoherence, rewriteForCoherence, analyzeMathProofValidity } = await import('./services/coherenceMeter');
+      const { analyzeCoherence, rewriteForCoherence, analyzeMathProofValidity, analyzeScientificExplanatoryCoherence } = await import('./services/coherenceMeter');
 
       if (mode === "math-proof-validity") {
         const result = await analyzeMathProofValidity(text);
@@ -3338,15 +3338,30 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
           counterexamples: result.counterexamples
         });
       } else if (mode === "analyze") {
-        const result = await analyzeCoherence(text);
-        
-        res.json({
-          success: true,
-          analysis: result.analysis,
-          score: result.score,
-          assessment: result.assessment,
-          subscores: result.subscores
-        });
+        // Use specialized analyzer for scientific-explanatory coherence
+        if (coherenceType === "scientific-explanatory") {
+          const result = await analyzeScientificExplanatoryCoherence(text);
+          
+          res.json({
+            success: true,
+            analysis: result.fullAnalysis,
+            score: result.overallScore,
+            assessment: result.overallAssessment,
+            isScientificExplanatory: true,
+            logicalConsistency: result.logicalConsistency,
+            scientificAccuracy: result.scientificAccuracy
+          });
+        } else {
+          const result = await analyzeCoherence(text);
+          
+          res.json({
+            success: true,
+            analysis: result.analysis,
+            score: result.score,
+            assessment: result.assessment,
+            subscores: result.subscores
+          });
+        }
       } else {
         const result = await rewriteForCoherence(text, aggressiveness as "conservative" | "moderate" | "aggressive");
         
