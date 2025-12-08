@@ -641,6 +641,224 @@ Respond with ONLY a number from 1-10.`;
   };
 }
 
+// Math Proof Coherence Analysis - checks ONLY structural coherence, NOT truth
+export interface MathCoherenceResult {
+  score: number;
+  assessment: "PASS" | "WEAK" | "FAIL";
+  analysis: string;
+  subscores: {
+    logicalFlow: number;
+    notationalConsistency: number;
+    stepJustification: number;
+    structuralClarity: number;
+  };
+}
+
+export async function analyzeMathCoherence(text: string): Promise<MathCoherenceResult> {
+  const systemPrompt = `You are a mathematical proof STRUCTURAL COHERENCE analyzer.
+
+CRITICAL: You are evaluating INTERNAL STRUCTURAL COHERENCE only. NOT whether the proof is correct or the theorem is true.
+
+A proof can be PERFECTLY COHERENT while proving something false. A proof can be INCOHERENT while proving something true.
+
+COHERENCE CRITERIA (what you ARE checking):
+1. LOGICAL FLOW: Do steps follow from previous steps in a clear progression?
+2. NOTATIONAL CONSISTENCY: Are symbols and terms used consistently throughout?
+3. STEP JUSTIFICATION: Is each step accompanied by a reason (even if that reason is wrong)?
+4. STRUCTURAL CLARITY: Is the proof organized with clear beginning, middle, end?
+
+WHAT YOU ARE NOT CHECKING:
+- Whether the theorem is true
+- Whether individual claims are mathematically correct
+- Whether the proof actually proves what it claims
+- External mathematical validity
+
+A proof with perfect structure that "proves" 1=2 should score HIGH on coherence.
+A jumbled mess of correct statements should score LOW on coherence.`;
+
+  const userPrompt = `Analyze this mathematical proof for STRUCTURAL COHERENCE only.
+
+Do NOT evaluate whether the mathematics is correct. Only evaluate the STRUCTURE.
+
+PROOF:
+${text}
+
+OUTPUT FORMAT:
+
+LOGICAL FLOW SCORE: [X]/10
+[Does each step follow clearly from the previous? Are transitions smooth?]
+
+NOTATIONAL CONSISTENCY SCORE: [X]/10
+[Are variables and symbols used consistently? Same notation throughout?]
+
+STEP JUSTIFICATION SCORE: [X]/10
+[Does each step have a stated reason/justification? (correctness of reason is irrelevant)]
+
+STRUCTURAL CLARITY SCORE: [X]/10
+[Is there clear organization: statement, proof body, conclusion?]
+
+OVERALL COHERENCE SCORE: [X]/10
+[Average of above scores]
+
+ASSESSMENT: [PASS if ≥8 / WEAK if 5-7 / FAIL if ≤4]
+
+STRUCTURAL ANALYSIS:
+[Describe the structural strengths and weaknesses. Do NOT comment on mathematical correctness.]`;
+
+  const message = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 3000,
+    temperature: 0.3,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }]
+  });
+
+  const output = message.content[0].type === 'text' ? message.content[0].text : '';
+
+  const logicalFlowMatch = output.match(/LOGICAL FLOW SCORE:\s*(\d+(?:\.\d+)?)\/10/i);
+  const notationalMatch = output.match(/NOTATIONAL CONSISTENCY SCORE:\s*(\d+(?:\.\d+)?)\/10/i);
+  const justificationMatch = output.match(/STEP JUSTIFICATION SCORE:\s*(\d+(?:\.\d+)?)\/10/i);
+  const clarityMatch = output.match(/STRUCTURAL CLARITY SCORE:\s*(\d+(?:\.\d+)?)\/10/i);
+  const overallMatch = output.match(/OVERALL COHERENCE SCORE:\s*(\d+(?:\.\d+)?)\/10/i);
+  const assessmentMatch = output.match(/ASSESSMENT:\s*(PASS|WEAK|FAIL)/i);
+
+  const logicalFlow = logicalFlowMatch ? parseFloat(logicalFlowMatch[1]) : 5;
+  const notationalConsistency = notationalMatch ? parseFloat(notationalMatch[1]) : 5;
+  const stepJustification = justificationMatch ? parseFloat(justificationMatch[1]) : 5;
+  const structuralClarity = clarityMatch ? parseFloat(clarityMatch[1]) : 5;
+
+  const score = overallMatch ? parseFloat(overallMatch[1]) : 
+    (logicalFlow + notationalConsistency + stepJustification + structuralClarity) / 4;
+  const assessment = (assessmentMatch ? assessmentMatch[1].toUpperCase() : 
+    score >= 8 ? "PASS" : score >= 5 ? "WEAK" : "FAIL") as "PASS" | "WEAK" | "FAIL";
+
+  return {
+    score: Math.round(score * 10) / 10,
+    assessment,
+    analysis: output,
+    subscores: {
+      logicalFlow,
+      notationalConsistency,
+      stepJustification,
+      structuralClarity
+    }
+  };
+}
+
+// Math Proof Max Coherence Rewrite - improves ONLY structural coherence, preserves the theorem being proved
+export interface MathMaxCoherenceRewriteResult {
+  rewrittenProof: string;
+  changes: string;
+  coherenceScore: number;
+}
+
+export async function rewriteMathMaxCoherence(
+  text: string,
+  aggressiveness: "conservative" | "moderate" | "aggressive" = "moderate"
+): Promise<MathMaxCoherenceRewriteResult> {
+  let intensityGuide = "";
+  if (aggressiveness === "conservative") {
+    intensityGuide = "Make MINIMAL changes. Fix only obvious structural issues. Preserve original wording as much as possible.";
+  } else if (aggressiveness === "moderate") {
+    intensityGuide = "Make moderate improvements. Reorganize for clarity, add transitions, improve notation consistency.";
+  } else {
+    intensityGuide = "Maximize structural coherence. Completely restructure if needed. Add extensive justifications. Polish every transition.";
+  }
+
+  const systemPrompt = `You are a mathematical proof STRUCTURAL EDITOR.
+
+YOUR GOAL: Improve the STRUCTURAL COHERENCE of proofs WITHOUT changing the mathematical content.
+
+WHAT YOU DO:
+- Improve logical flow between steps
+- Make notation consistent throughout
+- Add or clarify step justifications
+- Improve overall structure and organization
+- Add clear transitions between sections
+- Format for maximum readability
+
+WHAT YOU DO NOT DO:
+- Fix mathematical errors
+- Change the theorem being proved
+- Add correct steps that were missing
+- Remove incorrect steps
+- Verify truth of claims
+
+You are a FORMATTER, not a MATHEMATICIAN.
+
+If the proof says 2+2=5, you KEEP that claim but make sure it flows well with surrounding steps.
+
+${intensityGuide}`;
+
+  const userPrompt = `Rewrite this mathematical proof to maximize STRUCTURAL COHERENCE.
+
+CRITICAL: Preserve ALL mathematical content exactly. Only improve structure, flow, formatting, and clarity.
+
+ORIGINAL PROOF:
+${text}
+
+Output the structurally improved proof with NO commentary or headers - just the improved proof text.`;
+
+  const message = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 6000,
+    temperature: 0.5,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }]
+  });
+
+  const rewrittenProof = message.content[0].type === 'text' ? message.content[0].text : '';
+
+  // Analyze what structural changes were made
+  const changesPrompt = `Compare these two versions of a proof and describe the STRUCTURAL changes made (not mathematical changes).
+
+Focus on: logical flow improvements, notation consistency, step justifications added, structural reorganization.
+
+ORIGINAL:
+${text}
+
+REWRITTEN:
+${rewrittenProof}
+
+List the structural improvements in bullet points.`;
+
+  const changesMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 1500,
+    temperature: 0.3,
+    messages: [{ role: "user", content: changesPrompt }]
+  });
+
+  const changes = changesMessage.content[0].type === 'text' ? changesMessage.content[0].text : '';
+
+  // Quick coherence score for the rewritten proof
+  const scorePrompt = `Rate the structural coherence of this mathematical proof on a scale of 1-10.
+Only consider: logical flow, notation consistency, step justifications, structural clarity.
+Do NOT consider mathematical correctness.
+
+PROOF:
+${rewrittenProof}
+
+Respond with ONLY a number from 1-10.`;
+
+  const scoreMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 10,
+    temperature: 0,
+    messages: [{ role: "user", content: scorePrompt }]
+  });
+
+  const scoreText = scoreMessage.content[0].type === 'text' ? scoreMessage.content[0].text : '7';
+  const coherenceScore = parseFloat(scoreText.match(/\d+(?:\.\d+)?/)?.[0] || '7');
+
+  return {
+    rewrittenProof,
+    changes,
+    coherenceScore: Math.min(10, Math.max(1, coherenceScore))
+  };
+}
+
+// Math Proof Maximize Truth Rewrite - corrects proofs or finds adjacent truths
 export interface MathProofRewriteResult {
   correctedProof: string;
   theoremStatus: "TRUE" | "FALSE" | "PARTIALLY_TRUE";
@@ -651,7 +869,7 @@ export interface MathProofRewriteResult {
   validityScore: number;
 }
 
-export async function rewriteMathProof(text: string): Promise<MathProofRewriteResult> {
+export async function rewriteMathMaximizeTruth(text: string): Promise<MathProofRewriteResult> {
   const systemPrompt = `You are a rigorous mathematician tasked with providing CORRECT mathematical proofs.
 
 YOUR MISSION:

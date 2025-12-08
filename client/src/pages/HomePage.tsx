@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle } from "lucide-react";
+import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target } from "lucide-react";
 import { analyzeDocument, compareDocuments, checkForAI } from "@/lib/analysis";
 import { AnalysisMode, DocumentInput as DocumentInputType, AIDetectionResult, DocumentAnalysis, DocumentComparison } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
@@ -791,16 +791,138 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     }
   };
 
-  const handleMathProofRewrite = async () => {
+  // MATH COHERENCE - analyze structural coherence only
+  const handleMathCoherence = async () => {
     if (!coherenceInputText.trim()) {
-      toast({
-        title: "No Input Text",
-        description: "Please enter a mathematical proof to correct",
-        variant: "destructive"
-      });
+      toast({ title: "No Input Text", description: "Please enter a mathematical proof to analyze", variant: "destructive" });
       return;
     }
+    setCoherenceLoading(true);
+    setCoherenceMode("analyze");
+    setCoherenceIsMathematical(true);
+    setCoherenceAnalysis("");
+    setCoherenceScore(null);
+    setCoherenceAssessment(null);
 
+    try {
+      const response = await fetch('/api/coherence-meter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: coherenceInputText, mode: "math-coherence" }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Analysis failed');
+      }
+      const data = await response.json();
+      if (data.success) {
+        setCoherenceAnalysis(data.analysis);
+        setCoherenceScore(data.score);
+        setCoherenceAssessment(data.assessment);
+        // Clear cogency data when doing coherence analysis
+        setMathValidityAnalysis("");
+        setMathValidityScore(null);
+        setMathValidityVerdict(null);
+        setMathValiditySubscores(null);
+        setMathValidityFlaws([]);
+        setMathValidityCounterexamples([]);
+        toast({ title: "Math Coherence Analysis Complete!", description: `Score: ${data.score}/10 - ${data.assessment}` });
+      }
+    } catch (error: any) {
+      console.error('Math coherence error:', error);
+      toast({ title: "Analysis Failed", description: error.message || "An error occurred.", variant: "destructive" });
+    } finally {
+      setCoherenceLoading(false);
+    }
+  };
+
+  // MATH COGENCY - analyze if theorem is true and proof valid
+  const handleMathCogency = async () => {
+    if (!coherenceInputText.trim()) {
+      toast({ title: "No Input Text", description: "Please enter a mathematical proof to analyze", variant: "destructive" });
+      return;
+    }
+    setCoherenceLoading(true);
+    setCoherenceMode("analyze");
+    setCoherenceIsMathematical(true);
+
+    try {
+      const response = await fetch('/api/coherence-meter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: coherenceInputText, mode: "math-cogency" }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Analysis failed');
+      }
+      const data = await response.json();
+      if (data.success) {
+        setMathValidityAnalysis(data.analysis);
+        setMathValidityScore(data.score);
+        setMathValidityVerdict(data.verdict);
+        setMathValiditySubscores(data.subscores);
+        setMathValidityFlaws(data.flaws || []);
+        setMathValidityCounterexamples(data.counterexamples || []);
+        toast({ 
+          title: "Math Cogency Analysis Complete!", 
+          description: `Score: ${data.score}/10 - ${data.verdict}` 
+        });
+      }
+    } catch (error: any) {
+      console.error('Math cogency error:', error);
+      toast({ title: "Analysis Failed", description: error.message || "An error occurred.", variant: "destructive" });
+    } finally {
+      setCoherenceLoading(false);
+    }
+  };
+
+  // MATH MAX COHERENCE - rewrite to maximize structural coherence
+  const handleMathMaxCoherence = async () => {
+    if (!coherenceInputText.trim()) {
+      toast({ title: "No Input Text", description: "Please enter a mathematical proof to rewrite", variant: "destructive" });
+      return;
+    }
+    setCoherenceLoading(true);
+    setCoherenceMode("rewrite");
+    setCoherenceRewrite("");
+    setCoherenceChanges("");
+
+    try {
+      const response = await fetch('/api/coherence-meter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          text: coherenceInputText, 
+          mode: "math-max-coherence",
+          aggressiveness: coherenceAggressiveness 
+        }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Rewrite failed');
+      }
+      const data = await response.json();
+      if (data.success) {
+        setCoherenceRewrite(data.rewrite);
+        setCoherenceChanges(data.changes);
+        setCoherenceRewriteAccuracyScore(data.coherenceScore);
+        toast({ title: "Max Coherence Rewrite Complete!", description: `Coherence Score: ${data.coherenceScore}/10` });
+      }
+    } catch (error: any) {
+      console.error('Math max coherence error:', error);
+      toast({ title: "Rewrite Failed", description: error.message || "An error occurred.", variant: "destructive" });
+    } finally {
+      setCoherenceLoading(false);
+    }
+  };
+
+  // MATH MAXIMIZE TRUTH - correct proofs or find adjacent truths
+  const handleMathMaximizeTruth = async () => {
+    if (!coherenceInputText.trim()) {
+      toast({ title: "No Input Text", description: "Please enter a mathematical proof to correct", variant: "destructive" });
+      return;
+    }
     setCoherenceLoading(true);
     setCoherenceMode("rewrite");
     setMathProofCorrectedProof("");
@@ -816,17 +938,12 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       const response = await fetch('/api/coherence-meter', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: coherenceInputText,
-          mode: "math-proof-rewrite"
-        }),
+        body: JSON.stringify({ text: coherenceInputText, mode: "math-maximize-truth" }),
       });
-
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Math proof correction failed');
       }
-
       const data = await response.json();
       if (data.success) {
         setMathProofCorrectedProof(data.correctedProof);
@@ -844,18 +961,11 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           ? "Theorem is FALSE - Similar true theorem proved instead"
           : "Theorem is PARTIALLY TRUE - Corrected with proper conditions";
         
-        toast({
-          title: "Math Proof Correction Complete!",
-          description: `${statusMessage} (Validity: ${data.validityScore}/10)`,
-        });
+        toast({ title: "Math Proof Correction Complete!", description: `${statusMessage} (Validity: ${data.validityScore}/10)` });
       }
     } catch (error: any) {
-      console.error('Math proof rewrite error:', error);
-      toast({
-        title: "Proof Correction Failed",
-        description: error.message || "An error occurred during math proof correction.",
-        variant: "destructive",
-      });
+      console.error('Math maximize truth error:', error);
+      toast({ title: "Proof Correction Failed", description: error.message || "An error occurred.", variant: "destructive" });
     } finally {
       setCoherenceLoading(false);
     }
@@ -3508,77 +3618,135 @@ Generated on: ${new Date().toLocaleString()}`;
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-wrap gap-4 mb-6">
-            <Button
-              onClick={handleCoherenceAnalyze}
-              disabled={coherenceLoading}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-6 text-lg flex-1 min-w-[200px]"
-              data-testid="button-analyze-coherence"
-            >
-              {coherenceLoading && coherenceMode === "analyze" ? (
-                <>
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  Analyzing...
-                </>
-              ) : (
-                <>
-                  <BarChart3 className="w-5 h-5 mr-2" />
-                  ANALYZE COHERENCE
-                </>
-              )}
-            </Button>
-
-            <Button
-              onClick={handleCoherenceRewrite}
-              disabled={coherenceLoading}
-              className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-6 text-lg flex-1 min-w-[200px]"
-              data-testid="button-rewrite-coherence"
-            >
-              {coherenceLoading && coherenceMode === "rewrite" ? (
-                <>
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  Rewriting...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-5 h-5 mr-2" />
-                  REWRITE TO MAX COHERENCE
-                </>
-              )}
-            </Button>
-
-            <Button
-              onClick={handleCoherenceClear}
-              variant="outline"
-              className="border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
-              data-testid="button-clear-coherence"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Clear All
-            </Button>
-
-            {coherenceType === "mathematical" && (
+          {/* Action Buttons - Different layout for mathematical vs other types */}
+          {coherenceType === "mathematical" ? (
+            /* FOUR BUTTONS FOR MATHEMATICAL PROOFS */
+            <div className="space-y-4 mb-6">
+              <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Analysis Functions:</div>
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  onClick={handleMathCoherence}
+                  disabled={coherenceLoading}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-5 flex-1 min-w-[180px]"
+                  data-testid="button-math-coherence"
+                >
+                  {coherenceLoading && coherenceMode === "analyze" ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Analyzing...</>
+                  ) : (
+                    <><BarChart3 className="w-4 h-4 mr-2" />COHERENCE</>
+                  )}
+                </Button>
+                <Button
+                  onClick={handleMathCogency}
+                  disabled={coherenceLoading}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-5 flex-1 min-w-[180px]"
+                  data-testid="button-math-cogency"
+                >
+                  {coherenceLoading ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Analyzing...</>
+                  ) : (
+                    <><CheckCircle className="w-4 h-4 mr-2" />COGENCY</>
+                  )}
+                </Button>
+              </div>
+              <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 mt-4">Rewrite Functions:</div>
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  onClick={handleMathMaxCoherence}
+                  disabled={coherenceLoading}
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-5 flex-1 min-w-[180px]"
+                  data-testid="button-math-max-coherence"
+                >
+                  {coherenceLoading && coherenceMode === "rewrite" ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Rewriting...</>
+                  ) : (
+                    <><Sparkles className="w-4 h-4 mr-2" />MAX COHERENCE</>
+                  )}
+                </Button>
+                <Button
+                  onClick={handleMathMaximizeTruth}
+                  disabled={coherenceLoading}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-5 flex-1 min-w-[180px]"
+                  data-testid="button-math-maximize-truth"
+                >
+                  {coherenceLoading && mathProofIsCorrected === false ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Correcting...</>
+                  ) : (
+                    <><Target className="w-4 h-4 mr-2" />MAXIMIZE TRUTH</>
+                  )}
+                </Button>
+              </div>
+              <div className="flex justify-end mt-2">
+                <Button
+                  onClick={handleCoherenceClear}
+                  variant="outline"
+                  className="border-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  data-testid="button-clear-coherence"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Clear All
+                </Button>
+              </div>
+              {/* Math Mode Explanations */}
+              <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg text-xs text-gray-600 dark:text-gray-400 space-y-2">
+                <p><strong>COHERENCE:</strong> Evaluates structural coherence only (logical flow, notation, organization) - NOT whether the theorem is true.</p>
+                <p><strong>COGENCY:</strong> Evaluates whether the theorem is TRUE and whether the proof is mathematically valid.</p>
+                <p><strong>MAX COHERENCE:</strong> Rewrites to improve structural coherence without changing the mathematical claims.</p>
+                <p><strong>MAXIMIZE TRUTH:</strong> Corrects defective proofs OR replaces proofs of falsehoods with proofs of similar true theorems.</p>
+              </div>
+            </div>
+          ) : (
+            /* STANDARD BUTTONS FOR NON-MATHEMATICAL TYPES */
+            <div className="flex flex-wrap gap-4 mb-6">
               <Button
-                onClick={handleMathProofRewrite}
+                onClick={handleCoherenceAnalyze}
                 disabled={coherenceLoading}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-6 text-lg flex-1 min-w-[200px]"
-                data-testid="button-correct-math-proof"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-6 text-lg flex-1 min-w-[200px]"
+                data-testid="button-analyze-coherence"
               >
-                {coherenceLoading && mathProofIsCorrected === false && coherenceMode === "rewrite" ? (
+                {coherenceLoading && coherenceMode === "analyze" ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Correcting Proof...
+                    Analyzing...
                   </>
                 ) : (
                   <>
-                    <CheckCircle className="w-5 h-5 mr-2" />
-                    CORRECT MATH PROOF
+                    <BarChart3 className="w-5 h-5 mr-2" />
+                    ANALYZE COHERENCE
                   </>
                 )}
               </Button>
-            )}
-          </div>
+
+              <Button
+                onClick={handleCoherenceRewrite}
+                disabled={coherenceLoading}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-6 text-lg flex-1 min-w-[200px]"
+                data-testid="button-rewrite-coherence"
+              >
+                {coherenceLoading && coherenceMode === "rewrite" ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Rewriting...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5 mr-2" />
+                    REWRITE TO MAX COHERENCE
+                  </>
+                )}
+              </Button>
+
+              <Button
+                onClick={handleCoherenceClear}
+                variant="outline"
+                className="border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+                data-testid="button-clear-coherence"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Clear All
+              </Button>
+            </div>
+          )}
 
           {/* Stage Progress Indicator */}
           {coherenceLoading && coherenceStageProgress && (

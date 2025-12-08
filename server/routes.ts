@@ -3314,22 +3314,47 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
         });
       }
 
-      if (mode !== "analyze" && mode !== "rewrite" && mode !== "math-proof-validity" && mode !== "math-proof-rewrite") {
+      const validModes = ["analyze", "rewrite", "math-coherence", "math-cogency", "math-max-coherence", "math-maximize-truth"];
+      if (!validModes.includes(mode)) {
         return res.status(400).json({
           success: false,
-          message: "Mode must be 'analyze', 'rewrite', 'math-proof-validity', or 'math-proof-rewrite'"
+          message: `Mode must be one of: ${validModes.join(", ")}`
         });
       }
 
       console.log(`Coherence Meter - Mode: ${mode}, Type: ${coherenceType || 'default'}, Aggressiveness: ${aggressiveness}, Text length: ${text.length}`);
 
-      const { analyzeCoherence, rewriteForCoherence, analyzeMathProofValidity, analyzeScientificExplanatoryCoherence, rewriteScientificExplanatory, rewriteMathProof } = await import('./services/coherenceMeter');
+      const { 
+        analyzeCoherence, 
+        rewriteForCoherence, 
+        analyzeMathProofValidity, 
+        analyzeMathCoherence,
+        rewriteMathMaxCoherence,
+        rewriteMathMaximizeTruth,
+        analyzeScientificExplanatoryCoherence, 
+        rewriteScientificExplanatory 
+      } = await import('./services/coherenceMeter');
 
-      if (mode === "math-proof-validity") {
+      // MATH COHERENCE - structural coherence only, NOT truth
+      if (mode === "math-coherence") {
+        const result = await analyzeMathCoherence(text);
+        
+        res.json({
+          success: true,
+          isMathCoherence: true,
+          analysis: result.analysis,
+          score: result.score,
+          assessment: result.assessment,
+          subscores: result.subscores
+        });
+      }
+      // MATH COGENCY - checks if theorem is TRUE and proof is valid  
+      else if (mode === "math-cogency") {
         const result = await analyzeMathProofValidity(text);
         
         res.json({
           success: true,
+          isMathCogency: true,
           analysis: result.analysis,
           score: result.score,
           verdict: result.verdict,
@@ -3337,21 +3362,36 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
           flaws: result.flaws,
           counterexamples: result.counterexamples
         });
-      } else if (mode === "math-proof-rewrite") {
-        const result = await rewriteMathProof(text);
+      }
+      // MATH MAX COHERENCE - improve structural coherence only, preserve theorem
+      else if (mode === "math-max-coherence") {
+        const result = await rewriteMathMaxCoherence(text, aggressiveness as "conservative" | "moderate" | "aggressive");
         
         res.json({
           success: true,
+          isMathMaxCoherence: true,
+          rewrite: result.rewrittenProof,
+          changes: result.changes,
+          coherenceScore: result.coherenceScore
+        });
+      }
+      // MATH MAXIMIZE TRUTH - correct proofs or find adjacent truths
+      else if (mode === "math-maximize-truth") {
+        const result = await rewriteMathMaximizeTruth(text);
+        
+        res.json({
+          success: true,
+          isMathMaximizeTruth: true,
           correctedProof: result.correctedProof,
           theoremStatus: result.theoremStatus,
           originalTheorem: result.originalTheorem,
           correctedTheorem: result.correctedTheorem,
           proofStrategy: result.proofStrategy,
           keyCorrections: result.keyCorrections,
-          validityScore: result.validityScore,
-          isMathProofRewrite: true
+          validityScore: result.validityScore
         });
-      } else if (mode === "analyze") {
+      }
+      else if (mode === "analyze") {
         // Use specialized analyzer for scientific-explanatory coherence
         if (coherenceType === "scientific-explanatory") {
           const result = await analyzeScientificExplanatoryCoherence(text);
@@ -3364,33 +3404,6 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
             isScientificExplanatory: true,
             logicalConsistency: result.logicalConsistency,
             scientificAccuracy: result.scientificAccuracy
-          });
-        } else if (coherenceType === "mathematical") {
-          // For mathematical proofs: run BOTH coherence analysis AND validity analysis
-          const [coherenceResult, validityResult] = await Promise.all([
-            analyzeCoherence(text),
-            analyzeMathProofValidity(text)
-          ]);
-          
-          res.json({
-            success: true,
-            isMathematical: true,
-            // Coherence analysis (logical structure)
-            coherenceAnalysis: coherenceResult.analysis,
-            coherenceScore: coherenceResult.score,
-            coherenceAssessment: coherenceResult.assessment,
-            coherenceSubscores: coherenceResult.subscores,
-            // Validity analysis (veridicality - is it actually true?)
-            validityAnalysis: validityResult.analysis,
-            validityScore: validityResult.score,
-            validityVerdict: validityResult.verdict,
-            validitySubscores: validityResult.subscores,
-            flaws: validityResult.flaws,
-            counterexamples: validityResult.counterexamples,
-            // Combined scores for display
-            score: coherenceResult.score,
-            assessment: coherenceResult.assessment,
-            analysis: coherenceResult.analysis
           });
         } else {
           const result = await analyzeCoherence(text);
