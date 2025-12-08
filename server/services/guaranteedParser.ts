@@ -717,15 +717,24 @@ export function parseMAGuaranteed(text: string): MAGuaranteedValues {
   console.log('[GuaranteedParser] Starting M&A extraction from text...');
   
   // ============ PURCHASE PRICE ============
+  // CRITICAL: Must include b|bn|billion units for billion-scale deals
   const purchasePricePatterns = [
-    /(?:equity\s+value|purchase\s+price|ev|enterprise\s+value)\s*[=:]\s*\$?([\d,.]+)\s*(?:m|mm|million)?/i,
-    /(?:buy(?:ing)?|acquir(?:e|ing))\s+(?:for|at)\s+\$?([\d,.]+)\s*(?:m|mm|million)?/i,
+    /(?:equity\s+value|purchase\s+price|ev|enterprise\s+value)\s*[=:]\s*\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
+    /(?:buy(?:ing)?|acquir(?:e|ing)|acquiring)\s+(?:for|at)?\s*\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
+    /for\s+\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)/i,
     /\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\s+(?:purchase|acquisition|deal|transaction)/i,
   ];
   const purchasePrice = extractMoney(text, purchasePricePatterns);
   if (purchasePrice !== null) {
     result.purchasePrice = purchasePrice;
     console.log(`[GuaranteedParser] Purchase price: $${purchasePrice}M`);
+  } else {
+    // Fallback: try extractMoneyWithUnits for standalone dollar amounts
+    const fallbackPrice = extractMoneyWithUnits(text);
+    if (fallbackPrice !== null && fallbackPrice >= 100) {
+      result.purchasePrice = fallbackPrice;
+      console.log(`[GuaranteedParser] Purchase price (fallback): $${fallbackPrice}M`);
+    }
   }
   
   // ============ TARGET EBITDA ============
@@ -788,9 +797,11 @@ export function parseMAGuaranteed(text: string): MAGuaranteedValues {
   }
   
   // ============ SYNERGIES ============
+  // Patterns for "Cost synergies of $40M" or "$40M cost synergies"
   const costSynergyPatterns = [
-    /\$?([\d,.]+)\s*(?:m|mm|million)?\s+(?:cost|expense)\s+synerg/i,
-    /cost\s+synerg[^$]*([\d,.]+)\s*(?:m|mm|million)?/i,
+    /cost\s+synerg(?:ies|y)?\s+(?:of\s+)?\$?([\d,.]+)\s*(?:m|mm|million)?/i,
+    /\$?([\d,.]+)\s*(?:m|mm|million)?\s+(?:in\s+)?cost\s+synerg/i,
+    /(?:cost|expense)\s+saving[s]?\s+(?:of\s+)?\$?([\d,.]+)\s*(?:m|mm|million)?/i,
   ];
   const costSynergy = extractMoney(text, costSynergyPatterns);
   if (costSynergy !== null) {
@@ -798,9 +809,11 @@ export function parseMAGuaranteed(text: string): MAGuaranteedValues {
     console.log(`[GuaranteedParser] Cost synergies: $${costSynergy}M`);
   }
   
+  // Patterns for "Revenue synergies of $20M" or "$20M revenue synergies"
   const revSynergyPatterns = [
-    /\$?([\d,.]+)\s*(?:m|mm|million)?\s+(?:revenue)\s+synerg/i,
-    /revenue\s+synerg[^$]*([\d,.]+)\s*(?:m|mm|million)?/i,
+    /revenue\s+synerg(?:ies|y)?\s+(?:of\s+)?\$?([\d,.]+)\s*(?:m|mm|million)?/i,
+    /\$?([\d,.]+)\s*(?:m|mm|million)?\s+(?:in\s+)?revenue\s+synerg/i,
+    /revenue\s+uplift\s+(?:of\s+)?\$?([\d,.]+)\s*(?:m|mm|million)?/i,
   ];
   const revSynergy = extractMoney(text, revSynergyPatterns);
   if (revSynergy !== null) {
@@ -823,11 +836,96 @@ export function parseMAGuaranteed(text: string): MAGuaranteedValues {
   const acquirerSharesPatterns = [
     /acquirer\s*(?:has\s+)?([\d,.]+)\s*(?:m|mm|million)?\s*shares/i,
     /([\d,.]+)\s*(?:m|mm|million)?\s+(?:acquirer\s+)?shares\s+outstanding/i,
+    /(?:buyer|acquirer)\s+has\s+([\d,.]+)\s*(?:m|mm|million)?\s+shares/i,
+    /([\d,.]+)\s*(?:m|mm|million)\s+shares\s+at\s+\$/i,
   ];
   const acquirerShares = extractNumber(text, acquirerSharesPatterns);
   if (acquirerShares !== null) {
     result.acquirerShares = acquirerShares;
     console.log(`[GuaranteedParser] Acquirer shares: ${acquirerShares}M`);
+  }
+  
+  // ============ ACQUIRER STOCK PRICE ============
+  const stockPricePatterns = [
+    /(?:buyer|acquirer)\s*(?:stock|share)\s*(?:price)?\s*(?:at|of)?\s*\$?([\d.]+)/i,
+    /\$?([\d.]+)\s+per\s+share/i,
+    /shares\s+at\s+\$?([\d.]+)/i,
+    /(?:stock|share)\s+price\s*[=:]\s*\$?([\d.]+)/i,
+  ];
+  const stockPrice = extractNumber(text, stockPricePatterns);
+  if (stockPrice !== null) {
+    result.acquirerStockPrice = stockPrice;
+    console.log(`[GuaranteedParser] Acquirer stock price: $${stockPrice}`);
+  }
+  
+  // ============ ACQUIRER REVENUE ============
+  const acquirerRevenuePatterns = [
+    /(?:buyer|acquirer)\s+(?:has\s+)?\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\s+(?:in\s+)?revenue/i,
+    /acquirer\s+revenue\s*(?:of\s+)?\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
+    /\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\s+(?:buyer|acquirer)\s+revenue/i,
+  ];
+  const acquirerRevenue = extractMoney(text, acquirerRevenuePatterns);
+  if (acquirerRevenue !== null) {
+    result.acquirerRevenue = acquirerRevenue;
+    console.log(`[GuaranteedParser] Acquirer revenue: $${acquirerRevenue}M`);
+  }
+  
+  // ============ ACQUIRER EBITDA MARGIN ============
+  const ebitdaMarginPatterns = [
+    /([\d.]+)\s*%\s*ebitda\s+margin/i,
+    /ebitda\s+margin\s*(?:of\s+)?([\d.]+)\s*%/i,
+  ];
+  const ebitdaMargin = extractPercent(text, ebitdaMarginPatterns);
+  if (ebitdaMargin !== null) {
+    result.acquirerEBITDA = result.acquirerRevenue * ebitdaMargin;
+    console.log(`[GuaranteedParser] Acquirer EBITDA margin: ${(ebitdaMargin * 100).toFixed(0)}% => $${result.acquirerEBITDA.toFixed(0)}M`);
+  }
+  
+  // ============ NEW DEBT FINANCING ============
+  const debtPatterns = [
+    /(?:new\s+)?debt\s+(?:of\s+)?\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
+    /\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\s+(?:new\s+)?debt/i,
+    /borrow(?:ing)?\s+\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
+  ];
+  const debtAmount = extractMoney(text, debtPatterns);
+  if (debtAmount !== null) {
+    result.debtFinancing = debtAmount;
+    console.log(`[GuaranteedParser] Debt financing: $${debtAmount}M`);
+  }
+  
+  // ============ DEBT RATE ============
+  const debtRatePatterns = [
+    /debt\s+(?:at\s+)?([\d.]+)\s*%/i,
+    /([\d.]+)\s*%\s+interest/i,
+    /interest\s+(?:rate\s+)?(?:of\s+)?([\d.]+)\s*%/i,
+  ];
+  const debtRate = extractPercent(text, debtRatePatterns);
+  if (debtRate !== null) {
+    result.debtRate = debtRate;
+    console.log(`[GuaranteedParser] Debt rate: ${(debtRate * 100).toFixed(1)}%`);
+  }
+  
+  // ============ REVENUE GROWTH ============
+  const growthPatterns = [
+    /([\d.]+)\s*%\s+(?:revenue\s+)?growth/i,
+    /growth\s+(?:rate\s+)?(?:of\s+)?([\d.]+)\s*%/i,
+  ];
+  const growthRate = extractPercent(text, growthPatterns);
+  if (growthRate !== null) {
+    result.revenueGrowthRate = growthRate;
+    console.log(`[GuaranteedParser] Revenue growth: ${(growthRate * 100).toFixed(0)}%`);
+  }
+  
+  // ============ TARGET REVENUE ============
+  const targetRevenuePatterns = [
+    /(?:target|targetco)\s+(?:has\s+)?\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\s+(?:in\s+)?revenue/i,
+    /target\s+revenue\s*(?:of\s+)?\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
+    /\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\s+(?:target\s+)?revenue/i,
+  ];
+  const targetRevenue = extractMoney(text, targetRevenuePatterns);
+  if (targetRevenue !== null) {
+    result.targetRevenue = targetRevenue;
+    console.log(`[GuaranteedParser] Target revenue: $${targetRevenue}M`);
   }
   
   // ============ FINAL OUTPUT ============
