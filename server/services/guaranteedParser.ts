@@ -1032,10 +1032,34 @@ export function parseIPOGuaranteed(text: string): IPOGuaranteedValues {
     console.log(`[GuaranteedParser] Revenue: $${revenue}M`);
   }
   
-  // ============ MULTIPLE ============
+  // ============ EBITDA ============
+  const ebitdaPatterns = [
+    /ebitda\s+(?:of\s+)?\$?([\d,.]+)\s*(?:m|mm|million)?/i,
+    /\$?([\d,.]+)\s*(?:m|mm|million)?\s+(?:in\s+)?ebitda/i,
+  ];
+  const ebitda = extractMoney(text, ebitdaPatterns);
+  if (ebitda !== null) {
+    result.ebitda = ebitda;
+    console.log(`[GuaranteedParser] EBITDA: $${ebitda}M`);
+  }
+  
+  // ============ EBITDA MARGIN ============
+  const ebitdaMarginPatterns = [
+    /ebitda\s+margin\s*(?:of\s+)?([\d.]+)\s*%/i,
+    /([\d.]+)\s*%\s+ebitda\s+margin/i,
+  ];
+  const ebitdaMargin = extractPercent(text, ebitdaMarginPatterns);
+  if (ebitdaMargin !== null && result.revenue > 0) {
+    result.ebitda = result.revenue * ebitdaMargin;
+    console.log(`[GuaranteedParser] EBITDA from margin ${(ebitdaMargin * 100).toFixed(0)}%: $${result.ebitda}M`);
+  }
+  
+  // ============ REVENUE MULTIPLE ============
   const multiplePatterns = [
     /([\d.]+)\s*[×x]\s*revenue/i,
     /revenue\s+multiple\s*(?:of\s+)?([\d.]+)/i,
+    /peer\s+(?:company\s+)?multiple\s*(?:of\s+)?([\d.]+)/i,
+    /([\d.]+)\s*[×x]\s*(?:peer|multiple)/i,
   ];
   const multiple = extractNumber(text, multiplePatterns);
   if (multiple !== null) {
@@ -1057,7 +1081,63 @@ export function parseIPOGuaranteed(text: string): IPOGuaranteedValues {
     console.log(`[GuaranteedParser] Valuation calculated: $${result.preMoneyValuation}M`);
   }
   
-  // ============ DISCOUNT ============
+  // ============ PRE-IPO SHARES ============
+  const preIPOSharesPatterns = [
+    /([\d,.]+)\s*(?:m|mm|million)?\s+(?:pre-?ipo\s+)?shares?\s+outstanding/i,
+    /(?:pre-?ipo\s+)?shares?\s+(?:outstanding\s+)?(?:of\s+)?([\d,.]+)\s*(?:m|mm|million)?/i,
+    /([\d,.]+)\s*(?:m|mm|million)?\s+shares?\s+(?:before|pre|existing)/i,
+    /shares?\s*[=:]\s*([\d,.]+)\s*(?:m|mm|million)?/i,
+  ];
+  const preIPOShares = extractNumber(text, preIPOSharesPatterns);
+  if (preIPOShares !== null) {
+    result.preIPOShares = preIPOShares;
+    console.log(`[GuaranteedParser] Pre-IPO shares: ${preIPOShares}M`);
+  }
+  
+  // ============ NEW PRIMARY SHARES ============
+  const newSharesPatterns = [
+    /([\d,.]+)\s*(?:m|mm|million)?\s+(?:new|primary)\s+shares?/i,
+    /(?:new|primary)\s+shares?\s+(?:of\s+)?([\d,.]+)\s*(?:m|mm|million)?/i,
+    /issu(?:e|ing)\s+([\d,.]+)\s*(?:m|mm|million)?\s+shares?/i,
+    /(?:raise|raising|offer)\s+(?:of\s+)?([\d,.]+)\s*(?:m|mm|million)?\s+shares?/i,
+  ];
+  const newPrimaryShares = extractNumber(text, newSharesPatterns);
+  if (newPrimaryShares !== null) {
+    result.newPrimaryShares = newPrimaryShares;
+    console.log(`[GuaranteedParser] New primary shares: ${newPrimaryShares}M`);
+  }
+  
+  // ============ SECONDARY SHARES ============
+  const secondarySharesPatterns = [
+    /([\d,.]+)\s*(?:m|mm|million)?\s+secondary\s+shares?/i,
+    /secondary\s+(?:shares?\s+)?(?:of\s+)?([\d,.]+)\s*(?:m|mm|million)?/i,
+    /(?:selling\s+shareholders?|existing\s+holders?)\s+(?:sell(?:ing)?\s+)?([\d,.]+)\s*(?:m|mm|million)?/i,
+  ];
+  const secondaryShares = extractNumber(text, secondarySharesPatterns);
+  if (secondaryShares !== null) {
+    result.secondaryShares = secondaryShares;
+    console.log(`[GuaranteedParser] Secondary shares: ${secondaryShares}M`);
+  }
+  
+  // ============ GREENSHOE ============
+  const greenshoePatterns = [
+    /greenshoe\s+(?:of\s+)?([\d.]+)\s*%/i,
+    /([\d.]+)\s*%\s+greenshoe/i,
+    /over-?allotment\s+(?:of\s+)?([\d.]+)\s*%/i,
+  ];
+  const greenshoePercent = extractPercent(text, greenshoePatterns);
+  if (greenshoePercent !== null) {
+    // Greenshoe is typically a percentage of the primary offering
+    const baseShares = result.newPrimaryShares || IPO_DEFAULTS.newPrimaryShares;
+    result.greenshoeShares = baseShares * greenshoePercent;
+    console.log(`[GuaranteedParser] Greenshoe: ${(greenshoePercent * 100).toFixed(0)}% = ${result.greenshoeShares}M shares`);
+  } else {
+    // Default 15% greenshoe
+    result.greenshoeShares = (result.newPrimaryShares || IPO_DEFAULTS.newPrimaryShares) * 0.15;
+    console.log(`[GuaranteedParser] Greenshoe (default 15%): ${result.greenshoeShares}M shares`);
+  }
+  
+  // ============ IPO DISCOUNT ============
   const discountPatterns = [
     /(?:ipo\s+)?discount\s*(?:of\s+)?([\d.]+)\s*%/i,
     /([\d.]+)\s*%\s+(?:ipo\s+)?discount/i,
@@ -1068,11 +1148,40 @@ export function parseIPOGuaranteed(text: string): IPOGuaranteedValues {
     console.log(`[GuaranteedParser] IPO discount: ${(discount * 100).toFixed(0)}%`);
   }
   
+  // ============ UNDERWRITING FEE ============
+  const underwritingPatterns = [
+    /underwriting\s+(?:fee\s+)?(?:of\s+)?([\d.]+)\s*%/i,
+    /([\d.]+)\s*%\s+underwriting/i,
+    /(?:fee|spread)\s+(?:of\s+)?([\d.]+)\s*%/i,
+  ];
+  const underwritingFee = extractPercent(text, underwritingPatterns);
+  if (underwritingFee !== null) {
+    result.underwritingFee = underwritingFee;
+    console.log(`[GuaranteedParser] Underwriting fee: ${(underwritingFee * 100).toFixed(0)}%`);
+  }
+  
+  // ============ REVENUE GROWTH ============
+  const growthPatterns = [
+    /([\d.]+)\s*%\s*(?:revenue\s+)?growth/i,
+    /grow(?:th|ing)\s*(?:at\s+)?([\d.]+)\s*%/i,
+  ];
+  const growth = extractPercent(text, growthPatterns);
+  if (growth !== null) {
+    // Store growth rate if needed for LLM
+    console.log(`[GuaranteedParser] Revenue growth: ${(growth * 100).toFixed(0)}%`);
+  }
+  
   console.log('[GuaranteedParser] === FINAL IPO VALUES ===');
   console.log(`  Revenue: $${result.revenue}M`);
+  console.log(`  EBITDA: $${result.ebitda}M`);
   console.log(`  Multiple: ${result.revenueMultiple}x`);
   console.log(`  Valuation: $${result.preMoneyValuation}M`);
+  console.log(`  Pre-IPO Shares: ${result.preIPOShares}M`);
+  console.log(`  New Primary Shares: ${result.newPrimaryShares}M`);
+  console.log(`  Secondary Shares: ${result.secondaryShares}M`);
+  console.log(`  Greenshoe: ${result.greenshoeShares}M`);
   console.log(`  Discount: ${(result.ipoDiscount * 100).toFixed(0)}%`);
+  console.log(`  Underwriting Fee: ${(result.underwritingFee * 100).toFixed(1)}%`);
   console.log('[GuaranteedParser] === END ===');
   
   return result;

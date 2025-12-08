@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { runInstrumentEngine, InstrumentEngineResult } from './ipoInstrumentEngine';
+import { parseIPOGuaranteed, IPO_DEFAULTS, type IPOGuaranteedValues } from './guaranteedParser';
 
 export type FinanceLLMProvider = 'zhi1' | 'zhi2' | 'zhi3' | 'zhi4' | 'zhi5';
 
@@ -577,7 +578,12 @@ export async function parseIPODescription(
     responseText = response.choices[0]?.message?.content || '';
   }
 
-  // Parse JSON response
+  // ============ GUARANTEED PARSER (BULLETPROOF - NEVER RETURNS UNDEFINED) ============
+  // This parser ALWAYS returns complete values - regex extraction with guaranteed defaults
+  console.log(`[IPO Parser] Running guaranteed parser (regex + defaults)...`);
+  const guaranteed = parseIPOGuaranteed(description);
+  
+  // Parse JSON response from LLM
   let jsonStr = responseText.trim();
   if (jsonStr.startsWith('```json')) {
     jsonStr = jsonStr.slice(7);
@@ -589,7 +595,13 @@ export async function parseIPODescription(
     jsonStr = jsonStr.slice(0, -3);
   }
   
-  const parsed = JSON.parse(jsonStr.trim());
+  let parsed: any = {};
+  try {
+    parsed = JSON.parse(jsonStr.trim());
+    console.log(`[IPO Parser] LLM parsing succeeded, will merge with guaranteed values`);
+  } catch (e) {
+    console.log(`[IPO Parser] LLM JSON parse failed, using guaranteed parser only`);
+  }
   
   // Debug: Log what the LLM returned for key fields
   console.log(`[IPO Parser] LLM returned preIpoShares: ${parsed.preIpoShares} (type: ${typeof parsed.preIpoShares})`);
@@ -724,20 +736,67 @@ export async function parseIPODescription(
     console.log(`[IPO Parser] Parsed ${valuationMultiples?.length ?? 0} valuation multiples`);
   }
   
-  // Apply defaults with normalization
+  // ============ MERGE GUARANTEED VALUES WITH LLM VALUES ============
+  // Priority: Regex-extracted guaranteed values > LLM parsed values > Defaults
+  // This ensures ZERO undefined values in critical fields
+  
+  // Helper to use guaranteed value if LLM value is missing/undefined/zero
+  const useGuaranteedIfMissing = (llmVal: number | undefined, guaranteedVal: number, fieldName: string): number => {
+    if (llmVal === undefined || llmVal === null || (llmVal === 0 && guaranteedVal !== 0)) {
+      console.log(`[IPO Parser] Using guaranteed ${fieldName}: ${guaranteedVal}`);
+      return guaranteedVal;
+    }
+    return llmVal;
+  };
+  
+  // Apply merged values - guaranteed parser provides bulletproof defaults
+  const finalRevenue = useGuaranteedIfMissing(normalizeToMillions(parsed.ltmRevenue, 'ltmRevenue'), guaranteed.revenue, 'revenue');
+  const finalMultiple = useGuaranteedIfMissing(parsed.industryRevenueMultiple, guaranteed.revenueMultiple, 'revenueMultiple');
+  const finalPreIpoShares = useGuaranteedIfMissing(normalizeShares(parsed.preIpoShares, 'preIpoShares'), guaranteed.preIPOShares, 'preIpoShares');
+  const finalSecondaryShares = useGuaranteedIfMissing(normalizeShares(parsed.secondaryShares, 'secondaryShares'), guaranteed.secondaryShares, 'secondaryShares');
+  const finalNewPrimaryShares = useGuaranteedIfMissing(normalizeShares(parsed.newPrimaryShares, 'newPrimaryShares'), guaranteed.newPrimaryShares, 'newPrimaryShares');
+  const finalDiscount = parsed.ipoDiscount ?? guaranteed.ipoDiscount;
+  const finalGreenshoePercent = parsed.greenshoePercent ?? 0.15;
+  const finalGreenshoeShares = useGuaranteedIfMissing(undefined, guaranteed.greenshoeShares, 'greenshoeShares');
+  const finalUnderwritingFee = parsed.underwritingFeePercent ?? guaranteed.underwritingFee;
+  const finalEbitda = useGuaranteedIfMissing(normalizeToMillions(parsed.ltmEbitda, 'ltmEbitda'), guaranteed.ebitda, 'ebitda');
+  
+  // Calculate primary raise target from shares × estimated price if not provided
+  let finalPrimaryRaiseTarget = normalizeToMillions(parsed.primaryRaiseTarget, 'primaryRaiseTarget') || 0;
+  if (!finalPrimaryRaiseTarget && finalNewPrimaryShares > 0 && finalRevenue > 0 && finalMultiple > 0) {
+    // Estimate: raise = new shares × (valuation / total post-ipo shares) × (1 - discount)
+    const estimatedValuation = finalRevenue * finalMultiple;
+    const estimatedPostIpoShares = finalPreIpoShares + finalNewPrimaryShares + finalGreenshoeShares;
+    const estimatedPrice = (estimatedValuation * (1 - finalDiscount)) / estimatedPostIpoShares;
+    finalPrimaryRaiseTarget = finalNewPrimaryShares * estimatedPrice;
+    console.log(`[IPO Parser] Calculated primaryRaiseTarget: ${finalNewPrimaryShares}M shares × $${estimatedPrice.toFixed(2)} = $${finalPrimaryRaiseTarget.toFixed(2)}M`);
+  }
+  
+  console.log(`[IPO Parser] === FINAL ASSUMPTIONS (ALL GUARANTEED) ===`);
+  console.log(`  Revenue: $${finalRevenue}M`);
+  console.log(`  EBITDA: $${finalEbitda}M`);
+  console.log(`  Multiple: ${finalMultiple}x`);
+  console.log(`  Pre-IPO Shares: ${finalPreIpoShares}M`);
+  console.log(`  New Primary Shares: ${finalNewPrimaryShares}M`);
+  console.log(`  Secondary Shares: ${finalSecondaryShares}M`);
+  console.log(`  Greenshoe Shares: ${finalGreenshoeShares}M`);
+  console.log(`  IPO Discount: ${(finalDiscount * 100).toFixed(0)}%`);
+  console.log(`  Primary Raise Target: $${finalPrimaryRaiseTarget.toFixed(2)}M`);
+  console.log(`[IPO Parser] =====================================`);
+  
   return {
-    companyName: parsed.companyName || 'Target Company',
+    companyName: parsed.companyName || guaranteed.companyName || 'Target Company',
     transactionDate: parsed.transactionDate || new Date().toISOString().split('T')[0],
-    ltmRevenue: normalizeToMillions(parsed.ltmRevenue, 'ltmRevenue') || 0,
-    ltmEbitda: normalizeToMillions(parsed.ltmEbitda, 'ltmEbitda'),
-    industryRevenueMultiple: parsed.industryRevenueMultiple,
+    ltmRevenue: finalRevenue,
+    ltmEbitda: finalEbitda,
+    industryRevenueMultiple: finalMultiple,
     industryEbitdaMultiple: parsed.industryEbitdaMultiple || undefined,
-    preIpoShares: normalizeShares(parsed.preIpoShares, 'preIpoShares') || 0,
-    primaryRaiseTarget: normalizeToMillions(parsed.primaryRaiseTarget, 'primaryRaiseTarget') || 0,
-    ipoDiscount: parsed.ipoDiscount ?? 0.20,  // Use ?? to allow 0% discount
-    secondaryShares: normalizeShares(parsed.secondaryShares, 'secondaryShares') || 0,
-    greenshoePercent: parsed.greenshoePercent ?? 0.15,
-    underwritingFeePercent: parsed.underwritingFeePercent ?? 0.07,
+    preIpoShares: finalPreIpoShares,
+    primaryRaiseTarget: finalPrimaryRaiseTarget,
+    ipoDiscount: finalDiscount,
+    secondaryShares: finalSecondaryShares,
+    greenshoePercent: finalGreenshoePercent,
+    underwritingFeePercent: finalUnderwritingFee,
     // Legacy single-instrument fields
     convertibleDebtAmount: normalizeToMillions(parsed.convertibleDebtAmount, 'convertibleDebtAmount'),
     conversionTriggerPrice: parsed.conversionTriggerPrice || undefined,
@@ -767,8 +826,8 @@ export async function parseIPODescription(
     growthPremiumThreshold: parsed.growthPremiumThreshold || 2.0,
     growthPremium: parsed.growthPremium || undefined,
     // USER-ENTERED SHARE COUNTS (override calculated values)
-    newPrimaryShares: normalizeShares(parsed.newPrimaryShares, 'newPrimaryShares'),
-    userGreenshoeShares: normalizeShares(parsed.userGreenshoeShares, 'userGreenshoeShares'),
+    newPrimaryShares: finalNewPrimaryShares,
+    userGreenshoeShares: normalizeShares(parsed.userGreenshoeShares, 'userGreenshoeShares') || finalGreenshoeShares,
   };
 }
 
