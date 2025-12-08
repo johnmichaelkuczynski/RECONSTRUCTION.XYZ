@@ -185,6 +185,14 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [mathProofKeyCorrections, setMathProofKeyCorrections] = useState<string[]>([]);
   const [mathProofValidityScore, setMathProofValidityScore] = useState<number | null>(null);
   const [mathProofIsCorrected, setMathProofIsCorrected] = useState(false);
+  // Mathematical Proof Validity Analysis State (veridicality - is the proof actually true?)
+  const [coherenceIsMathematical, setCoherenceIsMathematical] = useState(false);
+  const [mathValidityAnalysis, setMathValidityAnalysis] = useState<string>("");
+  const [mathValidityScore, setMathValidityScore] = useState<number | null>(null);
+  const [mathValidityVerdict, setMathValidityVerdict] = useState<"VALID" | "FLAWED" | "INVALID" | null>(null);
+  const [mathValiditySubscores, setMathValiditySubscores] = useState<{claimTruth: number; inferenceValidity: number; boundaryConditions: number; overallSoundness: number} | null>(null);
+  const [mathValidityFlaws, setMathValidityFlaws] = useState<string[]>([]);
+  const [mathValidityCounterexamples, setMathValidityCounterexamples] = useState<string[]>([]);
   const [coherenceChunks, setCoherenceChunks] = useState<Array<{id: string, text: string, preview: string}>>([]);
   const [selectedCoherenceChunks, setSelectedCoherenceChunks] = useState<string[]>([]);
   const [showCoherenceChunkSelector, setShowCoherenceChunkSelector] = useState(false);
@@ -639,19 +647,52 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         setCoherenceScore(data.score);
         setCoherenceAssessment(data.assessment);
         
-        // Handle scientific-explanatory dual assessment
-        if (data.isScientificExplanatory) {
+        // Handle mathematical proof dual assessment (coherence + validity)
+        if (data.isMathematical) {
+          setCoherenceIsMathematical(true);
+          setCoherenceIsScientific(false);
+          setCoherenceLogicalScore(null);
+          setCoherenceScientificScore(null);
+          // Set validity analysis data
+          setMathValidityAnalysis(data.validityAnalysis);
+          setMathValidityScore(data.validityScore);
+          setMathValidityVerdict(data.validityVerdict);
+          setMathValiditySubscores(data.validitySubscores);
+          setMathValidityFlaws(data.flaws || []);
+          setMathValidityCounterexamples(data.counterexamples || []);
+          toast({
+            title: "Mathematical Proof Analysis Complete!",
+            description: `Coherence: ${data.coherenceScore}/10 | Validity: ${data.validityScore}/10 (${data.validityVerdict})`,
+          });
+        } else if (data.isScientificExplanatory) {
+          // Handle scientific-explanatory dual assessment
+          setCoherenceIsMathematical(false);
           setCoherenceIsScientific(true);
           setCoherenceLogicalScore(data.logicalConsistency);
           setCoherenceScientificScore(data.scientificAccuracy);
+          // Clear validity data
+          setMathValidityAnalysis("");
+          setMathValidityScore(null);
+          setMathValidityVerdict(null);
+          setMathValiditySubscores(null);
+          setMathValidityFlaws([]);
+          setMathValidityCounterexamples([]);
           toast({
             title: "Scientific-Explanatory Analysis Complete!",
             description: `Overall: ${data.score}/10 | Logical: ${data.logicalConsistency.score}/10 | Scientific: ${data.scientificAccuracy.score}/10`,
           });
         } else {
+          setCoherenceIsMathematical(false);
           setCoherenceIsScientific(false);
           setCoherenceLogicalScore(null);
           setCoherenceScientificScore(null);
+          // Clear validity data
+          setMathValidityAnalysis("");
+          setMathValidityScore(null);
+          setMathValidityVerdict(null);
+          setMathValiditySubscores(null);
+          setMathValidityFlaws([]);
+          setMathValidityCounterexamples([]);
           toast({
             title: "Coherence Analysis Complete!",
             description: `Score: ${data.score}/10 - ${data.assessment}`,
@@ -3559,10 +3600,36 @@ Generated on: ${new Date().toLocaleString()}`;
             <div className="mt-8 space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-100">
-                  {coherenceIsScientific ? "Scientific-Explanatory Analysis" : "Coherence Analysis"}
+                  {coherenceIsScientific ? "Scientific-Explanatory Analysis" : 
+                   coherenceIsMathematical ? "Mathematical Proof Analysis" : "Coherence Analysis"}
                 </h3>
                 <div className="flex items-center gap-4 flex-wrap">
-                  {coherenceScore !== null && !coherenceIsScientific && (
+                  {/* Mathematical dual scores: Coherence + Validity */}
+                  {coherenceIsMathematical && coherenceScore !== null && mathValidityScore !== null && (
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Coherence:</span>
+                        <Badge className={`px-2 py-1 ${
+                          coherenceAssessment === "PASS" ? "bg-blue-600" :
+                          coherenceAssessment === "WEAK" ? "bg-blue-400" :
+                          "bg-blue-800"
+                        }`}>
+                          {coherenceScore}/10
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Validity:</span>
+                        <Badge className={`px-2 py-1 ${
+                          mathValidityVerdict === "VALID" ? "bg-emerald-600" :
+                          mathValidityVerdict === "FLAWED" ? "bg-yellow-500" :
+                          "bg-red-600"
+                        }`}>
+                          {mathValidityScore}/10
+                        </Badge>
+                      </div>
+                    </div>
+                  )}
+                  {coherenceScore !== null && !coherenceIsScientific && !coherenceIsMathematical && (
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">Score:</span>
                       <Badge className={`text-lg px-3 py-1 ${
@@ -3666,6 +3733,126 @@ Generated on: ${new Date().toLocaleString()}`;
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+              
+              {/* Mathematical Proof Veridicality Analysis Section */}
+              {coherenceIsMathematical && mathValidityAnalysis && (
+                <div className="mt-8 space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <h3 className="text-xl font-bold text-emerald-900 dark:text-emerald-100">
+                      Proof Veridicality Analysis (Is the theorem actually TRUE?)
+                    </h3>
+                    <div className="flex items-center gap-4 flex-wrap">
+                      {mathValidityScore !== null && mathValidityVerdict && (
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">Validity Score:</span>
+                            <Badge className={`text-lg px-3 py-1 ${
+                              mathValidityVerdict === "VALID" ? "bg-green-600" :
+                              mathValidityVerdict === "FLAWED" ? "bg-yellow-600" :
+                              "bg-red-600"
+                            }`}>
+                              {mathValidityScore}/10 - {mathValidityVerdict}
+                            </Badge>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Validity Subscores */}
+                  {mathValiditySubscores && (
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-lg border border-emerald-200 dark:border-emerald-700">
+                      <h4 className="text-sm font-bold text-emerald-900 dark:text-emerald-100 mb-3">Veridicality Subscores:</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-xs text-muted-foreground">Claim Truth</span>
+                          <Badge className={`${
+                            mathValiditySubscores.claimTruth >= 7 ? "bg-green-500" :
+                            mathValiditySubscores.claimTruth >= 4 ? "bg-yellow-500" :
+                            "bg-red-500"
+                          }`}>
+                            {mathValiditySubscores.claimTruth}/10
+                          </Badge>
+                        </div>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-xs text-muted-foreground">Inference Validity</span>
+                          <Badge className={`${
+                            mathValiditySubscores.inferenceValidity >= 7 ? "bg-green-500" :
+                            mathValiditySubscores.inferenceValidity >= 4 ? "bg-yellow-500" :
+                            "bg-red-500"
+                          }`}>
+                            {mathValiditySubscores.inferenceValidity}/10
+                          </Badge>
+                        </div>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-xs text-muted-foreground">Boundary Conditions</span>
+                          <Badge className={`${
+                            mathValiditySubscores.boundaryConditions >= 7 ? "bg-green-500" :
+                            mathValiditySubscores.boundaryConditions >= 4 ? "bg-yellow-500" :
+                            "bg-red-500"
+                          }`}>
+                            {mathValiditySubscores.boundaryConditions}/10
+                          </Badge>
+                        </div>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-xs text-muted-foreground">Overall Soundness</span>
+                          <Badge className={`${
+                            mathValiditySubscores.overallSoundness >= 7 ? "bg-green-500" :
+                            mathValiditySubscores.overallSoundness >= 4 ? "bg-yellow-500" :
+                            "bg-red-500"
+                          }`}>
+                            {mathValiditySubscores.overallSoundness}/10
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Counterexamples Found */}
+                  {mathValidityCounterexamples.length > 0 && (
+                    <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border-2 border-red-300 dark:border-red-700">
+                      <h4 className="text-md font-bold text-red-900 dark:text-red-100 mb-3 flex items-center gap-2">
+                        <AlertCircle className="w-5 h-5" />
+                        Counterexamples Found ({mathValidityCounterexamples.length})
+                      </h4>
+                      <ul className="space-y-2">
+                        {mathValidityCounterexamples.map((ce, idx) => (
+                          <li key={idx} className="flex items-start gap-2 text-sm text-red-800 dark:text-red-200">
+                            <span className="font-bold text-red-600 dark:text-red-400">{idx + 1}.</span>
+                            <span>{ce}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {/* Mathematical Flaws */}
+                  {mathValidityFlaws.length > 0 && (
+                    <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg border-2 border-orange-300 dark:border-orange-700">
+                      <h4 className="text-md font-bold text-orange-900 dark:text-orange-100 mb-3 flex items-center gap-2">
+                        <AlertCircle className="w-5 h-5" />
+                        Mathematical Flaws Identified ({mathValidityFlaws.length})
+                      </h4>
+                      <ul className="space-y-2">
+                        {mathValidityFlaws.map((flaw, idx) => (
+                          <li key={idx} className="flex items-start gap-2 text-sm text-orange-800 dark:text-orange-200">
+                            <span className="font-bold text-orange-600 dark:text-orange-400">{idx + 1}.</span>
+                            <span>{flaw}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {/* Full Validity Analysis */}
+                  <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border border-emerald-200 dark:border-emerald-700">
+                    <h4 className="text-md font-bold text-emerald-900 dark:text-emerald-100 mb-3">Detailed Veridicality Analysis:</h4>
+                    <pre className="whitespace-pre-wrap font-sans text-sm text-gray-800 dark:text-gray-200 max-h-96 overflow-y-auto">
+                      {mathValidityAnalysis}
+                    </pre>
+                  </div>
                 </div>
               )}
             </div>

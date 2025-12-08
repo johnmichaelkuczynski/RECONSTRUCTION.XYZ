@@ -3365,6 +3365,33 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
             logicalConsistency: result.logicalConsistency,
             scientificAccuracy: result.scientificAccuracy
           });
+        } else if (coherenceType === "mathematical") {
+          // For mathematical proofs: run BOTH coherence analysis AND validity analysis
+          const [coherenceResult, validityResult] = await Promise.all([
+            analyzeCoherence(text),
+            analyzeMathProofValidity(text)
+          ]);
+          
+          res.json({
+            success: true,
+            isMathematical: true,
+            // Coherence analysis (logical structure)
+            coherenceAnalysis: coherenceResult.analysis,
+            coherenceScore: coherenceResult.score,
+            coherenceAssessment: coherenceResult.assessment,
+            coherenceSubscores: coherenceResult.subscores,
+            // Validity analysis (veridicality - is it actually true?)
+            validityAnalysis: validityResult.analysis,
+            validityScore: validityResult.score,
+            validityVerdict: validityResult.verdict,
+            validitySubscores: validityResult.subscores,
+            flaws: validityResult.flaws,
+            counterexamples: validityResult.counterexamples,
+            // Combined scores for display
+            score: coherenceResult.score,
+            assessment: coherenceResult.assessment,
+            analysis: coherenceResult.analysis
+          });
         } else {
           const result = await analyzeCoherence(text);
           
