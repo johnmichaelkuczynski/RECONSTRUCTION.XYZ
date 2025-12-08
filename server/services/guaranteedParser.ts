@@ -7,13 +7,31 @@
  * 
  * Architecture:
  * 1. Define complete field specifications with required defaults
- * 2. Extract values using regex patterns (deterministic)
+ * 2. Extract values using UNIFIED NUMERIC PARSER (deterministic)
  * 3. Merge with LLM-parsed values (supplementary)
  * 4. Apply defaults for any remaining undefined fields
  * 5. Validate that ALL required fields have values
  * 
  * The result: ZERO undefined values in the output. Ever.
+ * 
+ * UNIFIED PARSER (December 2024):
+ * All numeric extraction now uses unifiedNumericParser.ts which handles:
+ * - Currency: "$1.25B", "$870m", "$900 million", "1.4bn", "750k"
+ * - Multiples: "8x", "6.5x EBITDA", "4.0 ×"
+ * - Percentages: "17%", "12.5 %"
+ * - Ranges: "$28–$32" (returns midpoint)
+ * - Shares: "4.5M shares"
  */
+
+import {
+  extractMoney,
+  extractMoneyAuto,
+  extractPercent,
+  extractNumber,
+  extractMultiple,
+  extractShares,
+  parseNumericValue,
+} from './unifiedNumericParser';
 
 // ============ TYPE DEFINITIONS ============
 
@@ -357,87 +375,11 @@ export const THREE_STATEMENT_DEFAULTS: ThreeStatementGuaranteedValues = {
 };
 
 // ============ REGEX EXTRACTION UTILITIES ============
+// NOTE: Core extraction functions (extractMoney, extractPercent, extractNumber, etc.)
+// are now imported from unifiedNumericParser.ts
 
-function extractNumber(text: string, patterns: RegExp[]): number | null {
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match && match[1]) {
-      const value = parseFloat(match[1].replace(/,/g, ''));
-      if (!isNaN(value)) {
-        return value;
-      }
-    }
-  }
-  return null;
-}
-
-function extractMoney(text: string, patterns: RegExp[]): number | null {
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match && match[1]) {
-      let value = parseFloat(match[1].replace(/,/g, ''));
-      if (isNaN(value)) continue;
-      
-      const fullMatch = match[0].toLowerCase();
-      // Handle billions: B, b, bn, billion - multiply by 1000 to get millions
-      // Patterns: $1.3B, 1.3bn, 1.3 billion, 1.3b
-      if (fullMatch.includes('billion') || fullMatch.includes('bn') || /[\d.]+\s*b(?:[^a-z]|$)/i.test(fullMatch)) {
-        value *= 1000;
-      }
-      return value;
-    }
-  }
-  return null;
-}
-
-// Standalone unit-aware money extractor for when we don't have specific patterns
-function extractMoneyWithUnits(text: string): number | null {
-  // Pattern for billions: $X.XXB, X.XXbn, X.XX billion
-  const billionPatterns = [
-    /\$?([\d,.]+)\s*[Bb](?:illion|n)?(?![a-z])/,
-    /([\d,.]+)\s*billion/i,
-  ];
-  
-  // Pattern for millions: $X.XXM, X.XXm, X.XX million
-  const millionPatterns = [
-    /\$?([\d,.]+)\s*[Mm](?:illion)?(?![a-z])/,
-    /([\d,.]+)\s*million/i,
-  ];
-
-  // Check billions first (higher priority)
-  for (const pattern of billionPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      const value = parseFloat(match[1].replace(/,/g, ''));
-      if (!isNaN(value)) return value * 1000; // Convert to millions
-    }
-  }
-
-  // Check millions
-  for (const pattern of millionPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      const value = parseFloat(match[1].replace(/,/g, ''));
-      if (!isNaN(value)) return value; // Already in millions
-    }
-  }
-
-  return null;
-}
-
-function extractPercent(text: string, patterns: RegExp[]): number | null {
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match && match[1]) {
-      let value = parseFloat(match[1].replace(/,/g, ''));
-      if (isNaN(value)) continue;
-      
-      if (value > 1) value /= 100;
-      return value;
-    }
-  }
-  return null;
-}
+// Alias for backward compatibility
+const extractMoneyWithUnits = extractMoneyAuto;
 
 // ============ LBO GUARANTEED PARSER ============
 

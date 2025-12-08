@@ -32,6 +32,13 @@ The application employs a monorepo structure, separating client and server compo
         - Accretion/dilution analysis, goodwill calculation, and Purchase Price Allocation (PPA) for M&A.
         - Enhanced Multi-Instrument Engine for IPO models, handling complex convertible instruments, probability-weighted contingencies, and dual-class share structures.
         - Guaranteed Parser Architecture ensures all required fields have values (regex → LLM → hardcoded defaults) for robust model generation.
+        - **Unified Numeric Parser (December 2024)**: Single extraction function (`server/services/unifiedNumericParser.ts`) replacing scattered parsers:
+          - Currency: "$1.25B", "$870m", "$900 million", "1.4bn", "750k" → raw floats
+          - Multiples: "8x", "6.5x EBITDA" → `{raw: 8, type: "multiple", unit: "EBITDA"}`
+          - Percentages: "17%", "12.5 %" → decimal (0.17)
+          - Shares: "4.5M shares" → raw count
+          - Ranges: "$28–$32" → midpoint
+          - 14/14 unit tests pass
         - Default LLM: Zhi 5 (Grok).
     - **Data Science Panel**: Generates production-ready Python code for machine learning and statistical analysis (e.g., 7 types of regression models). Output includes data loading, EDA, preprocessing, model training, evaluation, and visualizations.
         - Default LLM: Zhi 5 (Grok).
