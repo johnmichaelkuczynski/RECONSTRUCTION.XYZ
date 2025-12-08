@@ -177,6 +177,14 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [coherenceCorrectionsApplied, setCoherenceCorrectionsApplied] = useState<string[]>([]);
   const [coherenceRewriteAccuracyScore, setCoherenceRewriteAccuracyScore] = useState<number | null>(null);
   const [coherenceProcessingMode, setCoherenceProcessingMode] = useState<"simple" | "outline-guided">("simple");
+  const [mathProofCorrectedProof, setMathProofCorrectedProof] = useState<string>("");
+  const [mathProofTheoremStatus, setMathProofTheoremStatus] = useState<"TRUE" | "FALSE" | "PARTIALLY_TRUE" | null>(null);
+  const [mathProofOriginalTheorem, setMathProofOriginalTheorem] = useState<string>("");
+  const [mathProofCorrectedTheorem, setMathProofCorrectedTheorem] = useState<string | null>(null);
+  const [mathProofStrategy, setMathProofStrategy] = useState<string>("");
+  const [mathProofKeyCorrections, setMathProofKeyCorrections] = useState<string[]>([]);
+  const [mathProofValidityScore, setMathProofValidityScore] = useState<number | null>(null);
+  const [mathProofIsCorrected, setMathProofIsCorrected] = useState(false);
   const [coherenceChunks, setCoherenceChunks] = useState<Array<{id: string, text: string, preview: string}>>([]);
   const [selectedCoherenceChunks, setSelectedCoherenceChunks] = useState<string[]>([]);
   const [showCoherenceChunkSelector, setShowCoherenceChunkSelector] = useState(false);
@@ -742,6 +750,76 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     }
   };
 
+  const handleMathProofRewrite = async () => {
+    if (!coherenceInputText.trim()) {
+      toast({
+        title: "No Input Text",
+        description: "Please enter a mathematical proof to correct",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setCoherenceLoading(true);
+    setCoherenceMode("rewrite");
+    setMathProofCorrectedProof("");
+    setMathProofTheoremStatus(null);
+    setMathProofOriginalTheorem("");
+    setMathProofCorrectedTheorem(null);
+    setMathProofStrategy("");
+    setMathProofKeyCorrections([]);
+    setMathProofValidityScore(null);
+    setMathProofIsCorrected(false);
+
+    try {
+      const response = await fetch('/api/coherence-meter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: coherenceInputText,
+          mode: "math-proof-rewrite"
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Math proof correction failed');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        setMathProofCorrectedProof(data.correctedProof);
+        setMathProofTheoremStatus(data.theoremStatus);
+        setMathProofOriginalTheorem(data.originalTheorem);
+        setMathProofCorrectedTheorem(data.correctedTheorem);
+        setMathProofStrategy(data.proofStrategy);
+        setMathProofKeyCorrections(data.keyCorrections || []);
+        setMathProofValidityScore(data.validityScore);
+        setMathProofIsCorrected(true);
+        
+        const statusMessage = data.theoremStatus === "TRUE" 
+          ? "Theorem is TRUE - Proof corrected"
+          : data.theoremStatus === "FALSE"
+          ? "Theorem is FALSE - Similar true theorem proved instead"
+          : "Theorem is PARTIALLY TRUE - Corrected with proper conditions";
+        
+        toast({
+          title: "Math Proof Correction Complete!",
+          description: `${statusMessage} (Validity: ${data.validityScore}/10)`,
+        });
+      }
+    } catch (error: any) {
+      console.error('Math proof rewrite error:', error);
+      toast({
+        title: "Proof Correction Failed",
+        description: error.message || "An error occurred during math proof correction.",
+        variant: "destructive",
+      });
+    } finally {
+      setCoherenceLoading(false);
+    }
+  };
+
   const handleProcessSelectedChunks = async (mode: "analyze" | "rewrite") => {
     if (selectedCoherenceChunks.length === 0) {
       toast({
@@ -901,6 +979,14 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setCoherenceScientificScore(null);
     setCoherenceCorrectionsApplied([]);
     setCoherenceRewriteAccuracyScore(null);
+    setMathProofCorrectedProof("");
+    setMathProofTheoremStatus(null);
+    setMathProofOriginalTheorem("");
+    setMathProofCorrectedTheorem(null);
+    setMathProofStrategy("");
+    setMathProofKeyCorrections([]);
+    setMathProofValidityScore(null);
+    setMathProofIsCorrected(false);
   };
 
 
@@ -3430,6 +3516,27 @@ Generated on: ${new Date().toLocaleString()}`;
               <Trash2 className="w-4 h-4 mr-2" />
               Clear All
             </Button>
+
+            {coherenceType === "mathematical" && (
+              <Button
+                onClick={handleMathProofRewrite}
+                disabled={coherenceLoading}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-6 text-lg flex-1 min-w-[200px]"
+                data-testid="button-correct-math-proof"
+              >
+                {coherenceLoading && mathProofIsCorrected === false && coherenceMode === "rewrite" ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Correcting Proof...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-5 h-5 mr-2" />
+                    CORRECT MATH PROOF
+                  </>
+                )}
+              </Button>
+            )}
           </div>
 
           {/* Stage Progress Indicator */}
@@ -3655,6 +3762,109 @@ Generated on: ${new Date().toLocaleString()}`;
                       {coherenceChanges}
                     </pre>
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Math Proof Correction Output */}
+          {mathProofIsCorrected && mathProofCorrectedProof && (
+            <div className="mt-8 space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <h3 className="text-xl font-bold text-emerald-900 dark:text-emerald-100">
+                    Corrected Mathematical Proof
+                  </h3>
+                  <Badge 
+                    className={`text-sm ${
+                      mathProofTheoremStatus === "TRUE" ? 'bg-green-500 hover:bg-green-600' :
+                      mathProofTheoremStatus === "PARTIALLY_TRUE" ? 'bg-yellow-500 hover:bg-yellow-600' :
+                      'bg-orange-500 hover:bg-orange-600'
+                    } text-white`}
+                  >
+                    Theorem: {mathProofTheoremStatus === "TRUE" ? "TRUE" : 
+                              mathProofTheoremStatus === "PARTIALLY_TRUE" ? "PARTIALLY TRUE" : 
+                              "FALSE (Corrected)"}
+                  </Badge>
+                  {mathProofValidityScore !== null && (
+                    <Badge 
+                      className={`text-sm ${
+                        mathProofValidityScore >= 8 ? 'bg-green-500 hover:bg-green-600' :
+                        mathProofValidityScore >= 5 ? 'bg-yellow-500 hover:bg-yellow-600' :
+                        'bg-red-500 hover:bg-red-600'
+                      } text-white`}
+                    >
+                      Proof Validity: {mathProofValidityScore}/10
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDownloadText(mathProofCorrectedProof, `corrected-math-proof.txt`)}
+                    data-testid="button-download-math-proof"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Download
+                  </Button>
+                  <CopyButton text={mathProofCorrectedProof} />
+                </div>
+              </div>
+
+              {/* Original Theorem */}
+              {mathProofOriginalTheorem && (
+                <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Original Theorem:</h4>
+                  <p className="text-sm text-gray-800 dark:text-gray-200 font-mono">{mathProofOriginalTheorem}</p>
+                </div>
+              )}
+
+              {/* Corrected Theorem (if theorem was false) */}
+              {mathProofCorrectedTheorem && (
+                <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg border-2 border-orange-300 dark:border-orange-700">
+                  <h4 className="text-sm font-semibold text-orange-700 dark:text-orange-300 mb-2 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    Corrected Theorem (Original was FALSE):
+                  </h4>
+                  <p className="text-sm text-orange-800 dark:text-orange-200 font-mono">{mathProofCorrectedTheorem}</p>
+                </div>
+              )}
+
+              {/* Proof Strategy */}
+              {mathProofStrategy && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-700">
+                  <h4 className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-2">Proof Strategy:</h4>
+                  <p className="text-sm text-blue-800 dark:text-blue-200">{mathProofStrategy}</p>
+                </div>
+              )}
+
+              {/* The Corrected Proof */}
+              <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border-2 border-emerald-300 dark:border-emerald-700">
+                <h4 className="text-lg font-bold text-emerald-900 dark:text-emerald-100 mb-4 flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 text-emerald-600" />
+                  Rigorous Proof
+                </h4>
+                <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200 overflow-x-auto">
+                  {mathProofCorrectedProof}
+                </pre>
+              </div>
+
+              {/* Key Corrections */}
+              {mathProofKeyCorrections.length > 0 && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 p-6 rounded-lg border-2 border-amber-300 dark:border-amber-700">
+                  <h4 className="text-lg font-bold text-amber-900 dark:text-amber-100 mb-4 flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5" />
+                    Key Corrections Made ({mathProofKeyCorrections.length})
+                  </h4>
+                  <ul className="space-y-2">
+                    {mathProofKeyCorrections.map((correction, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-sm text-amber-800 dark:text-amber-200">
+                        <span className="font-bold text-amber-600 dark:text-amber-400">{idx + 1}.</span>
+                        <span>{correction}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
             </div>

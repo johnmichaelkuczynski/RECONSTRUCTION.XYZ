@@ -640,3 +640,264 @@ Respond with ONLY a number from 1-10.`;
     scientificAccuracyScore: Math.min(10, Math.max(1, scientificAccuracyScore))
   };
 }
+
+export interface MathProofRewriteResult {
+  correctedProof: string;
+  theoremStatus: "TRUE" | "FALSE" | "PARTIALLY_TRUE";
+  originalTheorem: string;
+  correctedTheorem: string | null;
+  proofStrategy: string;
+  keyCorrections: string[];
+  validityScore: number;
+}
+
+export async function rewriteMathProof(text: string): Promise<MathProofRewriteResult> {
+  const systemPrompt = `You are a rigorous mathematician tasked with providing CORRECT mathematical proofs.
+
+YOUR MISSION:
+You will be given a mathematical proof that may be broken, incomplete, or attempting to prove a false theorem.
+
+YOUR JOB IS NOT to simply reformat or polish the proof. YOUR JOB IS to provide a CORRECT, RIGOROUS proof.
+
+STEP 1: DETERMINE IF THE THEOREM IS TRUE OR FALSE
+- First, extract the theorem/claim being proved
+- Test it with specific values, edge cases, and boundary conditions
+- Actively search for counterexamples
+- Determine: Is this theorem TRUE, FALSE, or PARTIALLY TRUE (true under certain conditions)?
+
+STEP 2: PROVIDE A CORRECT PROOF
+If the theorem is TRUE:
+- If the original proof can be fixed with minor corrections, fix it and provide the corrected proof
+- If the original proof is fundamentally flawed or uses wrong approach, provide a COMPLETELY DIFFERENT correct proof
+- The proof must be mathematically rigorous with every step justified
+
+If the theorem is FALSE:
+- Identify WHY it is false (provide counterexample)
+- Find a SIMILAR theorem that IS true (e.g., if the original claimed "for all n > 1" but it only holds for primes, state the corrected theorem)
+- Provide a rigorous proof of the CORRECTED theorem
+
+If the theorem is PARTIALLY TRUE:
+- Identify the conditions under which it IS true
+- State the corrected theorem with proper conditions
+- Prove the corrected theorem
+
+CRITICAL RULES:
+1. NEVER output a broken proof - every proof you output MUST be valid
+2. NEVER just reformat without fixing mathematical errors
+3. ALWAYS verify your proof is correct before outputting
+4. Show key calculations explicitly
+5. If you cannot prove something, say so - do not fake a proof`;
+
+  const userPrompt = `MATHEMATICAL PROOF CORRECTION REQUEST
+
+Here is a proof that may contain errors or attempt to prove a false theorem:
+
+---BEGIN PROOF---
+${text}
+---END PROOF---
+
+REQUIRED OUTPUT FORMAT:
+
+THEOREM EXTRACTION:
+[State the theorem being proved in the original text]
+
+THEOREM STATUS: [TRUE / FALSE / PARTIALLY_TRUE]
+
+VERIFICATION:
+[Show your work testing the theorem - compute specific values, check edge cases, search for counterexamples]
+
+COUNTEREXAMPLES (if theorem is false):
+[Provide specific counterexamples that disprove the theorem]
+
+CORRECTED THEOREM (if original is false or partially true):
+[State the corrected/modified theorem that IS true]
+
+PROOF STRATEGY:
+[Briefly explain your approach - are you fixing the original proof or providing a new one?]
+
+---CORRECTED PROOF---
+[Provide the complete, rigorous, mathematically correct proof. If theorem was false, this proves the corrected theorem instead.]
+
+KEY CORRECTIONS:
+[List the main mathematical errors that were fixed or why a new approach was needed]
+
+VALIDITY VERIFICATION:
+[Confirm your proof is valid by checking key steps]`;
+
+  const message = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 10000,
+    temperature: 0.2,
+    thinking: {
+      type: "enabled",
+      budget_tokens: 8000
+    },
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }]
+  });
+
+  let output = '';
+  for (const block of message.content) {
+    if (block.type === 'text') {
+      output = block.text;
+      break;
+    }
+  }
+
+  // Enhanced parsing with multiple fallback patterns
+  
+  // Parse theorem extraction with multiple patterns
+  const theoremExtractionMatch = output.match(/THEOREM EXTRACTION:\s*([\s\S]*?)(?=THEOREM STATUS:|VERIFICATION:|$)/i) ||
+                                  output.match(/(?:the )?theorem(?:\s+being\s+proved)?(?:\s+is)?:\s*([\s\S]*?)(?=THEOREM STATUS:|VERIFICATION:|STATUS:|$)/i) ||
+                                  output.match(/(?:original\s+)?claim:\s*([\s\S]*?)(?=THEOREM STATUS:|VERIFICATION:|STATUS:|$)/i);
+  
+  // Parse theorem status with flexible matching
+  const theoremStatusMatch = output.match(/THEOREM STATUS:\s*(TRUE|FALSE|PARTIALLY[_\s]?TRUE)/i) ||
+                             output.match(/STATUS:\s*(TRUE|FALSE|PARTIALLY[_\s]?TRUE)/i) ||
+                             output.match(/(?:the\s+theorem\s+is\s+)(TRUE|FALSE|PARTIALLY[_\s]?TRUE)/i);
+  
+  // Parse corrected theorem with multiple patterns
+  const correctedTheoremMatch = output.match(/CORRECTED THEOREM[^:]*:\s*([\s\S]*?)(?=PROOF STRATEGY:|---CORRECTED PROOF---|CORRECTED PROOF:|$)/i) ||
+                                output.match(/(?:a\s+)?similar\s+true\s+theorem:\s*([\s\S]*?)(?=PROOF STRATEGY:|---CORRECTED PROOF---|$)/i) ||
+                                output.match(/modified\s+theorem:\s*([\s\S]*?)(?=PROOF STRATEGY:|---CORRECTED PROOF---|$)/i);
+  
+  // Parse proof strategy
+  const proofStrategyMatch = output.match(/PROOF STRATEGY:\s*([\s\S]*?)(?=---CORRECTED PROOF---|CORRECTED PROOF:|PROOF:|$)/i) ||
+                             output.match(/APPROACH:\s*([\s\S]*?)(?=---CORRECTED PROOF---|CORRECTED PROOF:|PROOF:|$)/i);
+  
+  // Parse the corrected proof with multiple patterns
+  const correctedProofMatch = output.match(/---CORRECTED PROOF---\s*([\s\S]*?)(?=KEY CORRECTIONS:|VALIDITY VERIFICATION:|CORRECTIONS:|$)/i) ||
+                              output.match(/CORRECTED PROOF:\s*([\s\S]*?)(?=KEY CORRECTIONS:|VALIDITY VERIFICATION:|CORRECTIONS:|$)/i) ||
+                              output.match(/(?:here is the |the )?(?:rigorous |correct |valid )?proof:\s*([\s\S]*?)(?=KEY CORRECTIONS:|VALIDITY|CORRECTIONS:|$)/i);
+  
+  // Parse key corrections
+  const keyCorrectionsMatch = output.match(/KEY CORRECTIONS:\s*([\s\S]*?)(?=VALIDITY VERIFICATION:|VERIFICATION:|$)/i) ||
+                              output.match(/CORRECTIONS(?:\s+MADE)?:\s*([\s\S]*?)(?=VALIDITY|VERIFICATION:|$)/i) ||
+                              output.match(/(?:main\s+)?(?:errors?|issues?)\s+(?:fixed|corrected):\s*([\s\S]*?)(?=VALIDITY|VERIFICATION:|$)/i);
+
+  // Track whether we found explicit status (for validation)
+  const hasExplicitStatus = !!theoremStatusMatch;
+  
+  // Extract values
+  const originalTheorem = theoremExtractionMatch ? theoremExtractionMatch[1].trim().substring(0, 500) : "";
+  
+  // Normalize theorem status - but track if it was explicit
+  let rawStatus = theoremStatusMatch ? theoremStatusMatch[1].toUpperCase().replace(/\s+/g, '_') : "";
+  if (rawStatus.includes('PARTIAL')) rawStatus = "PARTIALLY_TRUE";
+  
+  // If no explicit status found, try to infer from content
+  let theoremStatus: "TRUE" | "FALSE" | "PARTIALLY_TRUE";
+  if (hasExplicitStatus && ["TRUE", "FALSE", "PARTIALLY_TRUE"].includes(rawStatus)) {
+    theoremStatus = rawStatus as "TRUE" | "FALSE" | "PARTIALLY_TRUE";
+  } else {
+    // Infer from output content
+    if (output.toLowerCase().includes('false') && 
+        (output.toLowerCase().includes('counterexample') || output.toLowerCase().includes('corrected theorem'))) {
+      theoremStatus = "FALSE";
+    } else if (output.toLowerCase().includes('partially') || output.toLowerCase().includes('conditions')) {
+      theoremStatus = "PARTIALLY_TRUE";
+    } else {
+      theoremStatus = "TRUE"; // Default assumption if proof appears complete
+    }
+  }
+  
+  // Get corrected theorem only if theorem was false/partial
+  const correctedTheorem = (theoremStatus !== "TRUE" && correctedTheoremMatch && correctedTheoremMatch[1].trim().length > 10) 
+    ? correctedTheoremMatch[1].trim().substring(0, 500) 
+    : null;
+  
+  const proofStrategy = proofStrategyMatch ? proofStrategyMatch[1].trim().substring(0, 300) : "Proof corrected using rigorous mathematical reasoning";
+  
+  // For corrected proof, use the matched section or fall back to extracting from the full output
+  let correctedProof = "";
+  if (correctedProofMatch && correctedProofMatch[1].trim().length > 50) {
+    correctedProof = correctedProofMatch[1].trim();
+  } else {
+    // Fallback: Try to extract any substantial proof-like content
+    const proofFallback = output.match(/(?:proof|demonstrate|show that|we have|therefore|thus|hence|QED|∎|□)[\s\S]{100,}/i);
+    if (proofFallback) {
+      correctedProof = proofFallback[0].trim();
+    } else {
+      // Last resort: use the entire output after removing obvious header sections
+      correctedProof = output
+        .replace(/THEOREM EXTRACTION:[\s\S]*?(?=THEOREM STATUS:|$)/gi, '')
+        .replace(/THEOREM STATUS:[\s\S]*?(?=VERIFICATION:|$)/gi, '')
+        .replace(/VERIFICATION:[\s\S]*?(?=COUNTEREXAMPLES|CORRECTED THEOREM|$)/gi, '')
+        .trim();
+    }
+  }
+
+  // Parse key corrections into array
+  const keyCorrections: string[] = [];
+  if (keyCorrectionsMatch && keyCorrectionsMatch[1]) {
+    const lines = keyCorrectionsMatch[1].split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 5);
+    
+    for (const line of lines) {
+      const cleanedLine = line.replace(/^[-•*\d.)\]]+\s*/, '').trim();
+      if (cleanedLine.length > 5 && 
+          !cleanedLine.toLowerCase().startsWith('validity') &&
+          !cleanedLine.toLowerCase().startsWith('verification')) {
+        keyCorrections.push(cleanedLine);
+      }
+    }
+  }
+
+  // Validate the corrected proof
+  const validationPrompt = `Rate the mathematical validity of this proof on a scale of 1-10, where 10 means the proof is completely rigorous and correct.
+
+PROOF:
+${correctedProof}
+
+Consider:
+- Are all claims true?
+- Does each step follow logically from previous steps?
+- Are there any gaps in reasoning?
+- Would a mathematician accept this proof?
+
+Respond with ONLY a number from 1-10.`;
+
+  const validationMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 10,
+    temperature: 0,
+    messages: [{ role: "user", content: validationPrompt }]
+  });
+
+  const scoreText = validationMessage.content[0].type === 'text' ? validationMessage.content[0].text : '5';
+  const parsedScore = parseFloat(scoreText.match(/\d+(?:\.\d+)?/)?.[0] || '');
+  const validityScore = isNaN(parsedScore) ? 5 : Math.min(10, Math.max(1, parsedScore));
+
+  // Validation: Ensure we have a non-empty proof
+  if (!correctedProof || correctedProof.length < 50) {
+    throw new Error("Failed to generate a valid corrected proof. Please try again.");
+  }
+
+  // Validation: If theorem is FALSE or PARTIALLY_TRUE, we should have a corrected theorem
+  // If we don't, add a note to the proof strategy
+  const finalCorrectedTheorem = (theoremStatus !== "TRUE" && !correctedTheorem) 
+    ? "See corrected proof for the modified theorem statement"
+    : correctedTheorem;
+  
+  const finalProofStrategy = (!proofStrategy || proofStrategy.length < 10)
+    ? `Proof ${theoremStatus === "TRUE" ? "corrected" : "replaced with proof of corrected theorem"}`
+    : proofStrategy;
+
+  // Add default correction if none parsed
+  if (keyCorrections.length === 0) {
+    keyCorrections.push(theoremStatus === "TRUE" 
+      ? "Proof structure and rigor improved"
+      : "Original theorem corrected and new proof provided");
+  }
+
+  return {
+    correctedProof,
+    theoremStatus,
+    originalTheorem,
+    correctedTheorem: finalCorrectedTheorem,
+    proofStrategy: finalProofStrategy,
+    keyCorrections,
+    validityScore
+  };
+}

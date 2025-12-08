@@ -3314,16 +3314,16 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
         });
       }
 
-      if (mode !== "analyze" && mode !== "rewrite" && mode !== "math-proof-validity") {
+      if (mode !== "analyze" && mode !== "rewrite" && mode !== "math-proof-validity" && mode !== "math-proof-rewrite") {
         return res.status(400).json({
           success: false,
-          message: "Mode must be 'analyze', 'rewrite', or 'math-proof-validity'"
+          message: "Mode must be 'analyze', 'rewrite', 'math-proof-validity', or 'math-proof-rewrite'"
         });
       }
 
       console.log(`Coherence Meter - Mode: ${mode}, Type: ${coherenceType || 'default'}, Aggressiveness: ${aggressiveness}, Text length: ${text.length}`);
 
-      const { analyzeCoherence, rewriteForCoherence, analyzeMathProofValidity, analyzeScientificExplanatoryCoherence, rewriteScientificExplanatory } = await import('./services/coherenceMeter');
+      const { analyzeCoherence, rewriteForCoherence, analyzeMathProofValidity, analyzeScientificExplanatoryCoherence, rewriteScientificExplanatory, rewriteMathProof } = await import('./services/coherenceMeter');
 
       if (mode === "math-proof-validity") {
         const result = await analyzeMathProofValidity(text);
@@ -3336,6 +3336,20 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
           subscores: result.subscores,
           flaws: result.flaws,
           counterexamples: result.counterexamples
+        });
+      } else if (mode === "math-proof-rewrite") {
+        const result = await rewriteMathProof(text);
+        
+        res.json({
+          success: true,
+          correctedProof: result.correctedProof,
+          theoremStatus: result.theoremStatus,
+          originalTheorem: result.originalTheorem,
+          correctedTheorem: result.correctedTheorem,
+          proofStrategy: result.proofStrategy,
+          keyCorrections: result.keyCorrections,
+          validityScore: result.validityScore,
+          isMathProofRewrite: true
         });
       } else if (mode === "analyze") {
         // Use specialized analyzer for scientific-explanatory coherence
