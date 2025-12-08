@@ -1,103 +1,42 @@
 # Cognitive Analysis Platform
 
 ## Overview
-This platform analyzes written text to assess the intelligence and cognitive fingerprint of authors using multi-model AI evaluation. It provides document analysis, AI detection, translation, comprehensive cognitive profiling, and intelligent text rewriting capabilities. The project's vision is to offer deep insights into cognitive abilities and thought processes from written content, with advanced features for maximizing intelligence scores through iterative rewriting, and also offers professional financial model generation.
+The Cognitive Analysis Platform is designed to analyze written text to assess the intelligence and cognitive fingerprint of authors using multi-model AI evaluation. Its primary purpose is to offer deep insights into cognitive abilities and thought processes from written content. Key capabilities include document analysis, AI detection, multi-language translation, comprehensive cognitive profiling, and intelligent text rewriting with advanced features for maximizing intelligence scores. The platform also offers professional financial model generation and data science code generation.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
 ## System Architecture
-The application uses a monorepo structure, separating client and server.
-- **Frontend**: React with TypeScript, TailwindCSS, shadcn/ui, wouter for routing, React Query for server state, and Chart.js for data visualization.
-- **Backend**: Express.js with TypeScript, integrating multiple LLMs, document processing via Mathpix OCR, speech-to-text with AssemblyAI, and email services via SendGrid.
-- **Database**: PostgreSQL with Drizzle ORM, storing user, document, analysis, and cognitive profile data.
-- **Core Services**: Includes multi-model intelligence evaluation, document comparison, multi-language translation, OCR for mathematical notation, and intelligent text rewriting with custom instructions support.
-    - **Intelligence Evaluation**: A 4-phase system with initial assessment, deep analytical questioning across 17 cognitive dimensions (including Conceptual Depth, Inferential Control, Semantic Compression, Novel Abstraction, Cognitive Risk, Authenticity, Symbolic Manipulation), revision, and final pushback. Supports genre-aware assessment.
-    - **Intelligent Rewrite Function (MAXINTEL)**: Recursively optimizes text to maximize intelligence scores, supporting custom instructions and optional external knowledge integration.
-    - **GPT Bypass Humanizer**: Transforms 100% AI-generated text to 0% AI detection.
-    - **Coherence Meter**: Offers two processing strategies (simple chunking, outline-guided) with adjustable aggressiveness, and a dedicated `math-proof-validity` mode for mathematical correctness verification.
-    - **Text Model Validator**: Includes "Truth Select" for truth-value isomorphism and "Math Truth Select" for rigorous first-order model theory and truth-grounded model searching, both supporting literal truth verification. Users can select which AI model powers validation (ZHI 1-5), defaulting to Grok (ZHI 5).
-    - **AI Chat Assistant**: Features full conversation history tracking and Zhi Database integration for contextual philosophical content.
-    - **Conservative Reconstruction**: "Charitable Interpretation" mode produces self-contained, coherent essays articulating a text's unified argument.
-    - **Finance Panel**: Generates professional Excel financial models from natural language input, producing value-based workbooks with executive summaries, assumptions, projections, valuations, and sensitivity analysis.
-      - **DCF Model**: Fully implemented with 3 valuation scenarios (Bear/Base/Bull), 5-year projections, and sensitivity analysis.
-      - **LBO Model**: Fully implemented with sources/uses, debt schedules, sponsor returns (IRR/MOIC), exit valuation, and 5-year projections.
-      - **M&A Model**: Fully implemented with comprehensive fixes (December 2024):
-        - **Accretion/Dilution Analysis**: Uses acquirerExplicitEPS if user provides it directly (e.g., "earns $3.20 per share") instead of recalculating.
-        - **Sources & Uses**: Now balances exactly. Includes explicit or calculated transaction fees. Cash from balance sheet auto-adjusts to balance.
-        - **Goodwill Calculation**: Correct formula: Purchase Price - Fair Value Net Assets - Identified Intangibles.
-        - **Purchase Price Allocation (PPA) Tab**: New Excel tab with breakdown of customer relationships, developed technology, other intangibles, and amortization schedules.
-        - **Debt Schedule Tab**: New Excel tab with beginning/ending balance, mandatory amortization, and interest expense by year.
-        - **Revenue Synergy Margin**: Applies flow-through margin (e.g., 50%) to revenue synergies for EBITDA impact. Default 100% if not specified.
-        - **Interest Expense**: Properly calculated from debt schedule and included in pro forma projections.
-        - Features separate phase-in schedules for revenue synergies (default: 0/50/100/100/100%) and cost synergies (default: 20/60/100/100/100%).
-      - **IPO Pricing Model**: Fully implemented with comprehensive pricing analysis and **Enhanced Multi-Instrument Engine (December 2024)**:
-        - **Discount Bug Fix (December 2024)**: Changed `||` to `??` for discount parsing to allow 0% discount. JavaScript falsy value issue fixed - 0% discount no longer defaults to 20%.
-        - **Share Count Fix (December 2024)**: Added `newPrimaryShares` and `userGreenshoeShares` fields for direct user input. Correct formula: `offerPrice = discountedPreMoneyValuation / (preIPO + newPrimary + greenshoe)`
-        - **Valuation Methods**: Revenue multiple (default), EBITDA multiple, or multi-proxy blended (weighted array of multiples)
-        - **Pricing Calculation**: Pre-money valuation, theoretical share price, offer price with IPO discount
-        - **Offer Structure**: Primary shares issued, secondary shares sold, greenshoe (over-allotment) option
-        - **Proceeds Analysis**: Gross/net primary proceeds, secondary proceeds, underwriting fees
-        - **Dilution Analysis**: Post-IPO shares outstanding, percentage sold, existing holder dilution
-        - **Trading Metrics**: Market cap at offer, expected first-day pop
-        - **Excel Export**: Multi-tab workbook with full walkthrough and enhanced instrument analysis
-        - **Unit Normalization**: Automatic handling of LLM parsing inconsistencies. Dollar amounts >10,000 auto-convert to millions; share counts >1,000 auto-convert to millions.
-        - **ENHANCED MULTI-INSTRUMENT ENGINE (December 2024)**: New `ipoInstrumentEngine.ts` handles complex scenarios:
-          - **Multiple Convertible Instruments**: Supports arrays of SAFEs, venture debt, loans with different triggers:
-            - `lower_of`: Converts at lower of fixed price or % of IPO (e.g., "lower of $18 or 80% of IPO")
-            - `price_gt/price_gte`: Conditional conversion if IPO price exceeds threshold (e.g., "converts if IPO > $25")
-            - `at_ipo_price`: Converts at final IPO price
-            - `fixed_shares`: Fixed share conversion regardless of price
-            - `conditional`: Probability-weighted conversion (e.g., "70% probability of FDA approval")
-          - **Probability-Weighted Contingencies**: Earnouts, performance warrants, litigation, grants with probabilities:
-            - Share-based contingencies: Expected shares = shares × probability
-            - Cash-based contingencies: Expected cost = payment × probability (reduces valuation)
-            - Warrants with strikes: Cost = (IPO - strike) × shares × probability
-          - **Strategic Deals with Premiums**: Partners paying IPO + X% premium (not just IPO price)
-          - **Anchor Orders as Demand Boost**: Sovereign wealth funds, cornerstone investors boost pricing confidence:
-            - Formula: demandBoost = 1.0 + min(anchorAmount / raiseTarget × 0.2, 0.20)
-          - **Employee Option Dilution (Treasury Stock Method)**:
-            - If strike < offer: Net dilution = options - (options × strike / offer price)
-          - **Multi-Proxy Blended Valuation with Growth Premium**: Weighted array of multiples with growth adjustment:
-            - Base blended multiple = sum of (each multiple × its weight)
-            - Example: 48x × 60% + 24x × 40% = 28.8x + 9.6x = 38.4x base
-            - Growth premium: If revenue growth > threshold (default 200%), applies premium (e.g., 15%)
-            - Effective multiple = 38.4x × 1.15 = 44.16x for high-growth companies
-        - **Processing Order (Correct Sequence)**: Blended valuation → Anchor boost → Convertibles → Contingencies → Employee options → Final pricing
-        - **Dual-Class Share Voting Control**: Calculates founder voting power vs public, generates CRITICAL warning if control threshold breached
-        - **Backward Compatible**: Legacy single-instrument fields still supported for simple cases
-      - **3-Statement Model**: Fully implemented with comprehensive 11-tab Excel generation:
-        - **Income Statement**: Revenue, COGS, Gross Profit, Operating Expenses, EBITDA, D&A, EBIT, Interest, Taxes, Net Income, EPS
-        - **Balance Sheet**: Assets (Cash, A/R, Inventory, PP&E), Liabilities (A/P, Debt), Shareholders' Equity with balance check (Assets = L + E)
-        - **Cash Flow Statement**: Operating (CFO), Investing (CFI), Financing (CFF) activities with Free Cash Flow
-        - **Circular Reference Handling**: Iterative calculation for revolver draws/paydowns and cash balancing
-        - **Supporting Schedules**: Debt Schedule, Working Capital, PP&E, Shareholders' Equity
-        - **Ratio Analysis**: 50+ ratios across profitability, liquidity, leverage, efficiency, growth, per-share metrics
-        - **Charts Data**: Pre-formatted tables for Revenue/EBITDA, Leverage, EPS visualization
-        - **Balance Sheet Reconciliation (December 2024 Fix)**: Implements standard financial modeling "plug" mechanism using cash as balancing item. Ensures Assets = Liabilities + Equity across all periods (0-5) by: (1) anchoring historical assets to user input, (2) adjusting retained earnings to force period 0 balance, (3) propagating retained earnings adjustment through forward periods, (4) applying cash plug for any remaining imbalance per period.
-      - Default LLM: Zhi 5 (Grok) using grok-3 model for finance models.
-      - **GUARANTEED PARSER ARCHITECTURE (December 2024)**: Complete bulletproof parsing system that eliminates undefined values:
-        - **Core Principle**: Every required field has a guaranteed value - either extracted from user input or filled with sensible defaults
-        - **Architecture**: Regex extraction (PRIMARY) → LLM parsing (SUPPLEMENTARY) → Hardcoded defaults (FALLBACK)
-        - **Key File**: `server/services/guaranteedParser.ts` provides `parseLBOGuaranteed()`, `parseMAGuaranteed()`, `parseDCFGuaranteed()`, `parseIPOGuaranteed()`, `parseThreeStatementGuaranteed()`
-        - **Default Value Sets**: Complete default values for all models (LBO_DEFAULTS, MA_DEFAULTS, DCF_DEFAULTS, IPO_DEFAULTS, THREE_STATEMENT_DEFAULTS)
-        - **Regex Patterns**: Comprehensive patterns for EBITDA, revenue, multiples, percentages, debt amounts, hold periods, synergies, cash/stock mix
-        - **Calculated Derivations**: Purchase price from EBITDA × multiple, debt amounts from multiples × EBITDA, sponsor equity as residual
-        - **Result**: Zero undefined values in any financial model calculation - model collapse from undefined fields is eliminated
-    - **Data Science Panel**: Generates production-ready Python code for machine learning and statistical analysis from natural language descriptions.
-      - **Regression Models**: Fully implemented with 7 regression types:
-        - Simple Linear Regression, Multiple Linear Regression, Polynomial Regression
-        - Ridge Regression (L2 regularization), Lasso Regression (L1 regularization), Elastic Net
-        - Logistic Regression (classification)
-        - Output includes: data loading, EDA, preprocessing, model training, cross-validation, evaluation metrics, coefficient interpretation, visualizations, prediction function, model persistence
-        - Downloadable as .py file with complete, executable code
-      - **Machine Learning Models**: Coming soon (Random Forest, XGBoost, Neural Networks, clustering)
-      - **Statistical Forecasting**: Coming soon (ARIMA, SARIMA, Prophet, exponential smoothing)
-      - **Predictive Analytics**: Coming soon (end-to-end pipelines, feature engineering, model comparison)
-      - Default LLM: Zhi 5 (Grok) for data science code generation.
-- **UI/UX**: Utilizes shadcn/ui and TailwindCSS for styling, offering detailed card-based layouts for analysis reports and supporting PDF/text downloads, document upload, and output download.
+The application employs a monorepo structure, separating client and server components.
+
+**UI/UX Decisions:**
+- Frontend uses React with TypeScript, TailwindCSS, and shadcn/ui for a modern and responsive user interface.
+- Data visualization is handled by Chart.js.
+- Detailed card-based layouts are used for analysis reports.
+- Supports PDF/text downloads, document upload, and output downloads.
+
+**Technical Implementations & Feature Specifications:**
+- **Frontend**: React, TypeScript, TailwindCSS, shadcn/ui, wouter, React Query, Chart.js.
+- **Backend**: Express.js with TypeScript, integrating multiple LLMs, document processing (Mathpix OCR), speech-to-text (AssemblyAI), and email services (SendGrid).
+- **Database**: PostgreSQL with Drizzle ORM for user, document, analysis, and cognitive profile data.
+- **Core Services**:
+    - **Multi-Model Intelligence Evaluation**: A 4-phase system assessing 17 cognitive dimensions, supporting genre-aware analysis.
+    - **Intelligent Rewrite Function (MAXINTEL)**: Recursively optimizes text for intelligence scores, with custom instructions and external knowledge integration.
+    - **GPT Bypass Humanizer**: Transforms AI-generated text to bypass AI detection.
+    - **Coherence Meter**: Offers simple chunking and outline-guided processing, including a `math-proof-validity` mode.
+    - **Text Model Validator**: Includes "Truth Select" and "Math Truth Select" for literal truth verification, configurable with various AI models (ZHI 1-5, default Grok).
+    - **AI Chat Assistant**: Provides conversation history and context from the Zhi Database.
+    - **Conservative Reconstruction**: "Charitable Interpretation" mode for generating coherent essays articulating a text's unified argument.
+    - **Finance Panel**: Generates professional Excel financial models (DCF, LBO, M&A, IPO Pricing, 3-Statement) from natural language. Features include:
+        - Comprehensive scenario analysis, sensitivity analysis, and debt scheduling.
+        - Accretion/dilution analysis, goodwill calculation, and Purchase Price Allocation (PPA) for M&A.
+        - Enhanced Multi-Instrument Engine for IPO models, handling complex convertible instruments, probability-weighted contingencies, and dual-class share structures.
+        - Guaranteed Parser Architecture ensures all required fields have values (regex → LLM → hardcoded defaults) for robust model generation.
+        - Default LLM: Zhi 5 (Grok).
+    - **Data Science Panel**: Generates production-ready Python code for machine learning and statistical analysis (e.g., 7 types of regression models). Output includes data loading, EDA, preprocessing, model training, evaluation, and visualizations.
+        - Default LLM: Zhi 5 (Grok).
 
 ## External Dependencies
-- **AI Service Providers**: OpenAI API (GPT-4) (ZHI 1), Anthropic API (Claude) (ZHI 2), DeepSeek API (ZHI 3), Perplexity AI (ZHI 4), Grok API (xAI) (ZHI 5).
-- **Supporting Services**: Mathpix OCR, AssemblyAI, SendGrid, Google Custom Search, Stripe (for credit purchases), AnalyticPhilosophy.net Zhi API (for external knowledge queries).
+- **AI Service Providers**: OpenAI API (GPT-4), Anthropic API (Claude), DeepSeek API, Perplexity AI, Grok API (xAI).
+- **Supporting Services**: Mathpix OCR, AssemblyAI, SendGrid, Google Custom Search, Stripe (for credit purchases), AnalyticPhilosophy.net Zhi API.
 - **Database & Infrastructure**: Neon/PostgreSQL, Drizzle ORM, Replit.
