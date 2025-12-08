@@ -485,15 +485,38 @@ export function parseLBOGuaranteed(text: string): LBOGuaranteedValues {
   }
   
   // ============ ENTRY MULTIPLE ============
+  // CRITICAL: Must NOT match debt multiples like "Senior debt 4x EBITDA"
+  // Only match entry/purchase/EV multiples
   const entryMultiplePatterns = [
-    /([\d.]+)\s*[×x]\s*(?:ltm\s+)?ebitda/i,
-    /(?:entry|purchase|buy(?:ing)?)\s+(?:at\s+)?([\d.]+)\s*[×x]/i,
-    /multiple\s*[=:]\s*([\d.]+)/i,
+    // "entry multiple 9x" or "entry at 9x"
+    /(?:entry|purchase|ev|enterprise\s+value)\s+(?:multiple\s+)?(?:of\s+|at\s+)?([\d.]+)\s*[×x]/i,
+    // "9x entry multiple"
+    /([\d.]+)\s*[×x]\s+(?:entry|purchase|ev)/i,
+    // "multiple = 9" or "multiple: 9"
+    /(?:entry\s+)?multiple\s*[=:]\s*([\d.]+)/i,
+    // "bought at 9x EBITDA" - requires action verb
+    /(?:bought|buy(?:ing)?|acquired?)\s+(?:at\s+)?([\d.]+)\s*[×x]/i,
+    // "9x LTM EBITDA" - only if followed by price context, not preceded by debt terms
+    // This pattern is intentionally removed to avoid matching debt multiples
   ];
   const entryMultiple = extractNumber(text, entryMultiplePatterns);
   if (entryMultiple !== null) {
     result.entryMultiple = entryMultiple;
     console.log(`[GuaranteedParser] Entry multiple: ${entryMultiple}x`);
+  }
+  
+  // Fallback: Look for standalone "Nx EBITDA" only if no debt context nearby
+  // But exclude if preceded by "senior", "sub", "mezz", "debt"
+  if (result.entryMultiple === LBO_DEFAULTS.entryMultiple) {
+    // Check for patterns like "at 9x EBITDA" where it's not about debt
+    const fallbackMatch = text.match(/(?<!senior\s+)(?<!sub\s+)(?<!mezz\s+)(?<!debt\s+)(?:at\s+)([\d.]+)\s*[×x]\s*(?:ltm\s+)?ebitda/i);
+    if (fallbackMatch) {
+      const val = parseFloat(fallbackMatch[1]);
+      if (!isNaN(val) && val >= 3 && val <= 20) {
+        result.entryMultiple = val;
+        console.log(`[GuaranteedParser] Entry multiple (fallback): ${val}x`);
+      }
+    }
   }
   
   // ============ PURCHASE PRICE ============
@@ -846,13 +869,51 @@ export function parseMAGuaranteed(text: string): MAGuaranteedValues {
   }
   
   // ============ ACQUIRER STOCK PRICE ============
+  // CRITICAL: Must NOT match EPS patterns like "earns $3.20 per share"
+  // Must match actual stock price patterns like "shares at $50" or "stock price $50"
   const stockPricePatterns = [
-    /(?:buyer|acquirer)\s*(?:stock|share)\s*(?:price)?\s*(?:at|of)?\s*\$?([\d.]+)/i,
-    /\$?([\d.]+)\s+per\s+share/i,
+    // "100M shares at $50" - the actual stock price
     /shares\s+at\s+\$?([\d.]+)/i,
-    /(?:stock|share)\s+price\s*[=:]\s*\$?([\d.]+)/i,
+    // "trading at $50" or "priced at $50"
+    /(?:trading|priced?)\s+at\s+\$?([\d.]+)/i,
+    // "stock price $50" or "share price of $50"
+    /(?:stock|share)\s+price\s*(?:of\s+|[=:]\s*)?\$?([\d.]+)/i,
+    // "acquirer stock at $50"
+    /(?:buyer|acquirer)\s*(?:stock|shares?)\s*(?:at|of)\s*\$?([\d.]+)/i,
+    // "$50 per share" - but NOT if preceded by "earns" or "earning"
+    // Use negative lookbehind equivalent
   ];
-  const stockPrice = extractNumber(text, stockPricePatterns);
+  
+  let stockPrice: number | null = null;
+  for (const pattern of stockPricePatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      const val = parseFloat(match[1].replace(/,/g, ''));
+      if (!isNaN(val)) {
+        stockPrice = val;
+        break;
+      }
+    }
+  }
+  
+  // Only use "$X per share" if not preceded by earnings context
+  if (stockPrice === null) {
+    // Check for "$X per share" pattern but exclude earnings context
+    const perShareMatch = text.match(/\$?([\d.]+)\s+per\s+share/i);
+    if (perShareMatch) {
+      const val = parseFloat(perShareMatch[1].replace(/,/g, ''));
+      // Find position of this match in text
+      const matchIdx = text.toLowerCase().indexOf(perShareMatch[0].toLowerCase());
+      // Check if there's an earnings word before this match (within 20 chars)
+      const beforeContext = text.slice(Math.max(0, matchIdx - 30), matchIdx).toLowerCase();
+      const isEarningsContext = /earns?|earning|eps/.test(beforeContext);
+      
+      if (!isNaN(val) && !isEarningsContext) {
+        stockPrice = val;
+      }
+    }
+  }
+  
   if (stockPrice !== null) {
     result.acquirerStockPrice = stockPrice;
     console.log(`[GuaranteedParser] Acquirer stock price: $${stockPrice}`);
