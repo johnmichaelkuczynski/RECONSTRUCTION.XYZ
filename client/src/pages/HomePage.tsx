@@ -881,12 +881,20 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       text += `  Net Debt: $${(financeResult.assumptions?.totalDebt - financeResult.assumptions?.cashAndEquivalents)?.toLocaleString()}M\n`;
       text += `  Shares Outstanding: ${financeResult.assumptions?.sharesOutstanding?.toLocaleString()}M\n\n`;
       
+      const fmtVal = (v: number | undefined) => {
+        if (v === undefined || v === null) return 'N/A';
+        const abs = Math.abs(v);
+        if (abs < 1) return v.toFixed(2);
+        if (abs < 10) return v.toFixed(1);
+        return v.toLocaleString(undefined, {maximumFractionDigits: 0});
+      };
+      
       text += `Valuation Bridge (Base Case):\n`;
-      text += `  PV of FCFs: $${financeResult.valuation?.base?.pvFCF?.toLocaleString(undefined, {maximumFractionDigits: 0})}M\n`;
-      text += `  Terminal Value: $${financeResult.valuation?.base?.terminalValue?.toLocaleString(undefined, {maximumFractionDigits: 0})}M\n`;
-      text += `  PV of Terminal: $${financeResult.valuation?.base?.pvTerminal?.toLocaleString(undefined, {maximumFractionDigits: 0})}M\n`;
-      text += `  Enterprise Value: $${financeResult.valuation?.base?.enterpriseValue?.toLocaleString(undefined, {maximumFractionDigits: 0})}M\n`;
-      text += `  Equity Value: $${financeResult.valuation?.base?.equityValue?.toLocaleString(undefined, {maximumFractionDigits: 0})}M\n\n`;
+      text += `  PV of FCFs: $${fmtVal(financeResult.valuation?.base?.pvFCF)}M\n`;
+      text += `  Terminal Value: $${fmtVal(financeResult.valuation?.base?.terminalValue)}M\n`;
+      text += `  PV of Terminal: $${fmtVal(financeResult.valuation?.base?.pvTerminal)}M\n`;
+      text += `  Enterprise Value: $${fmtVal(financeResult.valuation?.base?.enterpriseValue)}M\n`;
+      text += `  Equity Value: $${fmtVal(financeResult.valuation?.base?.equityValue)}M\n\n`;
       
       if (financeResult.projections?.revenue) {
         text += `FREE CASH FLOW BUILDUP\n`;
@@ -895,12 +903,20 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         financeResult.projections.years?.forEach((y: number) => { text += `Year ${y}\t`; });
         text += `\n${"─".repeat(60)}\n`;
         
+        const fmtM = (v: number) => {
+          if (v === 0 || v === undefined || v === null) return '0';
+          const abs = Math.abs(v);
+          if (abs < 1) return v.toFixed(2);
+          if (abs < 10) return v.toFixed(1);
+          return Math.round(v).toLocaleString();
+        };
+        
         text += `Revenue ($M)\t\t\t`;
-        financeResult.projections.revenue.forEach((v: number) => { text += `$${Math.round(v || 0).toLocaleString()}\t`; });
+        financeResult.projections.revenue.forEach((v: number) => { text += `$${fmtM(v || 0)}\t`; });
         text += `\n`;
         
         text += `EBITDA ($M)\t\t\t`;
-        financeResult.projections.ebitda?.forEach((v: number) => { text += `$${Math.round(v || 0).toLocaleString()}\t`; });
+        financeResult.projections.ebitda?.forEach((v: number) => { text += `$${fmtM(v || 0)}\t`; });
         text += `\n`;
         
         text += `  EBITDA Margin\t\t\t`;
@@ -908,35 +924,35 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         text += `\n`;
         
         text += `Less: D&A ($M)\t\t\t`;
-        financeResult.projections.da?.forEach((v: number) => { text += `($${Math.round(v || 0).toLocaleString()})\t`; });
+        financeResult.projections.da?.forEach((v: number) => { text += `($${fmtM(v || 0)})\t`; });
         text += `\n`;
         
         text += `EBIT ($M)\t\t\t`;
-        financeResult.projections.ebit?.forEach((v: number) => { text += `$${Math.round(v || 0).toLocaleString()}\t`; });
+        financeResult.projections.ebit?.forEach((v: number) => { text += `$${fmtM(v || 0)}\t`; });
         text += `\n`;
         
         text += `Less: Taxes ($M)\t\t`;
-        financeResult.projections.taxes?.forEach((v: number) => { text += `($${Math.round(v || 0).toLocaleString()})\t`; });
+        financeResult.projections.taxes?.forEach((v: number) => { text += `($${fmtM(v || 0)})\t`; });
         text += `\n`;
         
         text += `NOPAT ($M)\t\t\t`;
-        financeResult.projections.nopat?.forEach((v: number) => { text += `$${Math.round(v || 0).toLocaleString()}\t`; });
+        financeResult.projections.nopat?.forEach((v: number) => { text += `$${fmtM(v || 0)}\t`; });
         text += `\n`;
         
         text += `Plus: D&A ($M)\t\t\t`;
-        financeResult.projections.da?.forEach((v: number) => { text += `$${Math.round(v || 0).toLocaleString()}\t`; });
+        financeResult.projections.da?.forEach((v: number) => { text += `$${fmtM(v || 0)}\t`; });
         text += `\n`;
         
         text += `Less: CapEx ($M)\t\t`;
-        financeResult.projections.capex?.forEach((v: number) => { text += `($${Math.round(v || 0).toLocaleString()})\t`; });
+        financeResult.projections.capex?.forEach((v: number) => { text += `($${fmtM(v || 0)})\t`; });
         text += `\n`;
         
         text += `Less: Change in NWC ($M)\t`;
-        financeResult.projections.nwcChange?.forEach((v: number) => { text += `($${Math.round(v || 0).toLocaleString()})\t`; });
+        financeResult.projections.nwcChange?.forEach((v: number) => { text += `($${fmtM(v || 0)})\t`; });
         text += `\n${"─".repeat(60)}\n`;
         
         text += `Unlevered FCF ($M)\t\t`;
-        financeResult.projections.fcf?.forEach((v: number) => { text += `$${Math.round(v || 0).toLocaleString()}\t`; });
+        financeResult.projections.fcf?.forEach((v: number) => { text += `$${fmtM(v || 0)}\t`; });
         text += `\n\n`;
       }
       
