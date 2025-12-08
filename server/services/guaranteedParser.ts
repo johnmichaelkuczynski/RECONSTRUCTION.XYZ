@@ -379,12 +379,49 @@ function extractMoney(text: string, patterns: RegExp[]): number | null {
       if (isNaN(value)) continue;
       
       const fullMatch = match[0].toLowerCase();
-      if (fullMatch.includes('billion') || fullMatch.includes('bn') || /\d+\s*b(?:\s|$)/i.test(fullMatch)) {
+      // Handle billions: B, b, bn, billion - multiply by 1000 to get millions
+      // Patterns: $1.3B, 1.3bn, 1.3 billion, 1.3b
+      if (fullMatch.includes('billion') || fullMatch.includes('bn') || /[\d.]+\s*b(?:[^a-z]|$)/i.test(fullMatch)) {
         value *= 1000;
       }
       return value;
     }
   }
+  return null;
+}
+
+// Standalone unit-aware money extractor for when we don't have specific patterns
+function extractMoneyWithUnits(text: string): number | null {
+  // Pattern for billions: $X.XXB, X.XXbn, X.XX billion
+  const billionPatterns = [
+    /\$?([\d,.]+)\s*[Bb](?:illion|n)?(?![a-z])/,
+    /([\d,.]+)\s*billion/i,
+  ];
+  
+  // Pattern for millions: $X.XXM, X.XXm, X.XX million
+  const millionPatterns = [
+    /\$?([\d,.]+)\s*[Mm](?:illion)?(?![a-z])/,
+    /([\d,.]+)\s*million/i,
+  ];
+
+  // Check billions first (higher priority)
+  for (const pattern of billionPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const value = parseFloat(match[1].replace(/,/g, ''));
+      if (!isNaN(value)) return value * 1000; // Convert to millions
+    }
+  }
+
+  // Check millions
+  for (const pattern of millionPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const value = parseFloat(match[1].replace(/,/g, ''));
+      if (!isNaN(value)) return value; // Already in millions
+    }
+  }
+
   return null;
 }
 
@@ -419,9 +456,9 @@ export function parseLBOGuaranteed(text: string): LBOGuaranteedValues {
   
   // ============ EBITDA (CRITICAL - many values derive from this) ============
   const ebitdaPatterns = [
-    /(?:ltm\s+)?ebitda\s+(?:of\s+)?\$?([\d,.]+)\s*(?:m|mm|million)?/i,
-    /\$?([\d,.]+)\s*(?:m|mm|million)?\s+(?:ltm\s+)?ebitda/i,
-    /ebitda\s*[=:]\s*\$?([\d,.]+)/i,
+    /(?:ltm\s+)?ebitda\s+(?:of\s+|is\s+|was\s+)?\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
+    /\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\s+(?:ltm\s+)?ebitda/i,
+    /ebitda\s*[=:]\s*\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
   ];
   const ebitda = extractMoney(text, ebitdaPatterns);
   if (ebitda !== null) {
@@ -431,9 +468,9 @@ export function parseLBOGuaranteed(text: string): LBOGuaranteedValues {
   
   // ============ REVENUE ============
   const revenuePatterns = [
-    /(?:ltm\s+)?revenue\s+(?:of\s+)?\$?([\d,.]+)\s*(?:m|mm|million)?/i,
-    /\$?([\d,.]+)\s*(?:m|mm|million)?\s+(?:ltm\s+)?revenue/i,
-    /revenue\s*[=:]\s*\$?([\d,.]+)/i,
+    /(?:ltm\s+)?revenue\s+(?:of\s+|is\s+|was\s+)?\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
+    /\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\s+(?:ltm\s+)?revenue/i,
+    /revenue\s*[=:]\s*\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
   ];
   const revenue = extractMoney(text, revenuePatterns);
   if (revenue !== null) {
@@ -464,9 +501,15 @@ export function parseLBOGuaranteed(text: string): LBOGuaranteedValues {
   // The (?![×x]) negative lookahead prevents matching "8.2×" as $8.2M
   const purchasePricePatterns = [
     /(?:ev|enterprise\s+value)\s*[=:]\s*\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?(?![×x])/i,
-    /(?:buy(?:ing)?|acquir(?:e|ing))\s+(?:for|at)\s+\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?(?![×x])/i,
-    /\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)\s+(?:purchase\s+price|ev|enterprise\s+value)/i,
+    /(?:buy(?:ing)?|acquir(?:e|ed|ing)|sold|purchased?)\s+(?:for|at)\s+\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?(?![×x])/i,
+    /\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)\s+(?:purchase\s+price|ev|enterprise\s+value|deal|transaction)/i,
     /\(EV\s*=\s*\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?\)/i,
+    // Additional patterns for varied phrasing
+    /(?:transaction|deal)\s+(?:size|value)?[:\s]+\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?/i,
+    /price\s+(?:of\s+|is\s+|was\s+)?\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)?(?![×x])/i,
+    /\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)\s+(?:deal|transaction|price)/i,
+    /([\d,.]+)\s*(?:b|bn|billion)\s+(?:deal|transaction|company|target)/i,
+    /(?:for|at)\s+\$?([\d,.]+)\s*(?:m|mm|million|b|bn|billion)\s*(?:ev)?/i,
   ];
   const purchasePrice = extractMoney(text, purchasePricePatterns);
   if (purchasePrice !== null && purchasePrice > 50) {
