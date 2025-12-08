@@ -892,19 +892,23 @@ If the theorem is TRUE:
 If the theorem is FALSE:
 - Identify WHY it is false (provide counterexample)
 - Find a SIMILAR theorem that IS true (e.g., if the original claimed "for all n > 1" but it only holds for primes, state the corrected theorem)
-- Provide a rigorous proof of the CORRECTED theorem
+- YOU MUST PROVIDE A COMPLETE, STEP-BY-STEP PROOF OF THE CORRECTED THEOREM
+- The proof of the corrected theorem must be just as rigorous as if you were proving the original
+- Do NOT just state the corrected theorem - you MUST prove it
 
 If the theorem is PARTIALLY TRUE:
 - Identify the conditions under which it IS true
 - State the corrected theorem with proper conditions
-- Prove the corrected theorem
+- YOU MUST PROVE THE CORRECTED THEOREM with a complete step-by-step proof
 
 CRITICAL RULES:
 1. NEVER output a broken proof - every proof you output MUST be valid
 2. NEVER just reformat without fixing mathematical errors
 3. ALWAYS verify your proof is correct before outputting
 4. Show key calculations explicitly
-5. If you cannot prove something, say so - do not fake a proof`;
+5. If you cannot prove something, say so - do not fake a proof
+6. WHEN THEOREM IS FALSE: You MUST provide a COMPLETE proof of the corrected/adjacent theorem - never just state it without proof
+7. The CORRECTED PROOF section must ALWAYS contain a complete mathematical proof, not just an explanation`;
 
   const userPrompt = `MATHEMATICAL PROOF CORRECTION REQUEST
 
@@ -934,7 +938,14 @@ PROOF STRATEGY:
 [Briefly explain your approach - are you fixing the original proof or providing a new one?]
 
 ---CORRECTED PROOF---
-[Provide the complete, rigorous, mathematically correct proof. If theorem was false, this proves the corrected theorem instead.]
+[CRITICAL: Provide a COMPLETE, STEP-BY-STEP mathematical proof here. 
+If the original theorem was FALSE, you MUST prove the CORRECTED theorem with the same rigor you would use for any mathematical proof.
+Include:
+- Clear statement of what is being proved
+- All logical steps numbered or clearly separated
+- Justification for each step
+- Final conclusion (QED)
+DO NOT just explain why the original was wrong - PROVE the corrected theorem!]
 
 KEY CORRECTIONS:
 [List the main mathematical errors that were fixed or why a new approach was needed]
