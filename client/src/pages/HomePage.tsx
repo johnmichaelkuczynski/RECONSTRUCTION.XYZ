@@ -968,28 +968,28 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       text += `--------------\n`;
       text += `Exit EBITDA: $${financeResult.exitValuation?.exitEBITDA?.toLocaleString()}M\n`;
       text += `Exit Multiple: ${financeResult.exitValuation?.exitMultiple?.toFixed(1)}x\n`;
-      text += `Enterprise Value: $${financeResult.exitValuation?.enterpriseValue?.toLocaleString()}M\n`;
-      text += `Exit Equity Value: $${financeResult.exitValuation?.equityValue?.toLocaleString()}M\n\n`;
+      text += `Enterprise Value: $${financeResult.exitValuation?.exitEV?.toLocaleString()}M\n`;
+      text += `Exit Equity Value: $${financeResult.exitValuation?.exitEquityValue?.toLocaleString()}M\n\n`;
       text += `SOURCES OF FUNDS\n`;
       text += `----------------\n`;
-      text += `Senior Debt: $${financeResult.sourcesUses?.sources?.seniorDebt?.toLocaleString()}M\n`;
-      text += `Subordinated Debt: $${financeResult.sourcesUses?.sources?.subordinatedDebt?.toLocaleString()}M\n`;
-      text += `Sponsor Equity: $${financeResult.sourcesUses?.sources?.sponsorEquity?.toLocaleString()}M\n`;
-      text += `Total Sources: $${financeResult.sourcesUses?.sources?.total?.toLocaleString()}M\n\n`;
+      text += `Senior Debt: $${financeResult.sourcesAndUses?.sources?.seniorDebt?.toLocaleString()}M\n`;
+      text += `Subordinated Debt: $${financeResult.sourcesAndUses?.sources?.subDebt?.toLocaleString()}M\n`;
+      text += `Sponsor Equity: $${financeResult.sourcesAndUses?.sources?.sponsorEquity?.toLocaleString()}M\n`;
+      text += `Total Sources: $${financeResult.sourcesAndUses?.sources?.total?.toLocaleString()}M\n\n`;
       text += `USES OF FUNDS\n`;
       text += `-------------\n`;
-      text += `Purchase Price: $${financeResult.sourcesUses?.uses?.purchasePrice?.toLocaleString()}M\n`;
-      text += `Transaction Costs: $${financeResult.sourcesUses?.uses?.transactionCosts?.toLocaleString()}M\n`;
-      text += `Total Uses: $${financeResult.sourcesUses?.uses?.total?.toLocaleString()}M\n\n`;
+      text += `Purchase Price: $${financeResult.sourcesAndUses?.uses?.purchasePrice?.toLocaleString()}M\n`;
+      text += `Transaction Costs: $${financeResult.sourcesAndUses?.uses?.transactionCosts?.toLocaleString()}M\n`;
+      text += `Total Uses: $${financeResult.sourcesAndUses?.uses?.total?.toLocaleString()}M\n\n`;
       text += `KEY DEAL METRICS\n`;
       text += `----------------\n`;
-      text += `Entry Multiple: ${financeResult.assumptions?.entryMultiple?.toFixed(1)}x\n`;
-      text += `Exit Multiple: ${financeResult.assumptions?.exitMultiple?.toFixed(1)}x\n`;
-      text += `Entry Leverage: ${financeResult.debtMetrics?.entryLeverage?.toFixed(1)}x\n`;
-      text += `Exit Leverage: ${financeResult.debtMetrics?.exitLeverage?.toFixed(1)}x\n`;
-      text += `Hold Period: ${financeResult.assumptions?.holdPeriod} Years\n`;
-      text += `Debt Paydown: $${financeResult.debtMetrics?.debtPaydown?.toLocaleString()}M\n`;
-      text += `% Debt Repaid: ${((financeResult.debtMetrics?.percentDebtRepaid || 0) * 100).toFixed(0)}%\n\n`;
+      text += `Entry Multiple: ${financeResult.keyMetrics?.entryMultiple?.toFixed(1)}x\n`;
+      text += `Exit Multiple: ${financeResult.keyMetrics?.exitMultiple?.toFixed(1)}x\n`;
+      text += `Entry Leverage: ${financeResult.keyMetrics?.entryLeverage?.toFixed(1)}x\n`;
+      text += `Exit Leverage: ${financeResult.keyMetrics?.exitLeverage?.toFixed(1)}x\n`;
+      text += `Hold Period: ${financeResult.exitValuation?.exitYear} Years\n`;
+      text += `Debt Paydown: $${financeResult.keyMetrics?.debtPaydown?.toLocaleString()}M\n`;
+      text += `% Debt Repaid: ${((financeResult.keyMetrics?.debtPaydownPercent || 0) * 100).toFixed(0)}%\n\n`;
       if (financeResult.projections?.revenue) {
         text += `5-YEAR PROJECTIONS\n`;
         text += `------------------\n`;
@@ -1001,7 +1001,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         text += `\nSenior Debt ($M)\t`;
         financeResult.projections.seniorDebt?.forEach((v: number) => text += `$${v?.toLocaleString()}\t`);
         text += `\nFree Cash Flow ($M)\t`;
-        financeResult.projections.fcf?.forEach((v: number) => text += `$${v?.toLocaleString()}\t`);
+        financeResult.projections.freeCashFlow?.forEach((v: number) => text += `$${v?.toLocaleString()}\t`);
         text += `\n`;
       }
     } else if (financeModelType === "ma") {
