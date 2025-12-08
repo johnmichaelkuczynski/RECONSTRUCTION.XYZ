@@ -307,23 +307,28 @@ print("-" * 70)
 
 np.random.seed(42)
 
-# Generate date range
+# Generate date range - use enough data for training/testing plus forecast
+# Minimum: 3x seasonal periods or 3x forecast horizon, whichever is larger
+forecast_horizon = ${params.forecastHorizon}
+seasonal_period = ${params.seasonalPeriod}
+min_periods = max(forecast_horizon * 3, seasonal_period * 4, 36)  # At least 36 periods
+
 ${params.frequency === 'MS' || params.frequency === 'M' ? `
 # Monthly data
-dates = pd.date_range(start='2018-01-01', periods=84, freq='MS')  # 7 years
-n_periods = len(dates)
+n_periods = min_periods
+dates = pd.date_range(end=pd.Timestamp.now().replace(day=1), periods=n_periods, freq='MS')
 ` : params.frequency === 'D' ? `
 # Daily data
-dates = pd.date_range(start='2022-01-01', periods=730, freq='D')  # 2 years
-n_periods = len(dates)
+n_periods = max(min_periods, 365)  # At least 1 year for daily
+dates = pd.date_range(end=pd.Timestamp.now(), periods=n_periods, freq='D')
 ` : params.frequency === 'W' ? `
 # Weekly data
-dates = pd.date_range(start='2020-01-01', periods=208, freq='W')  # 4 years
-n_periods = len(dates)
+n_periods = max(min_periods, 104)  # At least 2 years for weekly
+dates = pd.date_range(end=pd.Timestamp.now(), periods=n_periods, freq='W')
 ` : `
 # Default monthly data
-dates = pd.date_range(start='2018-01-01', periods=84, freq='MS')
-n_periods = len(dates)
+n_periods = min_periods
+dates = pd.date_range(end=pd.Timestamp.now().replace(day=1), periods=n_periods, freq='MS')
 `}
 
 print(f"Generating {n_periods} observations")
@@ -930,8 +935,40 @@ model_name = best_model_name
 function generateSpecificModelCode(params: ForecastingParameters): string {
   const modelType = params.modelType.toLowerCase();
   
+  const evaluateFunctionCode = `
+def evaluate_forecast(actual, predicted, model_name):
+    """Calculate forecast accuracy metrics"""
+    actual_vals = actual.values if hasattr(actual, 'values') else np.array(actual)
+    pred_vals = predicted.values if hasattr(predicted, 'values') else np.array(predicted)
+    
+    # Handle any NaN
+    mask = ~(np.isnan(actual_vals) | np.isnan(pred_vals))
+    actual_vals = actual_vals[mask]
+    pred_vals = pred_vals[mask]
+    
+    if len(actual_vals) == 0:
+        return None
+    
+    mae = mean_absolute_error(actual_vals, pred_vals)
+    rmse = np.sqrt(mean_squared_error(actual_vals, pred_vals))
+    mape = mean_absolute_percentage_error(actual_vals, pred_vals) * 100
+    
+    # Mean Absolute Scaled Error (MASE)
+    naive_mae = np.mean(np.abs(np.diff(actual_vals)))
+    mase = mae / naive_mae if naive_mae > 0 else np.inf
+    
+    return {
+        'Model': model_name,
+        'MAE': mae,
+        'RMSE': rmse,
+        'MAPE': mape,
+        'MASE': mase
+    }
+
+`;
+  
   if (modelType === 'prophet') {
-    return `
+    return evaluateFunctionCode + `
 # --- PROPHET MODEL ---
 print("\\n" + "-" * 70)
 print("PROPHET MODEL")
@@ -983,7 +1020,7 @@ comparison_df = pd.DataFrame([result])
 
 `;
   } else if (modelType === 'holtwinters' || modelType === 'ets') {
-    return `
+    return evaluateFunctionCode + `
 # --- HOLT-WINTERS EXPONENTIAL SMOOTHING ---
 print("\\n" + "-" * 70)
 print("HOLT-WINTERS EXPONENTIAL SMOOTHING")
@@ -1027,7 +1064,7 @@ comparison_df = pd.DataFrame([result])
 
 `;
   } else {
-    return `
+    return evaluateFunctionCode + `
 # --- SARIMA MODEL ---
 print("\\n" + "-" * 70)
 print("SARIMA MODEL FITTING")
