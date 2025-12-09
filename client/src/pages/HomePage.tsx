@@ -3244,9 +3244,59 @@ Generated on: ${new Date().toLocaleString()}`;
                 </Button>
 
                 {fullSuiteStage === "complete" && (
-                  <div className="flex items-center justify-center gap-2 text-green-600 dark:text-green-400">
-                    <CheckCircle className="w-5 h-5" />
-                    <span className="font-medium">Full Suite completed! Scroll down to see all results.</span>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-center gap-2 text-green-600 dark:text-green-400">
+                      <CheckCircle className="w-5 h-5" />
+                      <span className="font-medium">Full Suite completed!</span>
+                    </div>
+                    <Button
+                      onClick={() => {
+                        const allOutput = [
+                          "═══════════════════════════════════════════════════════════════",
+                          "                    FULL SUITE ANALYSIS RESULTS",
+                          "═══════════════════════════════════════════════════════════════",
+                          "",
+                          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                          "                         BATCH ANALYSIS",
+                          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                          "",
+                          ...validatorBatchResults.filter(r => r.success).map(r => {
+                            const modeName = r.mode === "reconstruction" ? "CONSERVATIVE RECONSTRUCTION" :
+                              r.mode === "isomorphism" ? "ISOMORPHISM ANALYSIS" :
+                              r.mode === "mathmodel" ? "MATHEMATICAL MODEL" :
+                              r.mode === "truth-isomorphism" ? "TRUTH SELECT" :
+                              r.mode === "math-truth-select" ? "MATH TRUTH SELECT" : r.mode.toUpperCase();
+                            return `▸ ${modeName}\n${"─".repeat(50)}\n${r.output}\n`;
+                          }),
+                          "",
+                          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                          "                          BOTTOMLINE",
+                          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                          "",
+                          bottomlineOutput || "(No BOTTOMLINE output)",
+                          "",
+                          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                          "                    OBJECTIONS & COUNTER-ARGUMENTS",
+                          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                          "",
+                          objectionsOutput || "(No Objections output)",
+                          "",
+                          "═══════════════════════════════════════════════════════════════",
+                          "                         END OF REPORT",
+                          "═══════════════════════════════════════════════════════════════"
+                        ].join("\n");
+                        navigator.clipboard.writeText(allOutput);
+                        toast({
+                          title: "All Results Copied!",
+                          description: "Complete Full Suite output copied to clipboard.",
+                        });
+                      }}
+                      className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
+                      data-testid="button-copy-all-fullsuite"
+                    >
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copy All Results (Batch + BOTTOMLINE + Objections)
+                    </Button>
                   </div>
                 )}
               </div>
