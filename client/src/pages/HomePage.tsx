@@ -146,6 +146,11 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [validatorMode, setValidatorMode] = useState<"reconstruction" | "isomorphism" | "mathmodel" | "autodecide" | "truth-isomorphism" | "math-truth-select" | null>(null);
   const [validatorOutput, setValidatorOutput] = useState<string>("");
   const [validatorLoading, setValidatorLoading] = useState(false);
+  // Multi-mode batch processing
+  const [validatorMultiMode, setValidatorMultiMode] = useState(false);
+  const [validatorSelectedModes, setValidatorSelectedModes] = useState<string[]>([]);
+  const [validatorBatchResults, setValidatorBatchResults] = useState<Array<{mode: string; success: boolean; output?: string; error?: string}>>([]);
+  const [validatorBatchLoading, setValidatorBatchLoading] = useState(false);
   const [validatorTargetDomain, setValidatorTargetDomain] = useState("");
   const [validatorFidelityLevel, setValidatorFidelityLevel] = useState<"conservative" | "aggressive">("conservative");
   const [validatorMathFramework, setValidatorMathFramework] = useState("variational-inference");
@@ -571,6 +576,86 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setValidatorMode(null);
     setShowValidatorCustomization(false);
     setValidatorCustomInstructions("");
+    setValidatorBatchResults([]);
+    setValidatorSelectedModes([]);
+  };
+
+  // Toggle mode selection for batch processing
+  const toggleValidatorModeSelection = (mode: string) => {
+    setValidatorSelectedModes(prev => 
+      prev.includes(mode) 
+        ? prev.filter(m => m !== mode) 
+        : [...prev, mode]
+    );
+  };
+
+  // Batch process multiple modes at once
+  const handleValidatorBatchProcess = async () => {
+    if (!validatorInputText.trim()) {
+      toast({
+        title: "No Input Text",
+        description: "Please enter text to validate",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (validatorSelectedModes.length === 0) {
+      toast({
+        title: "No Modes Selected",
+        description: "Please select at least one mode to run",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setValidatorBatchLoading(true);
+    setValidatorBatchResults([]);
+    setValidatorOutput("");
+
+    try {
+      const response = await fetch('/api/text-model-validator/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: validatorInputText,
+          modes: validatorSelectedModes,
+          targetDomain: validatorTargetDomain,
+          fidelityLevel: validatorFidelityLevel,
+          mathFramework: validatorMathFramework,
+          constraintType: validatorConstraintType,
+          rigorLevel: validatorRigorLevel,
+          customInstructions: validatorCustomInstructions,
+          truthMapping: validatorTruthMapping,
+          mathTruthMapping: validatorMathTruthMapping,
+          literalTruth: validatorLiteralTruth,
+          llmProvider: validatorLLMProvider,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Batch validation failed');
+      }
+
+      const data = await response.json();
+      if (data.success && data.results) {
+        setValidatorBatchResults(data.results);
+        toast({
+          title: "Batch Validation Complete!",
+          description: `Processed ${data.successfulModes}/${data.totalModes} modes successfully`,
+        });
+      }
+    } catch (error: any) {
+      console.error('Batch validator error:', error);
+      toast({
+        title: "Batch Validation Failed",
+        description: error.message || "An error occurred during batch validation.",
+        variant: "destructive",
+      });
+    } finally {
+      setValidatorBatchLoading(false);
+    }
   };
 
 
@@ -2608,97 +2693,252 @@ Generated on: ${new Date().toLocaleString()}`;
             />
           </div>
 
+          {/* Multi-Mode Toggle */}
+          <div className="flex items-center justify-between mb-4 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg">
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={validatorMultiMode}
+                onCheckedChange={(checked) => {
+                  setValidatorMultiMode(checked);
+                  if (!checked) {
+                    setValidatorSelectedModes([]);
+                    setValidatorBatchResults([]);
+                  }
+                }}
+                data-testid="switch-multi-mode"
+              />
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Run Multiple Functions
+              </label>
+            </div>
+            {validatorMultiMode && (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200">
+                  {validatorSelectedModes.length} selected
+                </Badge>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setValidatorSelectedModes(["reconstruction", "isomorphism", "mathmodel", "truth-isomorphism", "math-truth-select"])}
+                  disabled={validatorBatchLoading}
+                  data-testid="button-select-all-modes"
+                >
+                  Select All
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setValidatorSelectedModes([])}
+                  disabled={validatorBatchLoading}
+                  data-testid="button-clear-selection"
+                >
+                  Clear
+                </Button>
+              </div>
+            )}
+          </div>
+
           {/* Six Main Buttons */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-            <Button
-              onClick={() => {
-                setShowValidatorCustomization(prev => validatorMode === "reconstruction" ? !prev : true);
-                setValidatorMode("reconstruction");
-              }}
-              className={`flex flex-col items-center justify-center p-6 h-auto ${
-                validatorMode === "reconstruction" 
-                  ? "bg-emerald-600 hover:bg-emerald-700 text-white" 
-                  : "bg-white dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-2 border-emerald-300"
-              }`}
-              disabled={validatorLoading}
-              data-testid="button-reconstruction"
-            >
-              <RefreshCw className="w-6 h-6 mb-2" />
-              <span className="font-bold text-lg">RECONSTRUCTION</span>
-              <span className="text-xs mt-1 text-center opacity-80">Clean up logic</span>
-            </Button>
+            <div className="relative">
+              {validatorMultiMode && (
+                <div 
+                  className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center cursor-pointer ${
+                    validatorSelectedModes.includes("reconstruction")
+                      ? "bg-emerald-600 border-emerald-600 text-white"
+                      : "bg-white dark:bg-gray-700 border-gray-400"
+                  }`}
+                  onClick={() => toggleValidatorModeSelection("reconstruction")}
+                >
+                  {validatorSelectedModes.includes("reconstruction") && <CheckCircle className="w-4 h-4" />}
+                </div>
+              )}
+              <Button
+                onClick={() => {
+                  if (validatorMultiMode) {
+                    toggleValidatorModeSelection("reconstruction");
+                  } else {
+                    setShowValidatorCustomization(prev => validatorMode === "reconstruction" ? !prev : true);
+                    setValidatorMode("reconstruction");
+                  }
+                }}
+                className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
+                  validatorMultiMode
+                    ? validatorSelectedModes.includes("reconstruction")
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                      : "bg-white dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-2 border-emerald-300"
+                    : validatorMode === "reconstruction" 
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white" 
+                      : "bg-white dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-2 border-emerald-300"
+                }`}
+                disabled={validatorLoading || validatorBatchLoading}
+                data-testid="button-reconstruction"
+              >
+                <RefreshCw className="w-6 h-6 mb-2" />
+                <span className="font-bold text-lg">RECONSTRUCTION</span>
+                <span className="text-xs mt-1 text-center opacity-80">Clean up logic</span>
+              </Button>
+            </div>
 
-            <Button
-              onClick={() => {
-                setShowValidatorCustomization(prev => validatorMode === "isomorphism" ? !prev : true);
-                setValidatorMode("isomorphism");
-              }}
-              className={`flex flex-col items-center justify-center p-6 h-auto ${
-                validatorMode === "isomorphism" 
-                  ? "bg-teal-600 hover:bg-teal-700 text-white" 
-                  : "bg-white dark:bg-gray-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 text-teal-700 dark:text-teal-300 border-2 border-teal-300"
-              }`}
-              disabled={validatorLoading}
-              data-testid="button-isomorphism"
-            >
-              <FileEdit className="w-6 h-6 mb-2" />
-              <span className="font-bold text-lg">ISOMORPHISM</span>
-              <span className="text-xs mt-1 text-center opacity-80">Swap domains</span>
-            </Button>
+            <div className="relative">
+              {validatorMultiMode && (
+                <div 
+                  className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center cursor-pointer ${
+                    validatorSelectedModes.includes("isomorphism")
+                      ? "bg-teal-600 border-teal-600 text-white"
+                      : "bg-white dark:bg-gray-700 border-gray-400"
+                  }`}
+                  onClick={() => toggleValidatorModeSelection("isomorphism")}
+                >
+                  {validatorSelectedModes.includes("isomorphism") && <CheckCircle className="w-4 h-4" />}
+                </div>
+              )}
+              <Button
+                onClick={() => {
+                  if (validatorMultiMode) {
+                    toggleValidatorModeSelection("isomorphism");
+                  } else {
+                    setShowValidatorCustomization(prev => validatorMode === "isomorphism" ? !prev : true);
+                    setValidatorMode("isomorphism");
+                  }
+                }}
+                className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
+                  validatorMultiMode
+                    ? validatorSelectedModes.includes("isomorphism")
+                      ? "bg-teal-600 hover:bg-teal-700 text-white"
+                      : "bg-white dark:bg-gray-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 text-teal-700 dark:text-teal-300 border-2 border-teal-300"
+                    : validatorMode === "isomorphism" 
+                      ? "bg-teal-600 hover:bg-teal-700 text-white" 
+                      : "bg-white dark:bg-gray-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 text-teal-700 dark:text-teal-300 border-2 border-teal-300"
+                }`}
+                disabled={validatorLoading || validatorBatchLoading}
+                data-testid="button-isomorphism"
+              >
+                <FileEdit className="w-6 h-6 mb-2" />
+                <span className="font-bold text-lg">ISOMORPHISM</span>
+                <span className="text-xs mt-1 text-center opacity-80">Swap domains</span>
+              </Button>
+            </div>
 
-            <Button
-              onClick={() => {
-                setShowValidatorCustomization(prev => validatorMode === "mathmodel" ? !prev : true);
-                setValidatorMode("mathmodel");
-              }}
-              className={`flex flex-col items-center justify-center p-6 h-auto ${
-                validatorMode === "mathmodel" 
-                  ? "bg-blue-600 hover:bg-blue-700 text-white" 
-                  : "bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-2 border-blue-300"
-              }`}
-              disabled={validatorLoading}
-              data-testid="button-mathmodel"
-            >
-              <Zap className="w-6 h-6 mb-2" />
-              <span className="font-bold text-lg">MATH MODEL</span>
-              <span className="text-xs mt-1 text-center opacity-80">Formalize it</span>
-            </Button>
+            <div className="relative">
+              {validatorMultiMode && (
+                <div 
+                  className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center cursor-pointer ${
+                    validatorSelectedModes.includes("mathmodel")
+                      ? "bg-blue-600 border-blue-600 text-white"
+                      : "bg-white dark:bg-gray-700 border-gray-400"
+                  }`}
+                  onClick={() => toggleValidatorModeSelection("mathmodel")}
+                >
+                  {validatorSelectedModes.includes("mathmodel") && <CheckCircle className="w-4 h-4" />}
+                </div>
+              )}
+              <Button
+                onClick={() => {
+                  if (validatorMultiMode) {
+                    toggleValidatorModeSelection("mathmodel");
+                  } else {
+                    setShowValidatorCustomization(prev => validatorMode === "mathmodel" ? !prev : true);
+                    setValidatorMode("mathmodel");
+                  }
+                }}
+                className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
+                  validatorMultiMode
+                    ? validatorSelectedModes.includes("mathmodel")
+                      ? "bg-blue-600 hover:bg-blue-700 text-white"
+                      : "bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-2 border-blue-300"
+                    : validatorMode === "mathmodel" 
+                      ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                      : "bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-2 border-blue-300"
+                }`}
+                disabled={validatorLoading || validatorBatchLoading}
+                data-testid="button-mathmodel"
+              >
+                <Zap className="w-6 h-6 mb-2" />
+                <span className="font-bold text-lg">MATH MODEL</span>
+                <span className="text-xs mt-1 text-center opacity-80">Formalize it</span>
+              </Button>
+            </div>
 
-            <Button
-              onClick={() => {
-                setShowValidatorCustomization(prev => validatorMode === "truth-isomorphism" ? !prev : true);
-                setValidatorMode("truth-isomorphism");
-              }}
-              className={`flex flex-col items-center justify-center p-6 h-auto ${
-                validatorMode === "truth-isomorphism" 
-                  ? "bg-orange-600 hover:bg-orange-700 text-white" 
-                  : "bg-white dark:bg-gray-800 hover:bg-orange-50 dark:hover:bg-orange-900/20 text-orange-700 dark:text-orange-300 border-2 border-orange-300"
-              }`}
-              disabled={validatorLoading}
-              data-testid="button-truth-isomorphism"
-            >
-              <Shield className="w-6 h-6 mb-2" />
-              <span className="font-bold text-lg">TRUTH SELECT</span>
-              <span className="text-xs mt-1 text-center opacity-80">Choose truth mapping</span>
-            </Button>
+            <div className="relative">
+              {validatorMultiMode && (
+                <div 
+                  className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center cursor-pointer ${
+                    validatorSelectedModes.includes("truth-isomorphism")
+                      ? "bg-orange-600 border-orange-600 text-white"
+                      : "bg-white dark:bg-gray-700 border-gray-400"
+                  }`}
+                  onClick={() => toggleValidatorModeSelection("truth-isomorphism")}
+                >
+                  {validatorSelectedModes.includes("truth-isomorphism") && <CheckCircle className="w-4 h-4" />}
+                </div>
+              )}
+              <Button
+                onClick={() => {
+                  if (validatorMultiMode) {
+                    toggleValidatorModeSelection("truth-isomorphism");
+                  } else {
+                    setShowValidatorCustomization(prev => validatorMode === "truth-isomorphism" ? !prev : true);
+                    setValidatorMode("truth-isomorphism");
+                  }
+                }}
+                className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
+                  validatorMultiMode
+                    ? validatorSelectedModes.includes("truth-isomorphism")
+                      ? "bg-orange-600 hover:bg-orange-700 text-white"
+                      : "bg-white dark:bg-gray-800 hover:bg-orange-50 dark:hover:bg-orange-900/20 text-orange-700 dark:text-orange-300 border-2 border-orange-300"
+                    : validatorMode === "truth-isomorphism" 
+                      ? "bg-orange-600 hover:bg-orange-700 text-white" 
+                      : "bg-white dark:bg-gray-800 hover:bg-orange-50 dark:hover:bg-orange-900/20 text-orange-700 dark:text-orange-300 border-2 border-orange-300"
+                }`}
+                disabled={validatorLoading || validatorBatchLoading}
+                data-testid="button-truth-isomorphism"
+              >
+                <Shield className="w-6 h-6 mb-2" />
+                <span className="font-bold text-lg">TRUTH SELECT</span>
+                <span className="text-xs mt-1 text-center opacity-80">Choose truth mapping</span>
+              </Button>
+            </div>
 
-            <Button
-              onClick={() => {
-                setShowValidatorCustomization(prev => validatorMode === "math-truth-select" ? !prev : true);
-                setValidatorMode("math-truth-select");
-              }}
-              className={`flex flex-col items-center justify-center p-6 h-auto ${
-                validatorMode === "math-truth-select" 
-                  ? "bg-indigo-600 hover:bg-indigo-700 text-white" 
-                  : "bg-white dark:bg-gray-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border-2 border-indigo-300"
-              }`}
-              disabled={validatorLoading}
-              data-testid="button-math-truth-select"
-            >
-              <BarChart3 className="w-6 h-6 mb-2" />
-              <span className="font-bold text-lg">MATH + TRUTH</span>
-              <span className="text-xs mt-1 text-center opacity-80">Formalize with truth control</span>
-            </Button>
+            <div className="relative">
+              {validatorMultiMode && (
+                <div 
+                  className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center cursor-pointer ${
+                    validatorSelectedModes.includes("math-truth-select")
+                      ? "bg-indigo-600 border-indigo-600 text-white"
+                      : "bg-white dark:bg-gray-700 border-gray-400"
+                  }`}
+                  onClick={() => toggleValidatorModeSelection("math-truth-select")}
+                >
+                  {validatorSelectedModes.includes("math-truth-select") && <CheckCircle className="w-4 h-4" />}
+                </div>
+              )}
+              <Button
+                onClick={() => {
+                  if (validatorMultiMode) {
+                    toggleValidatorModeSelection("math-truth-select");
+                  } else {
+                    setShowValidatorCustomization(prev => validatorMode === "math-truth-select" ? !prev : true);
+                    setValidatorMode("math-truth-select");
+                  }
+                }}
+                className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
+                  validatorMultiMode
+                    ? validatorSelectedModes.includes("math-truth-select")
+                      ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+                      : "bg-white dark:bg-gray-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border-2 border-indigo-300"
+                    : validatorMode === "math-truth-select" 
+                      ? "bg-indigo-600 hover:bg-indigo-700 text-white" 
+                      : "bg-white dark:bg-gray-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border-2 border-indigo-300"
+                }`}
+                disabled={validatorLoading || validatorBatchLoading}
+                data-testid="button-math-truth-select"
+              >
+                <BarChart3 className="w-6 h-6 mb-2" />
+                <span className="font-bold text-lg">MATH + TRUTH</span>
+                <span className="text-xs mt-1 text-center opacity-80">Formalize with truth control</span>
+              </Button>
+            </div>
 
             <Button
               onClick={() => {
@@ -2709,15 +2949,39 @@ Generated on: ${new Date().toLocaleString()}`;
                 validatorMode === "autodecide" 
                   ? "bg-purple-600 hover:bg-purple-700 text-white" 
                   : "bg-white dark:bg-gray-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-purple-700 dark:text-purple-300 border-2 border-purple-300"
-              }`}
-              disabled={validatorLoading}
+              } ${validatorMultiMode ? "opacity-50 cursor-not-allowed" : ""}`}
+              disabled={validatorLoading || validatorBatchLoading || validatorMultiMode}
               data-testid="button-autodecide"
             >
               <Brain className="w-6 h-6 mb-2" />
               <span className="font-bold text-lg">AUTO-DECIDE</span>
-              <span className="text-xs mt-1 text-center opacity-80">Let AI choose</span>
+              <span className="text-xs mt-1 text-center opacity-80">{validatorMultiMode ? "Not available in multi-mode" : "Let AI choose"}</span>
             </Button>
           </div>
+
+          {/* Run Selected Button (Multi-Mode) */}
+          {validatorMultiMode && validatorSelectedModes.length > 0 && (
+            <div className="mb-6 text-center">
+              <Button
+                onClick={handleValidatorBatchProcess}
+                disabled={validatorBatchLoading}
+                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-8 py-3 text-lg"
+                data-testid="button-run-selected-modes"
+              >
+                {validatorBatchLoading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Processing {validatorSelectedModes.length} Functions...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-5 h-5 mr-2" />
+                    Run {validatorSelectedModes.length} Selected Functions
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
 
           {/* Clear All Button */}
           <div className="mt-4 text-center">
@@ -3094,6 +3358,142 @@ Generated on: ${new Date().toLocaleString()}`;
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="w-12 h-12 animate-spin text-emerald-600 mb-4" />
               <p className="text-gray-600 dark:text-gray-400">Processing text validation...</p>
+            </div>
+          )}
+
+          {/* Batch Loading State */}
+          {validatorBatchLoading && (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="w-12 h-12 animate-spin text-emerald-600 mb-4" />
+              <p className="text-gray-600 dark:text-gray-400">Processing {validatorSelectedModes.length} functions...</p>
+              <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">This may take a few minutes</p>
+            </div>
+          )}
+
+          {/* Batch Results Display */}
+          {validatorBatchResults.length > 0 && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-emerald-900 dark:text-emerald-100 flex items-center gap-2">
+                  <Sparkles className="w-6 h-6 text-emerald-600" />
+                  Batch Validation Results ({validatorBatchResults.filter(r => r.success).length}/{validatorBatchResults.length} successful)
+                </h3>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const allResults = validatorBatchResults
+                        .map(r => r.success ? r.output : `[ERROR: ${r.error}]`)
+                        .join('\n\n' + '═'.repeat(80) + '\n\n');
+                      handleDownloadText(allResults, 'batch-validator-results.txt');
+                    }}
+                    data-testid="button-download-all-batch"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Download All
+                  </Button>
+                  <CopyButton 
+                    text={validatorBatchResults
+                      .map(r => r.success ? r.output : `[ERROR: ${r.error}]`)
+                      .join('\n\n' + '═'.repeat(80) + '\n\n')} 
+                  />
+                  <Button
+                    onClick={handleValidatorClear}
+                    variant="outline"
+                    size="sm"
+                    data-testid="button-clear-batch"
+                  >
+                    <Trash2 className="w-4 h-4 mr-1" />
+                    Clear All
+                  </Button>
+                </div>
+              </div>
+
+              {validatorBatchResults.map((result, index) => {
+                const modeLabels: Record<string, string> = {
+                  'reconstruction': 'Reconstruction',
+                  'isomorphism': 'Isomorphism',
+                  'mathmodel': 'Math Model',
+                  'truth-isomorphism': 'Truth Select',
+                  'math-truth-select': 'Math + Truth'
+                };
+                const modeBorderClasses: Record<string, string> = {
+                  'reconstruction': 'border-emerald-300 dark:border-emerald-700',
+                  'isomorphism': 'border-teal-300 dark:border-teal-700',
+                  'mathmodel': 'border-blue-300 dark:border-blue-700',
+                  'truth-isomorphism': 'border-orange-300 dark:border-orange-700',
+                  'math-truth-select': 'border-indigo-300 dark:border-indigo-700'
+                };
+                const modeBadgeClasses: Record<string, string> = {
+                  'reconstruction': 'bg-emerald-600',
+                  'isomorphism': 'bg-teal-600',
+                  'mathmodel': 'bg-blue-600',
+                  'truth-isomorphism': 'bg-orange-600',
+                  'math-truth-select': 'bg-indigo-600'
+                };
+
+                return (
+                  <div 
+                    key={result.mode}
+                    className={`bg-white dark:bg-gray-800 p-6 rounded-lg border-2 ${modeBorderClasses[result.mode] || 'border-gray-300 dark:border-gray-700'}`}
+                    data-testid={`batch-result-${result.mode}`}
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <Badge className={`${modeBadgeClasses[result.mode] || 'bg-gray-600'} text-white`}>
+                          {modeLabels[result.mode] || result.mode.toUpperCase()}
+                        </Badge>
+                        {result.success ? (
+                          <Badge variant="outline" className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 border-green-400">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Success
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 border-red-400">
+                            <AlertCircle className="w-3 h-3 mr-1" />
+                            Failed
+                          </Badge>
+                        )}
+                      </div>
+                      {result.success && (
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDownloadText(result.output || '', `validator-${result.mode}.txt`)}
+                            data-testid={`button-download-${result.mode}`}
+                          >
+                            <Download className="w-4 h-4" />
+                          </Button>
+                          <CopyButton text={result.output || ''} />
+                        </div>
+                      )}
+                    </div>
+                    
+                    {result.success ? (
+                      <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[400px] overflow-y-auto">
+                        {result.mode === "mathmodel" ? (
+                          <MathRenderer 
+                            content={result.output || ''} 
+                            className="text-gray-800 dark:text-gray-200"
+                          />
+                        ) : (
+                          <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
+                            {result.output}
+                          </pre>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded border border-red-200 dark:border-red-700">
+                        <p className="text-red-700 dark:text-red-300">
+                          Error: {result.error}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
