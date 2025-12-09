@@ -21,7 +21,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target } from "lucide-react";
+import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target, ChevronUp, ChevronDown } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { analyzeDocument, compareDocuments, checkForAI } from "@/lib/analysis";
 import { AnalysisMode, DocumentInput as DocumentInputType, AIDetectionResult, DocumentAnalysis, DocumentComparison } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
@@ -164,6 +165,17 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [validatorMathTruthMapping, setValidatorMathTruthMapping] = useState<"make-true" | "keep-true" | "make-false">("make-true");
   const [validatorLiteralTruth, setValidatorLiteralTruth] = useState(false);
   const [validatorLLMProvider, setValidatorLLMProvider] = useState<string>("zhi5"); // Default to ZHI 5
+  
+  // BOTTOMLINE Function State
+  const [bottomlineAudience, setBottomlineAudience] = useState("");
+  const [bottomlineObjective, setBottomlineObjective] = useState("");
+  const [bottomlineIdea, setBottomlineIdea] = useState("");
+  const [bottomlineLength, setBottomlineLength] = useState<"brief" | "medium" | "detailed">("medium");
+  const [bottomlineTone, setBottomlineTone] = useState<"formal" | "professional" | "conversational" | "persuasive">("professional");
+  const [bottomlineEmphasis, setBottomlineEmphasis] = useState("");
+  const [bottomlineOutput, setBottomlineOutput] = useState("");
+  const [bottomlineLoading, setBottomlineLoading] = useState(false);
+  const [showBottomlinePanel, setShowBottomlinePanel] = useState(true); // Default to expanded for discoverability
   
   // Coherence Meter State
   const [coherenceInputText, setCoherenceInputText] = useState("");
@@ -659,6 +671,85 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     }
   };
 
+  // BOTTOMLINE Function Handler - synthesizes analysis into final polished output
+  const handleBottomline = async () => {
+    if (!validatorInputText.trim()) {
+      toast({
+        title: "No Input Text",
+        description: "Please enter your original text first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!bottomlineObjective.trim() && !bottomlineAudience.trim()) {
+      toast({
+        title: "Missing Details",
+        description: "Please specify your audience or objective",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setBottomlineLoading(true);
+    setBottomlineOutput("");
+
+    try {
+      // Collect intermediate results if any exist
+      const intermediateResults: Record<string, string> = {};
+      
+      // From single mode output
+      if (validatorOutput && validatorMode) {
+        intermediateResults[validatorMode] = validatorOutput;
+      }
+      
+      // From batch results
+      validatorBatchResults.forEach(result => {
+        if (result.success && result.output) {
+          intermediateResults[result.mode] = result.output;
+        }
+      });
+
+      const response = await fetch('/api/text-model-validator/bottomline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          originalText: validatorInputText,
+          intermediateResults,
+          audience: bottomlineAudience,
+          objective: bottomlineObjective,
+          idea: bottomlineIdea,
+          length: bottomlineLength,
+          tone: bottomlineTone,
+          emphasis: bottomlineEmphasis,
+          llmProvider: validatorLLMProvider,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'BOTTOMLINE synthesis failed');
+      }
+
+      const data = await response.json();
+      if (data.success && data.output) {
+        setBottomlineOutput(data.output);
+        toast({
+          title: "BOTTOMLINE Complete!",
+          description: `Final output generated for ${bottomlineAudience || 'your audience'}`,
+        });
+      }
+    } catch (error: any) {
+      console.error('BOTTOMLINE error:', error);
+      toast({
+        title: "BOTTOMLINE Failed",
+        description: error.message || "An error occurred during synthesis.",
+        variant: "destructive",
+      });
+    } finally {
+      setBottomlineLoading(false);
+    }
+  };
 
   // Coherence Meter Handlers
   const createCoherenceChunks = (text: string) => {
@@ -3500,6 +3591,199 @@ Generated on: ${new Date().toLocaleString()}`;
               })}
             </div>
           )}
+
+          {/* BOTTOMLINE Function Panel */}
+          <div className="mt-8 border-t border-gray-200 dark:border-gray-700 pt-8">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <h3 className="text-xl font-bold text-purple-900 dark:text-purple-100 flex items-center gap-2">
+                  <Target className="w-6 h-6 text-purple-600" />
+                  BOTTOMLINE
+                </h3>
+                <Badge variant="outline" className="bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200">
+                  Final Synthesis
+                </Badge>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowBottomlinePanel(!showBottomlinePanel)}
+                data-testid="button-toggle-bottomline-panel"
+              >
+                {showBottomlinePanel ? (
+                  <>
+                    <ChevronUp className="w-4 h-4 mr-1" />
+                    Collapse
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-4 h-4 mr-1" />
+                    Expand
+                  </>
+                )}
+              </Button>
+            </div>
+            
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Transform your analysis into a polished final product tailored to your specific audience and objectives.
+              {(validatorOutput || validatorBatchResults.length > 0) && (
+                <span className="text-purple-600 dark:text-purple-400 ml-1">
+                  ({Object.keys(validatorBatchResults.length > 0 ? validatorBatchResults.filter(r => r.success) : (validatorOutput ? [1] : [])).length} analysis results available)
+                </span>
+              )}
+            </p>
+
+            {showBottomlinePanel && (
+              <div className="space-y-4 bg-purple-50 dark:bg-purple-950/20 p-6 rounded-lg border border-purple-200 dark:border-purple-800">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Who is your audience?
+                    </label>
+                    <Input
+                      placeholder="e.g., My boss at the private equity firm, academic committee, client..."
+                      value={bottomlineAudience}
+                      onChange={(e) => setBottomlineAudience(e.target.value)}
+                      data-testid="input-bottomline-audience"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      What is your objective?
+                    </label>
+                    <Input
+                      placeholder="e.g., Convince them to approve the investment, explain the methodology..."
+                      value={bottomlineObjective}
+                      onChange={(e) => setBottomlineObjective(e.target.value)}
+                      data-testid="input-bottomline-objective"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    What idea are you trying to convey?
+                  </label>
+                  <Textarea
+                    placeholder="The core message or argument you want your audience to understand..."
+                    value={bottomlineIdea}
+                    onChange={(e) => setBottomlineIdea(e.target.value)}
+                    className="min-h-[80px]"
+                    data-testid="input-bottomline-idea"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Desired Length
+                    </label>
+                    <Select value={bottomlineLength} onValueChange={(v: "brief" | "medium" | "detailed") => setBottomlineLength(v)}>
+                      <SelectTrigger data-testid="select-bottomline-length">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="brief">Brief (1-2 paragraphs)</SelectItem>
+                        <SelectItem value="medium">Medium (3-5 paragraphs)</SelectItem>
+                        <SelectItem value="detailed">Detailed (full document)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Tone
+                    </label>
+                    <Select value={bottomlineTone} onValueChange={(v: "formal" | "professional" | "conversational" | "persuasive") => setBottomlineTone(v)}>
+                      <SelectTrigger data-testid="select-bottomline-tone">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="formal">Formal (academic/legal)</SelectItem>
+                        <SelectItem value="professional">Professional (business)</SelectItem>
+                        <SelectItem value="conversational">Conversational</SelectItem>
+                        <SelectItem value="persuasive">Persuasive (pitch)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      What to emphasize?
+                    </label>
+                    <Input
+                      placeholder="e.g., ROI, data, emotional appeal..."
+                      value={bottomlineEmphasis}
+                      onChange={(e) => setBottomlineEmphasis(e.target.value)}
+                      data-testid="input-bottomline-emphasis"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    onClick={handleBottomline}
+                    disabled={bottomlineLoading || !validatorInputText.trim()}
+                    className="bg-purple-600 hover:bg-purple-700 text-white"
+                    data-testid="button-run-bottomline"
+                  >
+                    {bottomlineLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Synthesizing...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Generate Final Output
+                      </>
+                    )}
+                  </Button>
+                  {bottomlineOutput && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setBottomlineOutput("")}
+                      data-testid="button-clear-bottomline"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Clear Output
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* BOTTOMLINE Output Display */}
+            {bottomlineOutput && (
+              <div className="mt-6 bg-white dark:bg-gray-800 p-6 rounded-lg border-2 border-purple-300 dark:border-purple-700">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-lg font-semibold text-purple-900 dark:text-purple-100 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-purple-600" />
+                    Final Product
+                    {bottomlineAudience && (
+                      <Badge variant="outline" className="ml-2 bg-purple-100 dark:bg-purple-900/30">
+                        For: {bottomlineAudience}
+                      </Badge>
+                    )}
+                  </h4>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDownloadText(bottomlineOutput, 'bottomline-output.txt')}
+                      data-testid="button-download-bottomline"
+                    >
+                      <Download className="w-4 h-4" />
+                    </Button>
+                    <CopyButton text={bottomlineOutput} />
+                  </div>
+                </div>
+                <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[600px] overflow-y-auto">
+                  <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
+                    {bottomlineOutput}
+                  </pre>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Redo Modal with Custom Instructions */}
           <Dialog open={showRedoModal} onOpenChange={setShowRedoModal}>
