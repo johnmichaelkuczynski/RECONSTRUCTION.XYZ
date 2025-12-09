@@ -3356,6 +3356,90 @@ Model: ${providerLabels[provider] || provider}`;
     }
   });
 
+  // Text Model Validator BATCH endpoint - Run multiple modes at once
+  app.post("/api/text-model-validator/batch", async (req: Request, res: Response) => {
+    try {
+      const { text, modes, targetDomain, fidelityLevel, mathFramework, constraintType, rigorLevel, customInstructions, truthMapping, mathTruthMapping, literalTruth, llmProvider } = req.body;
+
+      if (!text || !modes || !Array.isArray(modes) || modes.length === 0) {
+        return res.status(400).json({ 
+          success: false,
+          message: "Text and modes array are required" 
+        });
+      }
+
+      const validModes = ["reconstruction", "isomorphism", "mathmodel", "truth-isomorphism", "math-truth-select"];
+      const invalidModes = modes.filter((m: string) => !validModes.includes(m));
+      if (invalidModes.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid modes: ${invalidModes.join(', ')}. Valid modes are: ${validModes.join(', ')}`
+        });
+      }
+
+      console.log(`[Text Model Validator Batch] Processing ${modes.length} modes: ${modes.join(', ')}`);
+
+      // Process modes in parallel with concurrency limit
+      const processMode = async (mode: string): Promise<{ mode: string; success: boolean; output?: string; error?: string }> => {
+        try {
+          // Make internal request to the single-mode endpoint
+          const response = await fetch(`http://localhost:5000/api/text-model-validator`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text,
+              mode,
+              targetDomain,
+              fidelityLevel,
+              mathFramework,
+              constraintType,
+              rigorLevel,
+              customInstructions,
+              truthMapping,
+              mathTruthMapping,
+              literalTruth,
+              llmProvider
+            })
+          });
+
+          const data = await response.json();
+          if (data.success) {
+            return { mode, success: true, output: data.output };
+          } else {
+            return { mode, success: false, error: data.message || 'Processing failed' };
+          }
+        } catch (error: any) {
+          return { mode, success: false, error: error.message || 'Request failed' };
+        }
+      };
+
+      // Process with concurrency limit of 2 to avoid rate limits
+      const results: { mode: string; success: boolean; output?: string; error?: string }[] = [];
+      const concurrencyLimit = 2;
+      
+      for (let i = 0; i < modes.length; i += concurrencyLimit) {
+        const batch = modes.slice(i, i + concurrencyLimit);
+        const batchResults = await Promise.all(batch.map(processMode));
+        results.push(...batchResults);
+      }
+
+      res.json({
+        success: true,
+        results,
+        totalModes: modes.length,
+        successfulModes: results.filter(r => r.success).length,
+        failedModes: results.filter(r => !r.success).length
+      });
+
+    } catch (error: any) {
+      console.error("Text Model Validator Batch error:", error);
+      res.status(500).json({ 
+        success: false,
+        message: error.message || "Batch validation failed" 
+      });
+    }
+  });
+
   // Coherence Meter endpoint - Analyze and improve text coherence  
   app.post("/api/coherence-meter", async (req: Request, res: Response) => {
     try {
