@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target, ChevronUp, ChevronDown } from "lucide-react";
+import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target, ChevronUp, ChevronDown, MessageSquareWarning } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { analyzeDocument, compareDocuments, checkForAI } from "@/lib/analysis";
 import { AnalysisMode, DocumentInput as DocumentInputType, AIDetectionResult, DocumentAnalysis, DocumentComparison } from "@/lib/types";
@@ -176,6 +176,12 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [bottomlineOutput, setBottomlineOutput] = useState("");
   const [bottomlineLoading, setBottomlineLoading] = useState(false);
   const [showBottomlinePanel, setShowBottomlinePanel] = useState(true); // Default to expanded for discoverability
+  
+  // Objections Function State (follows BOTTOMLINE)
+  const [objectionsOutput, setObjectionsOutput] = useState("");
+  const [objectionsLoading, setObjectionsLoading] = useState(false);
+  const [objectionsCustomInstructions, setObjectionsCustomInstructions] = useState("");
+  const [showObjectionsPanel, setShowObjectionsPanel] = useState(false);
   
   // Coherence Meter State
   const [coherenceInputText, setCoherenceInputText] = useState("");
@@ -752,6 +758,61 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       });
     } finally {
       setBottomlineLoading(false);
+    }
+  };
+
+  // Objections Function Handler - generates 25 objections and counter-objections
+  const handleObjections = async () => {
+    if (!bottomlineOutput) {
+      toast({
+        title: "No BOTTOMLINE Output",
+        description: "Please run the BOTTOMLINE function first to generate content to analyze for objections.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setObjectionsLoading(true);
+    setObjectionsOutput("");
+
+    try {
+      const response = await fetch('/api/text-model-validator/objections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bottomlineOutput,
+          audience: bottomlineAudience,
+          objective: bottomlineObjective,
+          idea: bottomlineIdea,
+          tone: bottomlineTone,
+          emphasis: bottomlineEmphasis,
+          customInstructions: objectionsCustomInstructions,
+          llmProvider: validatorLLMProvider,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Objections generation failed');
+      }
+
+      const data = await response.json();
+      if (data.success && data.output) {
+        setObjectionsOutput(data.output);
+        toast({
+          title: "Objections Generated!",
+          description: "25 likely objections and responses have been generated.",
+        });
+      }
+    } catch (error: any) {
+      console.error('Objections error:', error);
+      toast({
+        title: "Objections Generation Failed",
+        description: error.message || "An error occurred during objections generation.",
+        variant: "destructive",
+      });
+    } finally {
+      setObjectionsLoading(false);
     }
   };
 
@@ -3783,6 +3844,112 @@ Generated on: ${new Date().toLocaleString()}`;
                 <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[600px] overflow-y-auto">
                   <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
                     {bottomlineOutput}
+                  </pre>
+                </div>
+
+                {/* Objections Panel - appears after BOTTOMLINE output */}
+                <div className="mt-6 border-t border-purple-200 dark:border-purple-800 pt-6">
+                  <div 
+                    className="flex items-center justify-between cursor-pointer"
+                    onClick={() => setShowObjectionsPanel(!showObjectionsPanel)}
+                  >
+                    <h4 className="text-lg font-semibold text-orange-900 dark:text-orange-100 flex items-center gap-2">
+                      <MessageSquareWarning className="w-5 h-5 text-orange-600" />
+                      Generate Objections & Responses
+                    </h4>
+                    <Button variant="ghost" size="icon" data-testid="button-toggle-objections-panel">
+                      {showObjectionsPanel ? (
+                        <ChevronUp className="w-5 h-5" />
+                      ) : (
+                        <ChevronDown className="w-5 h-5" />
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    Generate 25 likely objections to your output and craft compelling responses
+                  </p>
+
+                  {showObjectionsPanel && (
+                    <div className="mt-4 space-y-4">
+                      <div className="bg-orange-50 dark:bg-orange-950/30 p-4 rounded-lg border border-orange-200 dark:border-orange-800">
+                        <p className="text-sm text-orange-800 dark:text-orange-200 mb-3">
+                          This will use your BOTTOMLINE settings (audience, objective, tone, emphasis) to generate targeted objections. 
+                          Optionally add custom instructions below.
+                        </p>
+                        <Textarea
+                          value={objectionsCustomInstructions}
+                          onChange={(e) => setObjectionsCustomInstructions(e.target.value)}
+                          placeholder="Optional: Add specific instructions (e.g., 'Focus on financial objections' or 'Include legal concerns' or 'Consider skeptics who distrust statistics')"
+                          className="min-h-[80px] text-sm"
+                          data-testid="textarea-objections-instructions"
+                        />
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                          Leave blank to use default settings based on your audience and objective
+                        </p>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={handleObjections}
+                          disabled={objectionsLoading}
+                          className="bg-orange-600 hover:bg-orange-700 text-white"
+                          data-testid="button-generate-objections"
+                        >
+                          {objectionsLoading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Generating Objections...
+                            </>
+                          ) : (
+                            <>
+                              <MessageSquareWarning className="w-4 h-4 mr-2" />
+                              Generate 25 Objections
+                            </>
+                          )}
+                        </Button>
+                        {objectionsOutput && (
+                          <Button
+                            variant="outline"
+                            onClick={() => setObjectionsOutput("")}
+                            data-testid="button-clear-objections"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Clear
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Objections Output Display */}
+            {objectionsOutput && (
+              <div className="mt-6 bg-white dark:bg-gray-800 p-6 rounded-lg border-2 border-orange-300 dark:border-orange-700">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-lg font-semibold text-orange-900 dark:text-orange-100 flex items-center gap-2">
+                    <MessageSquareWarning className="w-5 h-5 text-orange-600" />
+                    Objections & Counter-Arguments
+                    <Badge variant="outline" className="ml-2 bg-orange-100 dark:bg-orange-900/30">
+                      25 Items
+                    </Badge>
+                  </h4>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDownloadText(objectionsOutput, 'objections-responses.txt')}
+                      data-testid="button-download-objections"
+                    >
+                      <Download className="w-4 h-4" />
+                    </Button>
+                    <CopyButton text={objectionsOutput} />
+                  </div>
+                </div>
+                <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[700px] overflow-y-auto">
+                  <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
+                    {objectionsOutput}
                   </pre>
                 </div>
               </div>

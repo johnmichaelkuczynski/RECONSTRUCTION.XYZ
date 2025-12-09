@@ -3716,6 +3716,141 @@ ${output}`;
     }
   });
 
+  // Objections Function - Generate 25 objections and counter-arguments
+  app.post("/api/text-model-validator/objections", async (req: Request, res: Response) => {
+    try {
+      const { 
+        bottomlineOutput,
+        audience,
+        objective,
+        idea,
+        tone,
+        emphasis,
+        customInstructions,
+        llmProvider
+      } = req.body;
+
+      if (!bottomlineOutput) {
+        return res.status(400).json({ 
+          success: false,
+          message: "BOTTOMLINE output is required to generate objections" 
+        });
+      }
+
+      console.log(`[OBJECTIONS] Generating for audience: ${audience || 'unspecified'}`);
+      console.log(`[OBJECTIONS] Custom instructions: ${customInstructions ? 'provided' : 'none'}`);
+
+      // Build context from BOTTOMLINE settings
+      const audienceContext = audience ? `The target audience is: ${audience}` : 'General audience';
+      const objectiveContext = objective ? `The objective is: ${objective}` : '';
+      const ideaContext = idea ? `The core idea being conveyed: ${idea}` : '';
+      const toneContext = tone ? `The communication tone is: ${tone}` : 'professional';
+      const emphasisContext = emphasis ? `Key emphasis points: ${emphasis}` : '';
+      const customContext = customInstructions ? `\n\nADDITIONAL INSTRUCTIONS FROM USER:\n${customInstructions}` : '';
+
+      const systemPrompt = `You are an expert at anticipating objections, counterarguments, and challenges. Your role is to identify the most likely objections that readers/listeners might have to a piece of content, and craft compelling, well-reasoned responses to each objection.
+
+Key principles:
+1. THINK LIKE A SKEPTIC: What would a critical reader notice? What assumptions are being made? What evidence is missing?
+2. CONSIDER THE AUDIENCE: Different audiences have different concerns. Tailor objections to what THIS audience would likely raise.
+3. COVER ALL ANGLES: Include logical objections, emotional objections, practical objections, ethical objections, and factual objections.
+4. PROVIDE STRONG RESPONSES: Each response should be compelling and directly address the concern. Don't be dismissive.
+5. ORDER BY LIKELIHOOD: Put the most likely/common objections first.`;
+
+      const userPrompt = `## THE CONTENT TO ANALYZE:
+${bottomlineOutput}
+
+## CONTEXT:
+${audienceContext}
+${objectiveContext}
+${ideaContext}
+${toneContext}
+${emphasisContext}
+${customContext}
+
+## YOUR TASK:
+Generate exactly 25 likely objections that a member of the target audience might raise against this content, along with compelling responses to each objection.
+
+For each objection, provide:
+1. The objection (framed as something the audience member would say/think)
+2. A strong counter-response that addresses the concern directly
+
+Format each entry as:
+
+**OBJECTION #[N]:**
+[The objection phrased as a critical question or statement]
+
+**RESPONSE:**
+[A compelling, reasoned response that addresses the concern]
+
+---
+
+Generate all 25 objections and responses now. Cover a wide range: logical flaws, missing evidence, alternative explanations, practical concerns, emotional resistance, competitive alternatives, implementation challenges, cost/benefit concerns, timing issues, and any audience-specific worries.`;
+
+      let output = "";
+
+      // Use Claude for high-quality objection generation
+      if (process.env.ANTHROPIC_API_KEY) {
+        const Anthropic = (await import('@anthropic-ai/sdk')).default;
+        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        
+        const response = await anthropic.messages.create({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 8000,
+          system: systemPrompt,
+          messages: [{ role: "user", content: userPrompt }]
+        });
+        
+        output = (response.content[0] as any).text;
+      } else if (process.env.OPENAI_API_KEY) {
+        // Fallback to OpenAI
+        const OpenAI = (await import('openai')).default;
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o",
+          max_tokens: 8000,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ]
+        });
+        
+        output = response.choices[0]?.message?.content || "";
+      } else {
+        return res.status(500).json({
+          success: false,
+          message: "No AI provider configured for objections generation"
+        });
+      }
+
+      // Add header
+      const header = `═══════════════════════════════════════════════════
+OBJECTIONS & COUNTER-ARGUMENTS (25 Items)
+═══════════════════════════════════════════════════
+Target Audience: ${audience || 'General'}
+Objective: ${objective || 'Communicate effectively'}
+${customInstructions ? `Custom Focus: ${customInstructions.substring(0, 100)}${customInstructions.length > 100 ? '...' : ''}` : ''}
+═══════════════════════════════════════════════════
+
+${output}`;
+
+      console.log(`[OBJECTIONS] Generated successfully`);
+
+      res.json({
+        success: true,
+        output: header
+      });
+
+    } catch (error: any) {
+      console.error("OBJECTIONS error:", error);
+      res.status(500).json({ 
+        success: false,
+        message: error.message || "Objections generation failed" 
+      });
+    }
+  });
+
   // Coherence Meter endpoint - Analyze and improve text coherence  
   app.post("/api/coherence-meter", async (req: Request, res: Response) => {
     try {
