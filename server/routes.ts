@@ -3452,6 +3452,7 @@ Model: ${providerLabels[provider] || provider}`;
         length, 
         tone, 
         emphasis,
+        additionalInfo,
         llmProvider 
       } = req.body;
 
@@ -3634,6 +3635,7 @@ ${analysisContext}
 - LENGTH: ${lengthGuidance[length || 'medium']}
 - TONE: ${toneGuidance[tone || 'professional']}
 - EMPHASIS: ${emphasis || 'The strongest points of the argument'}
+${additionalInfo ? `\n## ADDITIONAL CONTEXT/INFORMATION:\n${additionalInfo}` : ''}
 
 ## YOUR TASK:
 Generate the FINAL POLISHED OUTPUT that this person will deliver to their ${audience || 'audience'}.

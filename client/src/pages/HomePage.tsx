@@ -191,6 +191,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [fullSuiteStage, setFullSuiteStage] = useState<"idle" | "batch" | "bottomline" | "objections" | "complete" | "error">("idle");
   const [fullSuiteError, setFullSuiteError] = useState<string>("");
   const [showFullSuitePanel, setShowFullSuitePanel] = useState(true);
+  const [fullSuiteAdditionalInfo, setFullSuiteAdditionalInfo] = useState("");
   
   // Coherence Meter State
   const [coherenceInputText, setCoherenceInputText] = useState("");
@@ -938,6 +939,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           length: bottomlineLength,
           tone: bottomlineTone,
           emphasis: bottomlineEmphasis,
+          additionalInfo: fullSuiteAdditionalInfo,
           llmProvider: validatorLLMProvider,
         }),
       });
@@ -3142,6 +3144,20 @@ Generated on: ${new Date().toLocaleString()}`;
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+
+                {/* Additional Information */}
+                <div>
+                  <Label className="text-sm font-medium text-violet-800 dark:text-violet-200">
+                    Additional Information (optional)
+                  </Label>
+                  <Textarea
+                    value={fullSuiteAdditionalInfo}
+                    onChange={(e) => setFullSuiteAdditionalInfo(e.target.value)}
+                    placeholder="Any extra context, background information, or special considerations you want the AI to factor in..."
+                    className="mt-1 min-h-[80px]"
+                    data-testid="input-fullsuite-additional-info"
+                  />
                 </div>
 
                 {/* Progress Tracker */}
