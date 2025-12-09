@@ -652,12 +652,16 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       }
 
       const data = await response.json();
+      console.log('Batch validation response:', data);
       if (data.success && data.results) {
+        console.log('Setting batch results:', data.results.length, 'items');
         setValidatorBatchResults(data.results);
         toast({
           title: "Batch Validation Complete!",
           description: `Processed ${data.successfulModes}/${data.totalModes} modes successfully`,
         });
+      } else {
+        console.error('Batch validation response missing results:', data);
       }
     } catch (error: any) {
       console.error('Batch validator error:', error);
