@@ -30,7 +30,9 @@ The application employs a monorepo structure, separating client and server compo
         3. **MAX COHERENCE** (Rewrite) - Improves structural coherence without changing mathematical content. Preserves all claims (even incorrect ones) while improving flow, notation, and organization.
         4. **MAXIMIZE TRUTH** (Rewrite) - Corrects defective proofs using Claude with extended thinking. If theorem is TRUE, fixes the proof. If FALSE, finds a similar true theorem and proves that instead. Returns theorem status, corrected proof, and key corrections.
       - **Scientific-Explanatory Coherence Type**: Performs dual assessment evaluating both logical consistency (internal contradictions, structural coherence) AND scientific accuracy (factual correctness, alignment with established science), displaying separate scores for each dimension. The REWRITE function specifically corrects pseudoscientific claims, replacing them with accurate scientific explanations.
-    - **Text Model Validator**: Includes "Truth Select" and "Math Truth Select" for literal truth verification, configurable with various AI models (ZHI 1-5, default Grok).
+    - **Text Model Validator**: Includes "Truth Select" and "Math Truth Select" for literal truth verification, configurable with various AI models (ZHI 1-5, default Grok). Features:
+      - **Batch Mode**: Run multiple functions simultaneously with enforced aggressive settings
+      - **BOTTOMLINE Function**: Synthesizes analysis results into polished final output tailored to specific audience, objective, tone, length, and emphasis. Uses intelligent weighting to prioritize intermediate results based on relevance to stated objectives.
     - **AI Chat Assistant**: Provides conversation history and context from the Zhi Database.
     - **Conservative Reconstruction**: "Charitable Interpretation" mode for generating coherent essays articulating a text's unified argument.
 
