@@ -36,6 +36,14 @@ The application employs a monorepo structure, separating client and server compo
     - **AI Chat Assistant**: Provides conversation history and context from the Zhi Database.
     - **Conservative Reconstruction**: "Charitable Interpretation" mode for generating coherent essays articulating a text's unified argument.
 
+## Recent Changes (December 2024)
+- **Batch Processing UI**: Fully implemented with color-coded stacked results display (emerald, teal, blue, orange, indigo) and per-mode status tracking
+- **BOTTOMLINE Function**: Completed with three operational modes - synthesize from all batch functions, synthesize from selected functions, or synthesize from raw input only
+- **Enhanced BOTTOMLINE Weighting**: Algorithm incorporates audience, tone, and emphasis parameters alongside objective keywords for intelligent result prioritization
+- **Debug Logging**: Added comprehensive console logging for batch results handler to aid troubleshooting
+- **Batch Mode Settings**: Enforces aggressive defaults (fidelity=aggressive, maximal formalization with axiomatic set theory, maximal truth objective enabled)
+- **UI Refinements**: BOTTOMLINE panel defaults to expanded for better discoverability; Auto-Decide excluded from batch selection (single-mode only)
+
 ## External Dependencies
 - **AI Service Providers**: OpenAI API (GPT-4), Anthropic API (Claude), DeepSeek API, Perplexity AI, Grok API (xAI).
 - **Supporting Services**: Mathpix OCR, AssemblyAI, SendGrid, Google Custom Search, Stripe (for credit purchases), AnalyticPhilosophy.net Zhi API.
