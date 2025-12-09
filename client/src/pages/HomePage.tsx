@@ -614,21 +614,22 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setValidatorOutput("");
 
     try {
+      // In batch mode: use aggressive settings, same domain, maximal formalization, maximal truth
       const response = await fetch('/api/text-model-validator/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: validatorInputText,
           modes: validatorSelectedModes,
-          targetDomain: validatorTargetDomain,
-          fidelityLevel: validatorFidelityLevel,
-          mathFramework: validatorMathFramework,
-          constraintType: validatorConstraintType,
-          rigorLevel: validatorRigorLevel,
+          targetDomain: "", // Same as original domain
+          fidelityLevel: "aggressive", // Always aggressive in batch mode
+          mathFramework: "axiomatic-set-theory", // Maximal formalization
+          constraintType: "true-statements", // Maximal truth objective
+          rigorLevel: "maximal", // Maximal rigor
           customInstructions: validatorCustomInstructions,
-          truthMapping: validatorTruthMapping,
-          mathTruthMapping: validatorMathTruthMapping,
-          literalTruth: validatorLiteralTruth,
+          truthMapping: "maximal-truth", // Maximal truth mapping
+          mathTruthMapping: "maximal-truth", // Maximal math truth mapping
+          literalTruth: true, // Enable literal truth mode
           llmProvider: validatorLLMProvider,
         }),
       });
@@ -2712,9 +2713,12 @@ Generated on: ${new Date().toLocaleString()}`;
               </label>
             </div>
             {validatorMultiMode && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="outline" className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200">
                   {validatorSelectedModes.length} selected
+                </Badge>
+                <Badge variant="outline" className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 text-xs">
+                  Aggressive + Maximal Truth
                 </Badge>
                 <Button
                   size="sm"
