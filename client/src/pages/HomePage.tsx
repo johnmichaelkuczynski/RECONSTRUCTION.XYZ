@@ -177,11 +177,14 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [bottomlineLoading, setBottomlineLoading] = useState(false);
   const [showBottomlinePanel, setShowBottomlinePanel] = useState(true); // Default to expanded for discoverability
   
-  // Objections Function State (follows BOTTOMLINE)
+  // Objections Function State (standalone - can use BOTTOMLINE output or custom input)
   const [objectionsOutput, setObjectionsOutput] = useState("");
   const [objectionsLoading, setObjectionsLoading] = useState(false);
   const [objectionsCustomInstructions, setObjectionsCustomInstructions] = useState("");
-  const [showObjectionsPanel, setShowObjectionsPanel] = useState(false);
+  const [showObjectionsPanel, setShowObjectionsPanel] = useState(true); // Default to expanded for discoverability
+  const [objectionsInputText, setObjectionsInputText] = useState(""); // Standalone input
+  const [objectionsAudience, setObjectionsAudience] = useState(""); // Standalone audience
+  const [objectionsObjective, setObjectionsObjective] = useState(""); // Standalone objective
   
   // Coherence Meter State
   const [coherenceInputText, setCoherenceInputText] = useState("");
@@ -762,11 +765,18 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   };
 
   // Objections Function Handler - generates 25 objections and counter-objections
-  const handleObjections = async () => {
-    if (!bottomlineOutput) {
+  const handleObjections = async (useBottomlineOutput: boolean = false) => {
+    // Determine which input to use
+    const inputText = useBottomlineOutput ? bottomlineOutput : objectionsInputText;
+    const audience = useBottomlineOutput ? bottomlineAudience : objectionsAudience;
+    const objective = useBottomlineOutput ? bottomlineObjective : objectionsObjective;
+    
+    if (!inputText.trim()) {
       toast({
-        title: "No BOTTOMLINE Output",
-        description: "Please run the BOTTOMLINE function first to generate content to analyze for objections.",
+        title: "No Input Provided",
+        description: useBottomlineOutput 
+          ? "Please run the BOTTOMLINE function first to generate content."
+          : "Please enter text to analyze for objections.",
         variant: "destructive"
       });
       return;
@@ -780,12 +790,12 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          bottomlineOutput,
-          audience: bottomlineAudience,
-          objective: bottomlineObjective,
-          idea: bottomlineIdea,
-          tone: bottomlineTone,
-          emphasis: bottomlineEmphasis,
+          bottomlineOutput: inputText,
+          audience: audience,
+          objective: objective,
+          idea: useBottomlineOutput ? bottomlineIdea : "",
+          tone: useBottomlineOutput ? bottomlineTone : "professional",
+          emphasis: useBottomlineOutput ? bottomlineEmphasis : "",
           customInstructions: objectionsCustomInstructions,
           llmProvider: validatorLLMProvider,
         }),
@@ -3890,10 +3900,10 @@ Generated on: ${new Date().toLocaleString()}`;
 
                       <div className="flex gap-2">
                         <Button
-                          onClick={handleObjections}
+                          onClick={() => handleObjections(true)}
                           disabled={objectionsLoading}
                           className="bg-orange-600 hover:bg-orange-700 text-white"
-                          data-testid="button-generate-objections"
+                          data-testid="button-generate-objections-from-bottomline"
                         >
                           {objectionsLoading ? (
                             <>
@@ -3954,6 +3964,141 @@ Generated on: ${new Date().toLocaleString()}`;
                 </div>
               </div>
             )}
+
+            {/* STANDALONE OBJECTIONS FUNCTION - Always visible */}
+            <div className="mt-8 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30 p-6 rounded-lg border border-orange-200 dark:border-orange-800">
+              <div 
+                className="flex items-center justify-between cursor-pointer"
+                onClick={() => setShowObjectionsPanel(!showObjectionsPanel)}
+              >
+                <h3 className="text-xl font-semibold text-orange-900 dark:text-orange-100 flex items-center gap-2">
+                  <MessageSquareWarning className="w-6 h-6 text-orange-600" />
+                  Objections Function (Standalone)
+                  <Badge variant="outline" className="ml-2 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">
+                    25 Objections + Responses
+                  </Badge>
+                </h3>
+                <Button variant="ghost" size="icon" data-testid="button-toggle-standalone-objections">
+                  {showObjectionsPanel ? (
+                    <ChevronUp className="w-5 h-5" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5" />
+                  )}
+                </Button>
+              </div>
+              <p className="text-sm text-orange-700 dark:text-orange-300 mt-2 mb-4">
+                Generate 25 likely objections and compelling counter-arguments for any text. Works independently or with BOTTOMLINE output.
+              </p>
+
+              {showObjectionsPanel && (
+                <div className="space-y-4">
+                  {/* Input Text */}
+                  <div>
+                    <Label className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                      Text to Analyze
+                    </Label>
+                    <Textarea
+                      value={objectionsInputText}
+                      onChange={(e) => setObjectionsInputText(e.target.value)}
+                      placeholder="Paste your text here - this can be any argument, proposal, pitch, essay, or content you want to anticipate objections for..."
+                      className="min-h-[150px] mt-2"
+                      data-testid="textarea-objections-input"
+                    />
+                    {bottomlineOutput && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-2"
+                        onClick={() => setObjectionsInputText(bottomlineOutput)}
+                        data-testid="button-use-bottomline-for-objections"
+                      >
+                        <FileText className="w-4 h-4 mr-2" />
+                        Use BOTTOMLINE Output
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Audience & Objective */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                        Target Audience (optional)
+                      </Label>
+                      <Input
+                        value={objectionsAudience}
+                        onChange={(e) => setObjectionsAudience(e.target.value)}
+                        placeholder="e.g., 'Investors', 'Academic reviewers', 'Skeptical customers'"
+                        className="mt-1"
+                        data-testid="input-objections-audience"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                        Objective (optional)
+                      </Label>
+                      <Input
+                        value={objectionsObjective}
+                        onChange={(e) => setObjectionsObjective(e.target.value)}
+                        placeholder="e.g., 'Convince them to invest', 'Get paper accepted'"
+                        className="mt-1"
+                        data-testid="input-objections-objective"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Custom Instructions */}
+                  <div>
+                    <Label className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                      Custom Instructions (optional)
+                    </Label>
+                    <Textarea
+                      value={objectionsCustomInstructions}
+                      onChange={(e) => setObjectionsCustomInstructions(e.target.value)}
+                      placeholder="e.g., 'Focus on financial objections' or 'Include legal/regulatory concerns' or 'Consider skeptics who distrust AI'"
+                      className="min-h-[80px] mt-1"
+                      data-testid="textarea-objections-custom-instructions"
+                    />
+                  </div>
+
+                  {/* Generate Button */}
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => handleObjections(false)}
+                      disabled={objectionsLoading || !objectionsInputText.trim()}
+                      className="bg-orange-600 hover:bg-orange-700 text-white"
+                      data-testid="button-generate-objections-standalone"
+                    >
+                      {objectionsLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Generating Objections...
+                        </>
+                      ) : (
+                        <>
+                          <MessageSquareWarning className="w-4 h-4 mr-2" />
+                          Generate 25 Objections
+                        </>
+                      )}
+                    </Button>
+                    {objectionsInputText && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setObjectionsInputText("");
+                          setObjectionsAudience("");
+                          setObjectionsObjective("");
+                          setObjectionsCustomInstructions("");
+                        }}
+                        data-testid="button-clear-objections-form"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Clear Form
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Redo Modal with Custom Instructions */}
