@@ -3287,9 +3287,63 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
         }
       }
 
+      // Build parameter header for self-contained reports
+      const modeLabels: Record<string, string> = {
+        'reconstruction': 'Reconstruction',
+        'isomorphism': 'Isomorphism',
+        'mathmodel': 'Mathematical Model',
+        'autodecide': 'Auto-Decide',
+        'truth-isomorphism': 'Truth Isomorphism',
+        'math-truth-select': 'Math Truth Select'
+      };
+      
+      const providerLabels: Record<string, string> = {
+        'zhi1': 'ZHI 1 (GPT-4)',
+        'zhi2': 'ZHI 2 (Claude)',
+        'zhi3': 'ZHI 3 (DeepSeek)',
+        'zhi4': 'ZHI 4 (Perplexity)',
+        'zhi5': 'ZHI 5 (Grok)'
+      };
+      
+      let parameterHeader = `═══════════════════════════════════════════════════
+ANALYSIS PARAMETERS
+═══════════════════════════════════════════════════
+Mode: ${modeLabels[mode] || mode}
+Model: ${providerLabels[provider] || provider}`;
+
+      if (fidelityLevel) {
+        parameterHeader += `\nAggressiveness: ${fidelityLevel.charAt(0).toUpperCase() + fidelityLevel.slice(1)}`;
+      }
+      if (targetDomain) {
+        parameterHeader += `\nTarget Domain: ${targetDomain}`;
+      }
+      if (mathFramework) {
+        parameterHeader += `\nMath Framework: ${mathFramework}`;
+      }
+      if (rigorLevel) {
+        parameterHeader += `\nRigor Level: ${rigorLevel}`;
+      }
+      if (constraintType) {
+        parameterHeader += `\nConstraint Type: ${constraintType}`;
+      }
+      if (truthMapping) {
+        parameterHeader += `\nTruth Mapping: ${truthMapping}`;
+      }
+      if (mathTruthMapping) {
+        parameterHeader += `\nMath Truth Mapping: ${mathTruthMapping}`;
+      }
+      if (literalTruth) {
+        parameterHeader += `\nLiteral Truth Mode: Enabled`;
+      }
+      if (customInstructions) {
+        parameterHeader += `\nCustom Instructions: ${customInstructions}`;
+      }
+      
+      parameterHeader += `\n═══════════════════════════════════════════════════\n\n`;
+
       res.json({
         success: true,
-        output: output,
+        output: parameterHeader + output,
         mode: mode
       });
 
