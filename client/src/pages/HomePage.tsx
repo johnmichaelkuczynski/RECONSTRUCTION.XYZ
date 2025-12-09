@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target, ChevronUp, ChevronDown, MessageSquareWarning } from "lucide-react";
+import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target, ChevronUp, ChevronDown, MessageSquareWarning, Circle, ArrowRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { analyzeDocument, compareDocuments, checkForAI } from "@/lib/analysis";
 import { AnalysisMode, DocumentInput as DocumentInputType, AIDetectionResult, DocumentAnalysis, DocumentComparison } from "@/lib/types";
@@ -185,6 +185,12 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [objectionsInputText, setObjectionsInputText] = useState(""); // Standalone input
   const [objectionsAudience, setObjectionsAudience] = useState(""); // Standalone audience
   const [objectionsObjective, setObjectionsObjective] = useState(""); // Standalone objective
+
+  // FULL SUITE Pipeline State - runs Batch → BOTTOMLINE → Objections in sequence
+  const [fullSuiteLoading, setFullSuiteLoading] = useState(false);
+  const [fullSuiteStage, setFullSuiteStage] = useState<"idle" | "batch" | "bottomline" | "objections" | "complete" | "error">("idle");
+  const [fullSuiteError, setFullSuiteError] = useState<string>("");
+  const [showFullSuitePanel, setShowFullSuitePanel] = useState(true);
   
   // Coherence Meter State
   const [coherenceInputText, setCoherenceInputText] = useState("");
@@ -823,6 +829,182 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       });
     } finally {
       setObjectionsLoading(false);
+    }
+  };
+
+  // FULL SUITE Handler - Runs Batch → BOTTOMLINE → Objections in sequence
+  const handleRunFullSuite = async () => {
+    // Validate inputs
+    if (!validatorInputText.trim()) {
+      toast({
+        title: "No Input Text",
+        description: "Please enter text to analyze.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!bottomlineAudience.trim() && !bottomlineObjective.trim()) {
+      toast({
+        title: "Missing Settings",
+        description: "Please specify at least an audience or objective for the BOTTOMLINE synthesis.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Initialize pipeline
+    setFullSuiteLoading(true);
+    setFullSuiteStage("batch");
+    setFullSuiteError("");
+    
+    // Clear previous outputs
+    setValidatorBatchResults([]);
+    setBottomlineOutput("");
+    setObjectionsOutput("");
+
+    const allModes = ["reconstruction", "isomorphism", "mathmodel", "truth-isomorphism", "math-truth-select"];
+
+    try {
+      // ============ STAGE 1: BATCH PROCESSING ============
+      console.log("[FULL SUITE] Stage 1: Running batch processing...");
+      
+      const batchResults: Array<{mode: string; success: boolean; output?: string; error?: string}> = [];
+      
+      for (const mode of allModes) {
+        try {
+          const response = await fetch("/api/text-model-validator", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: validatorInputText,
+              mode: mode,
+              targetDomain: validatorTargetDomain || undefined,
+              // Enforced aggressive settings for Full Suite
+              fidelityLevel: "aggressive",
+              mathFramework: "axiomatic-set-theory",
+              constraintType: "true-statements",
+              rigorLevel: "proof-ready",
+              literalTruth: true,
+              llmProvider: validatorLLMProvider,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            batchResults.push({ mode, success: false, error: errorData.message || "Processing failed" });
+          } else {
+            const data = await response.json();
+            if (data.success && data.output) {
+              batchResults.push({ mode, success: true, output: data.output });
+            } else {
+              batchResults.push({ mode, success: false, error: data.message || "No output returned" });
+            }
+          }
+        } catch (error: any) {
+          batchResults.push({ mode, success: false, error: error.message || "Network error" });
+        }
+      }
+
+      setValidatorBatchResults(batchResults);
+
+      // Check if we have at least some successful results
+      const successfulResults = batchResults.filter(r => r.success);
+      if (successfulResults.length === 0) {
+        throw new Error("All batch processing modes failed. Cannot proceed to BOTTOMLINE.");
+      }
+
+      console.log(`[FULL SUITE] Stage 1 complete: ${successfulResults.length}/${allModes.length} modes succeeded`);
+
+      // ============ STAGE 2: BOTTOMLINE ============
+      setFullSuiteStage("bottomline");
+      console.log("[FULL SUITE] Stage 2: Running BOTTOMLINE synthesis...");
+
+      // Build intermediate results from batch
+      const intermediateResults: Record<string, string> = {};
+      for (const result of successfulResults) {
+        intermediateResults[result.mode] = result.output!;
+      }
+
+      const bottomlineResponse = await fetch('/api/text-model-validator/bottomline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          originalText: validatorInputText,
+          intermediateResults,
+          audience: bottomlineAudience,
+          objective: bottomlineObjective,
+          idea: bottomlineIdea,
+          length: bottomlineLength,
+          tone: bottomlineTone,
+          emphasis: bottomlineEmphasis,
+          llmProvider: validatorLLMProvider,
+        }),
+      });
+
+      if (!bottomlineResponse.ok) {
+        const errorData = await bottomlineResponse.json();
+        throw new Error(errorData.message || 'BOTTOMLINE synthesis failed');
+      }
+
+      const bottomlineData = await bottomlineResponse.json();
+      if (!bottomlineData.success || !bottomlineData.output) {
+        throw new Error('BOTTOMLINE returned no output');
+      }
+
+      setBottomlineOutput(bottomlineData.output);
+      console.log("[FULL SUITE] Stage 2 complete: BOTTOMLINE synthesis succeeded");
+
+      // ============ STAGE 3: OBJECTIONS ============
+      setFullSuiteStage("objections");
+      console.log("[FULL SUITE] Stage 3: Running Objections generation...");
+
+      const objectionsResponse = await fetch('/api/text-model-validator/objections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bottomlineOutput: bottomlineData.output,
+          audience: bottomlineAudience,
+          objective: bottomlineObjective,
+          idea: bottomlineIdea,
+          tone: bottomlineTone,
+          emphasis: bottomlineEmphasis,
+          customInstructions: objectionsCustomInstructions,
+          llmProvider: validatorLLMProvider,
+        }),
+      });
+
+      if (!objectionsResponse.ok) {
+        const errorData = await objectionsResponse.json();
+        throw new Error(errorData.message || 'Objections generation failed');
+      }
+
+      const objectionsData = await objectionsResponse.json();
+      if (!objectionsData.success || !objectionsData.output) {
+        throw new Error('Objections returned no output');
+      }
+
+      setObjectionsOutput(objectionsData.output);
+      console.log("[FULL SUITE] Stage 3 complete: Objections generated");
+
+      // ============ COMPLETE ============
+      setFullSuiteStage("complete");
+      toast({
+        title: "Full Suite Complete!",
+        description: `Pipeline finished: ${successfulResults.length} analyses → BOTTOMLINE → 25 Objections`,
+      });
+
+    } catch (error: any) {
+      console.error("[FULL SUITE] Pipeline error:", error);
+      setFullSuiteStage("error");
+      setFullSuiteError(error.message || "An error occurred during pipeline execution");
+      toast({
+        title: "Full Suite Failed",
+        description: error.message || "Pipeline execution failed",
+        variant: "destructive",
+      });
+    } finally {
+      setFullSuiteLoading(false);
     }
   };
 
@@ -2858,6 +3040,201 @@ Generated on: ${new Date().toLocaleString()}`;
               className="min-h-[200px] font-mono text-sm"
               data-testid="textarea-validator-input"
             />
+          </div>
+
+          {/* FULL SUITE - Run All Functions in Sequence */}
+          <div className="mb-6 bg-gradient-to-r from-violet-100 to-purple-100 dark:from-violet-900/30 dark:to-purple-900/30 p-6 rounded-lg border-2 border-violet-300 dark:border-violet-700">
+            <div 
+              className="flex items-center justify-between cursor-pointer"
+              onClick={() => setShowFullSuitePanel(!showFullSuitePanel)}
+            >
+              <h3 className="text-xl font-bold text-violet-900 dark:text-violet-100 flex items-center gap-2">
+                <Zap className="w-6 h-6 text-violet-600" />
+                Run Full Suite
+                <Badge variant="outline" className="ml-2 bg-violet-200 dark:bg-violet-800 text-violet-800 dark:text-violet-200">
+                  Batch + BOTTOMLINE + Objections
+                </Badge>
+              </h3>
+              <Button variant="ghost" size="icon" data-testid="button-toggle-full-suite">
+                {showFullSuitePanel ? (
+                  <ChevronUp className="w-5 h-5" />
+                ) : (
+                  <ChevronDown className="w-5 h-5" />
+                )}
+              </Button>
+            </div>
+            <p className="text-sm text-violet-700 dark:text-violet-300 mt-2">
+              Run all 5 analysis functions, synthesize with BOTTOMLINE, and generate 25 objections - all in one click.
+            </p>
+
+            {showFullSuitePanel && (
+              <div className="mt-4 space-y-4">
+                {/* Required Settings for Full Suite */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium text-violet-800 dark:text-violet-200">
+                      Target Audience <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      value={bottomlineAudience}
+                      onChange={(e) => setBottomlineAudience(e.target.value)}
+                      placeholder="Who is this for? (e.g., 'Investors', 'Academic reviewers')"
+                      className="mt-1 border-violet-300 focus:border-violet-500"
+                      data-testid="input-fullsuite-audience"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium text-violet-800 dark:text-violet-200">
+                      Objective <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      value={bottomlineObjective}
+                      onChange={(e) => setBottomlineObjective(e.target.value)}
+                      placeholder="What do you want to achieve? (e.g., 'Convince them to invest')"
+                      className="mt-1 border-violet-300 focus:border-violet-500"
+                      data-testid="input-fullsuite-objective"
+                    />
+                  </div>
+                </div>
+
+                {/* Optional Settings */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium text-violet-800 dark:text-violet-200">
+                      Core Idea (optional)
+                    </Label>
+                    <Input
+                      value={bottomlineIdea}
+                      onChange={(e) => setBottomlineIdea(e.target.value)}
+                      placeholder="The main message to convey"
+                      className="mt-1"
+                      data-testid="input-fullsuite-idea"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium text-violet-800 dark:text-violet-200">
+                      Tone
+                    </Label>
+                    <Select value={bottomlineTone} onValueChange={(v: any) => setBottomlineTone(v)}>
+                      <SelectTrigger className="mt-1" data-testid="select-fullsuite-tone">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="formal">Formal</SelectItem>
+                        <SelectItem value="professional">Professional</SelectItem>
+                        <SelectItem value="conversational">Conversational</SelectItem>
+                        <SelectItem value="persuasive">Persuasive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium text-violet-800 dark:text-violet-200">
+                      Length
+                    </Label>
+                    <Select value={bottomlineLength} onValueChange={(v: any) => setBottomlineLength(v)}>
+                      <SelectTrigger className="mt-1" data-testid="select-fullsuite-length">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="brief">Brief (1-2 paragraphs)</SelectItem>
+                        <SelectItem value="medium">Medium (3-5 paragraphs)</SelectItem>
+                        <SelectItem value="detailed">Detailed (full document)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Progress Tracker */}
+                {fullSuiteLoading && (
+                  <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-violet-200 dark:border-violet-700">
+                    <div className="flex items-center gap-4 justify-center flex-wrap">
+                      {/* Stage 1: Batch */}
+                      <div className={`flex items-center gap-2 ${
+                        ["batch"].includes(fullSuiteStage) ? "text-violet-600 font-semibold" : 
+                        ["bottomline", "objections", "complete"].includes(fullSuiteStage) ? "text-green-600" : "text-gray-400"
+                      }`}>
+                        {["batch"].includes(fullSuiteStage) ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : ["bottomline", "objections", "complete"].includes(fullSuiteStage) ? (
+                          <CheckCircle className="w-5 h-5" />
+                        ) : (
+                          <Circle className="w-5 h-5" />
+                        )}
+                        <span>1. Batch Analysis</span>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-gray-400" />
+                      {/* Stage 2: BOTTOMLINE */}
+                      <div className={`flex items-center gap-2 ${
+                        ["bottomline"].includes(fullSuiteStage) ? "text-violet-600 font-semibold" : 
+                        ["objections", "complete"].includes(fullSuiteStage) ? "text-green-600" : "text-gray-400"
+                      }`}>
+                        {["bottomline"].includes(fullSuiteStage) ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : ["objections", "complete"].includes(fullSuiteStage) ? (
+                          <CheckCircle className="w-5 h-5" />
+                        ) : (
+                          <Circle className="w-5 h-5" />
+                        )}
+                        <span>2. BOTTOMLINE</span>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-gray-400" />
+                      {/* Stage 3: Objections */}
+                      <div className={`flex items-center gap-2 ${
+                        ["objections"].includes(fullSuiteStage) ? "text-violet-600 font-semibold" : 
+                        ["complete"].includes(fullSuiteStage) ? "text-green-600" : "text-gray-400"
+                      }`}>
+                        {["objections"].includes(fullSuiteStage) ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : ["complete"].includes(fullSuiteStage) ? (
+                          <CheckCircle className="w-5 h-5" />
+                        ) : (
+                          <Circle className="w-5 h-5" />
+                        )}
+                        <span>3. Objections</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Error Display */}
+                {fullSuiteStage === "error" && fullSuiteError && (
+                  <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-200 dark:border-red-700">
+                    <div className="flex items-center gap-2 text-red-700 dark:text-red-300">
+                      <AlertCircle className="w-5 h-5" />
+                      <span className="font-medium">Pipeline Error:</span>
+                      <span>{fullSuiteError}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Run Button */}
+                <Button
+                  onClick={handleRunFullSuite}
+                  disabled={fullSuiteLoading || !validatorInputText.trim()}
+                  className="w-full bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white py-6 text-lg font-semibold"
+                  data-testid="button-run-full-suite"
+                >
+                  {fullSuiteLoading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Running Full Suite... ({fullSuiteStage})
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-5 h-5 mr-2" />
+                      Run Full Suite (5 Analyses + BOTTOMLINE + 25 Objections)
+                    </>
+                  )}
+                </Button>
+
+                {fullSuiteStage === "complete" && (
+                  <div className="flex items-center justify-center gap-2 text-green-600 dark:text-green-400">
+                    <CheckCircle className="w-5 h-5" />
+                    <span className="font-medium">Full Suite completed! Scroll down to see all results.</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Multi-Mode Toggle */}

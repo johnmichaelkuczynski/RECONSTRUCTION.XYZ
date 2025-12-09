@@ -37,7 +37,8 @@ The application employs a monorepo structure, separating client and server compo
     - **Conservative Reconstruction**: "Charitable Interpretation" mode for generating coherent essays articulating a text's unified argument.
 
 ## Recent Changes (December 2024)
-- **Objections Function**: NEW - STANDALONE function that generates 25 likely objections with compelling counter-arguments. Can be used independently with any input text OR as a follow-up to BOTTOMLINE. Features its own audience/objective fields, custom instructions, and a "Use BOTTOMLINE Output" button for convenience.
+- **Full Suite Pipeline**: NEW - One-click execution of the entire analysis pipeline: Batch (5 modes) → BOTTOMLINE → Objections. Shows real-time progress through each stage with visual indicators.
+- **Objections Function**: STANDALONE function that generates 25 likely objections with compelling counter-arguments. Can be used independently with any input text OR as a follow-up to BOTTOMLINE. Features its own audience/objective fields, custom instructions, and a "Use BOTTOMLINE Output" button for convenience.
 - **Batch Processing UI**: Fully implemented with color-coded stacked results display (emerald, teal, blue, orange, indigo) and per-mode status tracking
 - **BOTTOMLINE Function**: Completed with three operational modes - synthesize from all batch functions, synthesize from selected functions, or synthesize from raw input only
 - **Enhanced BOTTOMLINE Weighting**: Algorithm incorporates audience, tone, and emphasis parameters alongside objective keywords for intelligent result prioritization
