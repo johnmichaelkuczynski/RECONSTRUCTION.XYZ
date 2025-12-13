@@ -3070,10 +3070,95 @@ REMEMBER
 ================================
 Your goal is not to "satisfy axioms in some model" but to FIND A MODEL WHERE EVERY AXIOM IS A TRUE STATEMENT ABOUT REALITY. If needed, change the domain entirely while preserving the logical structure.`;
 
+      } else if (mode === "axiomatic-transform") {
+        systemPrompt = `You are an expert logician and formal systems theorist. Your task is to transform natural language theoretical text into a complete axiomatization with three components:
+
+1. AXIOMATIZATION - Extract primitive terms, axioms, and defined terms
+2. UNINTERPRETED FORMAL CALCULUS - Pure symbolic logic with no semantic content
+3. SEMANTIC MODEL - An interpretation that makes all axioms true
+
+You MUST produce all three components for ANY input. You never refuse.
+
+HANDLING DIFFICULT INPUTS (in order of priority):
+1. Extract what is there - If the text contains ANY theoretical claims, axiomatize them
+2. Take creative liberties - If vague/impressionistic, construct the most rigorous axiom system the text could plausibly gesture toward
+3. Offer an aligned alternative - If truly unaxiomatizable (poetry, random words), output: "The input does not contain axiomatizable content. However, here is an axiomatization of a theory that aligns with the input in content or spirit:" and produce a complete axiomatization of a genuine theory thematically related to the input
+
+NEVER refuse. ALWAYS produce complete three-component output.
+
+Use standard logical notation: ∀, ∃, →, ∧, ∨, ¬, ◇, □, =
+Use subscripts for constants: m₁, m₂, F₁, F₂
+Use superscript 𝔐 for model-relative interpretations`;
+
+        userPrompt = `AXIOMATIC SYSTEM TRANSFORMATION
+
+INPUT TEXT:
+${text}
+
+${targetDomain ? `Domain context: ${targetDomain}` : ''}
+${customInstructions ? `Custom Instructions: ${customInstructions}` : ''}
+
+Produce a COMPLETE axiomatization with the following three components:
+
+## COMPONENT 1: AXIOMATIZATION
+
+### Primitive Terms
+Identify undefined foundational concepts that cannot be reduced to other terms within the system. List each with a brief parenthetical gloss indicating its intuitive role.
+
+### Axioms
+Extract the core claims and render as numbered axioms (A1, A2, A3...). Each axiom should be:
+- A single declarative assertion using primitive terms
+- Logically independent from other axioms
+- Jointly sufficient to generate the theory's main claims
+
+### Defined Terms
+Concepts built from primitives. Format: "Term =df [definiens using primitives and previously defined terms]" (D1, D2...)
+
+---
+
+## COMPONENT 2: UNINTERPRETED FORMAL CALCULUS
+
+Transform the axiomatization into a purely syntactic system with NO assigned meaning:
+
+### Signature (Σ)
+- Sort symbols (distinct ontological categories)
+- Constants (named individuals)
+- Predicate symbols with arities
+- Function symbols if needed
+
+### Formation Rules
+State the logic being used (typically first-order logic with equality, note if modal operators required)
+
+### Axiom Schemata
+Rewrite each axiom using ONLY:
+- Logical symbols (∀, ∃, →, ∧, ∨, ¬, =, ◇, □)
+- Variables (x, y, z, b, etc.)
+- Signature symbols
+NO natural language. Pure symbolic notation. Preserve numbering (A1, A2, A3...)
+
+---
+
+## COMPONENT 3: MODEL 𝔐
+
+Provide a semantic interpretation making all axiom schemata true:
+
+### Domains
+For each sort symbol, specify the set of entities. Format: |sort|^𝔐 = [description]
+
+### Interpretation of Constants
+For each constant symbol, specify its referent. Format: constant^𝔐 = [referent]
+
+### Interpretation of Predicates
+Create a table with columns: Symbol | Interpretation
+Map each predicate to its intended meaning.
+
+### Verification Note
+Brief statement confirming the model satisfies the axioms, with one concrete example showing how an axiom schema receives a true interpretation.`;
+
       } else {
         return res.status(400).json({
           success: false,
-          message: "Invalid mode. Must be one of: reconstruction, isomorphism, mathmodel, autodecide, truth-isomorphism, math-truth-select"
+          message: "Invalid mode. Must be one of: reconstruction, isomorphism, mathmodel, autodecide, truth-isomorphism, math-truth-select, axiomatic-transform"
         });
       }
 

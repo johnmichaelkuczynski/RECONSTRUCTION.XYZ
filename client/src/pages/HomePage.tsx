@@ -144,7 +144,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   
   // Text Model Validator State
   const [validatorInputText, setValidatorInputText] = useState("");
-  const [validatorMode, setValidatorMode] = useState<"reconstruction" | "isomorphism" | "mathmodel" | "autodecide" | "truth-isomorphism" | "math-truth-select" | null>(null);
+  const [validatorMode, setValidatorMode] = useState<"reconstruction" | "isomorphism" | "mathmodel" | "autodecide" | "truth-isomorphism" | "math-truth-select" | "axiomatic-transform" | null>(null);
   const [validatorOutput, setValidatorOutput] = useState<string>("");
   const [validatorLoading, setValidatorLoading] = useState(false);
   // Multi-mode batch processing
@@ -539,7 +539,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   };
 
   // Text Model Validator Handler
-  const handleValidatorProcess = async (mode: "reconstruction" | "isomorphism" | "mathmodel" | "autodecide" | "truth-isomorphism" | "math-truth-select") => {
+  const handleValidatorProcess = async (mode: "reconstruction" | "isomorphism" | "mathmodel" | "autodecide" | "truth-isomorphism" | "math-truth-select" | "axiomatic-transform") => {
     if (!validatorInputText.trim()) {
       toast({
         title: "No Input Text",
@@ -3553,6 +3553,47 @@ Generated on: ${new Date().toLocaleString()}`;
               </Button>
             </div>
 
+            {/* Axiomatic System Transformer */}
+            <div className="relative">
+              {validatorMultiMode && (
+                <div 
+                  className={`absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer ${
+                    validatorSelectedModes.includes("axiomatic-transform") 
+                      ? "bg-purple-600 text-white" 
+                      : "bg-gray-200 dark:bg-gray-700 text-gray-500"
+                  }`}
+                  onClick={() => toggleValidatorModeSelection("axiomatic-transform")}
+                >
+                  {validatorSelectedModes.includes("axiomatic-transform") && <CheckCircle className="w-4 h-4" />}
+                </div>
+              )}
+              <Button
+                onClick={() => {
+                  if (validatorMultiMode) {
+                    toggleValidatorModeSelection("axiomatic-transform");
+                  } else {
+                    setShowValidatorCustomization(prev => validatorMode === "axiomatic-transform" ? !prev : true);
+                    setValidatorMode("axiomatic-transform");
+                  }
+                }}
+                className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
+                  validatorMultiMode
+                    ? validatorSelectedModes.includes("axiomatic-transform")
+                      ? "bg-purple-600 hover:bg-purple-700 text-white"
+                      : "bg-white dark:bg-gray-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-purple-700 dark:text-purple-300 border-2 border-purple-300"
+                    : validatorMode === "axiomatic-transform" 
+                      ? "bg-purple-600 hover:bg-purple-700 text-white" 
+                      : "bg-white dark:bg-gray-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-purple-700 dark:text-purple-300 border-2 border-purple-300"
+                }`}
+                disabled={validatorLoading || validatorBatchLoading}
+                data-testid="button-axiomatic-transform"
+              >
+                <FileCode className="w-6 h-6 mb-2" />
+                <span className="font-bold text-lg">AXIOMATIC</span>
+                <span className="text-xs mt-1 text-center opacity-80">Full formal system</span>
+              </Button>
+            </div>
+
             <Button
               onClick={() => {
                 setShowValidatorCustomization(false);
@@ -4029,21 +4070,24 @@ Generated on: ${new Date().toLocaleString()}`;
                   'isomorphism': 'Isomorphism',
                   'mathmodel': 'Math Model',
                   'truth-isomorphism': 'Truth Select',
-                  'math-truth-select': 'Math + Truth'
+                  'math-truth-select': 'Math + Truth',
+                  'axiomatic-transform': 'Axiomatic System'
                 };
                 const modeBorderClasses: Record<string, string> = {
                   'reconstruction': 'border-emerald-300 dark:border-emerald-700',
                   'isomorphism': 'border-teal-300 dark:border-teal-700',
                   'mathmodel': 'border-blue-300 dark:border-blue-700',
                   'truth-isomorphism': 'border-orange-300 dark:border-orange-700',
-                  'math-truth-select': 'border-indigo-300 dark:border-indigo-700'
+                  'math-truth-select': 'border-indigo-300 dark:border-indigo-700',
+                  'axiomatic-transform': 'border-purple-300 dark:border-purple-700'
                 };
                 const modeBadgeClasses: Record<string, string> = {
                   'reconstruction': 'bg-emerald-600',
                   'isomorphism': 'bg-teal-600',
                   'mathmodel': 'bg-blue-600',
                   'truth-isomorphism': 'bg-orange-600',
-                  'math-truth-select': 'bg-indigo-600'
+                  'math-truth-select': 'bg-indigo-600',
+                  'axiomatic-transform': 'bg-purple-600'
                 };
 
                 return (
