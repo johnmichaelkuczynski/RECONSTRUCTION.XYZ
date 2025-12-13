@@ -2617,7 +2617,9 @@ DO NOT:
 - Rewrite what already works
 - Sound "more academic"
 
-The output should read like what the author WOULD have written if they were clearer thinkers—same voice, same intent, but with the reasoning fixed.`;
+The output should read like what the author WOULD have written if they were clearer thinkers—same voice, same intent, but with the reasoning fixed.
+
+CRITICAL: NO markdown formatting (no # headers, no ** bold **, no * italics *). Use plain text only.`;
 
           userPrompt = `RECONSTRUCT THIS TEXT
 
@@ -2712,7 +2714,7 @@ Provide:
 3. Mapping Table: Explicit mappings showing [original term] → [target domain equivalent]
 ${constraintType === 'true-statements' ? '4. Truth Verification: Verify that the mapped statements are actually true in the target domain' : ''}
 
-CRITICAL: NO markdown headers (no # or ##). Use plain text labels like "1. Relation Graph" not "## 1. Relation Graph". Output clean, natural prose.`;
+CRITICAL: NO markdown formatting (no # headers, no ** bold **, no * italics *). Use plain text labels like "1. Relation Graph" not "## 1. Relation Graph". Output clean, natural prose.`;
 
       } else if (mode === "mathmodel") {
         systemPrompt = `You are an expert logician and model theorist. Your task is to build ACTUAL first-order models - not vague "formalizations" or prose summaries.
@@ -2733,7 +2735,7 @@ CRITICAL CONSTRAINTS:
 - Every predicate must have its extension (the set of tuples that satisfy it) listed explicitly
 - You must VERIFY each axiom against the model
 
-OUTPUT FORMAT: Use plain text with numbered sections. NO markdown headers (no # or ##).`;
+OUTPUT FORMAT: Use plain text with numbered sections. NO markdown formatting (no # headers, no ** bold **, no * italics *).`;
         
         userPrompt = `FIRST-ORDER MODEL CONSTRUCTION
 
@@ -2858,7 +2860,7 @@ Provide:
 2. Execution: Complete validation using the chosen method(s)
 3. Connections: If multiple operations, show how they relate
 
-CRITICAL: NO markdown headers (no # or ##). Use plain text labels like "1. Analysis" not "## 1. Analysis". Output clean, natural prose.`;
+CRITICAL: NO markdown formatting (no # headers, no ** bold **, no * italics *). Use plain text labels like "1. Analysis" not "## 1. Analysis". Output clean, natural prose.`;
 
       } else if (mode === "truth-isomorphism") {
         systemPrompt = `You are an expert at finding isomorphic structures across domains with explicit control over truth-value mappings. You can preserve exact relational structure while systematically swapping domain vocabulary AND controlling whether statements remain true, become false, or transform from false to true.
@@ -2924,7 +2926,7 @@ Provide:
 4. Mapping Table: Explicit mappings showing [original term] → [target domain equivalent] PLUS [original truth value] → [target truth value]
 5. Truth Verification: Verify the truth status of both original and mapped statements
 
-CRITICAL: NO markdown headers (no # or ##). Use plain text labels like "1. Truth-Value Analysis" not "## 1. Truth-Value Analysis". Output clean, natural prose.`;
+CRITICAL: NO markdown formatting (no # headers, no ** bold **, no * italics *). Use plain text labels like "1. Truth-Value Analysis" not "## 1. Truth-Value Analysis". Output clean, natural prose.`;
 
       } else if (mode === "math-truth-select") {
         systemPrompt = `You are an expert logician specializing in MODEL THEORY and REAL-WORLD TRUTH VERIFICATION.
@@ -2941,8 +2943,8 @@ KEY DISTINCTION:
 You are searching for TRUTH, not mere satisfiability.
 
 CRITICAL OUTPUT RULES:
-- NO markdown headers (# or ##)
-- Use plain text with numbered sections
+- NO markdown formatting whatsoever (no # headers, no ** bold **, no * italics *, no --- dividers)
+- Use plain text with numbered sections and CAPS for headers
 - Every claim must be verifiable`;
         
         userPrompt = `TRUTH-GROUNDED MODEL CONSTRUCTION
@@ -3088,7 +3090,9 @@ NEVER refuse. ALWAYS produce complete three-component output.
 
 Use standard logical notation: ∀, ∃, →, ∧, ∨, ¬, ◇, □, =
 Use subscripts for constants: m₁, m₂, F₁, F₂
-Use superscript 𝔐 for model-relative interpretations`;
+Use superscript 𝔐 for model-relative interpretations
+
+CRITICAL FORMATTING RULE: Do NOT use any markdown formatting. No ### headers, no ** bold **, no * italics *, no --- dividers. Use PLAIN TEXT only with CAPS for headers and clear spacing.`;
 
         userPrompt = `AXIOMATIC SYSTEM TRANSFORMATION
 
@@ -3100,60 +3104,60 @@ ${customInstructions ? `Custom Instructions: ${customInstructions}` : ''}
 
 Produce a COMPLETE axiomatization with the following three components:
 
-## COMPONENT 1: AXIOMATIZATION
+COMPONENT 1: AXIOMATIZATION
 
-### Primitive Terms
+PRIMITIVE TERMS
 Identify undefined foundational concepts that cannot be reduced to other terms within the system. List each with a brief parenthetical gloss indicating its intuitive role.
 
-### Axioms
+AXIOMS
 Extract the core claims and render as numbered axioms (A1, A2, A3...). Each axiom should be:
 - A single declarative assertion using primitive terms
 - Logically independent from other axioms
 - Jointly sufficient to generate the theory's main claims
 
-### Defined Terms
+DEFINED TERMS
 Concepts built from primitives. Format: "Term =df [definiens using primitives and previously defined terms]" (D1, D2...)
 
----
 
-## COMPONENT 2: UNINTERPRETED FORMAL CALCULUS
+COMPONENT 2: UNINTERPRETED FORMAL CALCULUS
 
 Transform the axiomatization into a purely syntactic system with NO assigned meaning:
 
-### Signature (Σ)
+SIGNATURE (Σ)
 - Sort symbols (distinct ontological categories)
 - Constants (named individuals)
 - Predicate symbols with arities
 - Function symbols if needed
 
-### Formation Rules
+FORMATION RULES
 State the logic being used (typically first-order logic with equality, note if modal operators required)
 
-### Axiom Schemata
+AXIOM SCHEMATA
 Rewrite each axiom using ONLY:
 - Logical symbols (∀, ∃, →, ∧, ∨, ¬, =, ◇, □)
 - Variables (x, y, z, b, etc.)
 - Signature symbols
 NO natural language. Pure symbolic notation. Preserve numbering (A1, A2, A3...)
 
----
 
-## COMPONENT 3: MODEL 𝔐
+COMPONENT 3: MODEL 𝔐
 
 Provide a semantic interpretation making all axiom schemata true:
 
-### Domains
+DOMAINS
 For each sort symbol, specify the set of entities. Format: |sort|^𝔐 = [description]
 
-### Interpretation of Constants
+INTERPRETATION OF CONSTANTS
 For each constant symbol, specify its referent. Format: constant^𝔐 = [referent]
 
-### Interpretation of Predicates
+INTERPRETATION OF PREDICATES
 Create a table with columns: Symbol | Interpretation
 Map each predicate to its intended meaning.
 
-### Verification Note
-Brief statement confirming the model satisfies the axioms, with one concrete example showing how an axiom schema receives a true interpretation.`;
+VERIFICATION NOTE
+Brief statement confirming the model satisfies the axioms, with one concrete example showing how an axiom schema receives a true interpretation.
+
+Remember: NO markdown formatting. Use plain text with CAPS headers only.`;
 
       } else {
         return res.status(400).json({
