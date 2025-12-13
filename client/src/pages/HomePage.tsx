@@ -3941,6 +3941,33 @@ Generated on: ${new Date().toLocaleString()}`;
                 </div>
               )}
 
+              <div className="flex gap-3 mt-6">
+                <Button
+                  onClick={() => handleValidatorProcess(validatorMode)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  disabled={validatorLoading}
+                  data-testid="button-generate-validator"
+                >
+                  {validatorLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Generate
+                    </>
+                  )}
+                </Button>
+                <Button
+                  onClick={() => setShowValidatorCustomization(false)}
+                  variant="outline"
+                  data-testid="button-hide-customization"
+                >
+                  Hide Options
+                </Button>
+              </div>
             </div>
           )}
 
