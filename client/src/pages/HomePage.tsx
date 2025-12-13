@@ -21,7 +21,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target, ChevronUp, ChevronDown, MessageSquareWarning, Circle, ArrowRight } from "lucide-react";
+import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target, ChevronUp, ChevronDown, MessageSquareWarning, Circle, ArrowRight, Library } from "lucide-react";
+import { axiomLibrary } from "@/lib/axiomLibrary";
 import { Input } from "@/components/ui/input";
 import { analyzeDocument, compareDocuments, checkForAI } from "@/lib/analysis";
 import { AnalysisMode, DocumentInput as DocumentInputType, AIDetectionResult, DocumentAnalysis, DocumentComparison } from "@/lib/types";
@@ -191,6 +192,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [fullSuiteStage, setFullSuiteStage] = useState<"idle" | "batch" | "bottomline" | "objections" | "complete" | "error">("idle");
   const [fullSuiteError, setFullSuiteError] = useState<string>("");
   const [showFullSuitePanel, setShowFullSuitePanel] = useState(true);
+  const [showAxiomLibrary, setShowAxiomLibrary] = useState(false);
   const [fullSuiteAdditionalInfo, setFullSuiteAdditionalInfo] = useState("");
   
   // Coherence Meter State
@@ -3005,35 +3007,83 @@ Generated on: ${new Date().toLocaleString()}`;
 
           {/* Input Area */}
           <div className="mb-6">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-2 gap-2">
               <label className="block text-sm font-semibold text-emerald-800 dark:text-emerald-200">
                 Input Text to Validate
               </label>
-              <label className="cursor-pointer">
-                <input
-                  type="file"
-                  accept=".pdf,.doc,.docx,.txt"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFileUpload(file, setValidatorInputText);
-                  }}
-                  data-testid="input-validator-upload"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    (e.currentTarget.previousElementSibling as HTMLInputElement)?.click();
-                  }}
-                  data-testid="button-validator-upload"
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  Upload Document
-                </Button>
-              </label>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-purple-700 dark:text-purple-300"
+                    onClick={() => setShowAxiomLibrary(!showAxiomLibrary)}
+                    data-testid="button-axiom-library"
+                  >
+                    <Library className="w-4 h-4 mr-2" />
+                    Axiom Library
+                  </Button>
+                  {showAxiomLibrary && (
+                    <div className="absolute right-0 top-full mt-1 w-80 bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-700 rounded-md shadow-lg z-50 p-2">
+                      <div className="text-xs font-semibold text-purple-700 dark:text-purple-300 mb-2 px-2">
+                        Select Axiom Set to Load
+                      </div>
+                      {axiomLibrary.map((axiomSet) => (
+                        <button
+                          key={axiomSet.id}
+                          className="w-full text-left px-3 py-2 rounded hover:bg-purple-50 dark:hover:bg-purple-900/30 transition-colors"
+                          onClick={() => {
+                            setValidatorInputText(axiomSet.content);
+                            setShowAxiomLibrary(false);
+                            toast({
+                              title: "Axiom Set Loaded",
+                              description: `Loaded ${axiomSet.shortName}: ${axiomSet.name}`
+                            });
+                          }}
+                          data-testid={`button-load-axiom-${axiomSet.id}`}
+                        >
+                          <div className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                            {axiomSet.shortName}
+                          </div>
+                          <div className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                            {axiomSet.description}
+                          </div>
+                        </button>
+                      ))}
+                      {axiomLibrary.length === 0 && (
+                        <div className="text-sm text-gray-500 px-3 py-2">
+                          No axiom sets available
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileUpload(file, setValidatorInputText);
+                    }}
+                    data-testid="input-validator-upload"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      (e.currentTarget.previousElementSibling as HTMLInputElement)?.click();
+                    }}
+                    data-testid="button-validator-upload"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    Upload Document
+                  </Button>
+                </label>
+              </div>
             </div>
             <Textarea
               value={validatorInputText}
