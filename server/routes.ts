@@ -3387,11 +3387,11 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
       };
       
       const providerLabels: Record<string, string> = {
-        'zhi1': 'ZHI 1 (GPT-4)',
-        'zhi2': 'ZHI 2 (Claude)',
-        'zhi3': 'ZHI 3 (DeepSeek)',
-        'zhi4': 'ZHI 4 (Perplexity)',
-        'zhi5': 'ZHI 5 (Grok)'
+        'zhi1': 'ZHI 1',
+        'zhi2': 'ZHI 2',
+        'zhi3': 'ZHI 3',
+        'zhi4': 'ZHI 4',
+        'zhi5': 'ZHI 5'
       };
       
       let parameterHeader = `═══════════════════════════════════════════════════
