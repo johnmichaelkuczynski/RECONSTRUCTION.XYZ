@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target, ChevronUp, ChevronDown, MessageSquareWarning, Circle, ArrowRight } from "lucide-react";
+import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target, ChevronUp, ChevronDown, MessageSquareWarning, Circle, ArrowRight, Settings } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { analyzeDocument, compareDocuments, checkForAI } from "@/lib/analysis";
 import { AnalysisMode, DocumentInput as DocumentInputType, AIDetectionResult, DocumentAnalysis, DocumentComparison } from "@/lib/types";
@@ -3690,6 +3690,40 @@ Generated on: ${new Date().toLocaleString()}`;
             </p>
           </div>
 
+          {/* Main Generate Button - Always visible when a mode is selected */}
+          {validatorMode && validatorMode !== "autodecide" && !validatorMultiMode && (
+            <div className="mt-6 text-center">
+              <Button
+                onClick={() => handleValidatorProcess(validatorMode)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 text-lg"
+                disabled={validatorLoading}
+                data-testid="button-generate-main"
+              >
+                {validatorLoading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5 mr-2" />
+                    Generate {validatorMode.toUpperCase().replace(/-/g, ' ')}
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={() => setShowValidatorCustomization(!showValidatorCustomization)}
+                variant="ghost"
+                size="sm"
+                className="ml-3"
+                data-testid="button-toggle-options"
+              >
+                <Settings className="w-4 h-4 mr-1" />
+                {showValidatorCustomization ? "Hide Options" : "More Options"}
+              </Button>
+            </div>
+          )}
+
           {/* Customization Panel */}
           {showValidatorCustomization && validatorMode && validatorMode !== "autodecide" && (
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border-2 border-gray-200 dark:border-gray-700 mb-6">
@@ -3907,33 +3941,6 @@ Generated on: ${new Date().toLocaleString()}`;
                 </div>
               )}
 
-              <div className="flex gap-3 mt-6">
-                <Button
-                  onClick={() => handleValidatorProcess(validatorMode)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                  disabled={validatorLoading}
-                  data-testid="button-generate-validator"
-                >
-                  {validatorLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Generate
-                    </>
-                  )}
-                </Button>
-                <Button
-                  onClick={() => setShowValidatorCustomization(false)}
-                  variant="outline"
-                  data-testid="button-hide-customization"
-                >
-                  Hide Options
-                </Button>
-              </div>
             </div>
           )}
 
