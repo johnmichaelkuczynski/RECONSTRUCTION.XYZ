@@ -30,18 +30,17 @@ The application employs a monorepo structure, separating client and server compo
         3. **MAX COHERENCE** (Rewrite) - Improves structural coherence without changing mathematical content. Preserves all claims (even incorrect ones) while improving flow, notation, and organization.
         4. **MAXIMIZE TRUTH** (Rewrite) - Corrects defective proofs using Claude with extended thinking. If theorem is TRUE, fixes the proof. If FALSE, finds a similar true theorem and proves that instead. Returns theorem status, corrected proof, and key corrections.
       - **Scientific-Explanatory Coherence Type**: Performs dual assessment evaluating both logical consistency (internal contradictions, structural coherence) AND scientific accuracy (factual correctness, alignment with established science), displaying separate scores for each dimension. The REWRITE function specifically corrects pseudoscientific claims, replacing them with accurate scientific explanations.
-    - **Text Model Validator**: Now focused exclusively on the RECONSTRUCTION function for conservative charitable interpretation of texts. Features:
-      - **BOTTOMLINE Function**: Synthesizes analysis results into polished final output tailored to specific audience, objective, tone, length, and emphasis. Uses intelligent weighting to prioritize intermediate results based on relevance to stated objectives.
+    - **Text Model Validator**: Focused exclusively on the RECONSTRUCTION function for conservative charitable interpretation of texts.
     - **AI Chat Assistant**: Provides conversation history and context from the Zhi Database.
     - **Conservative Reconstruction**: "Charitable Interpretation" mode for generating coherent essays articulating a text's unified argument.
 
 ## Recent Changes (December 2024)
-- **Generate Objection-Proof Version**: NEW - Rewrites text to be invulnerable to objections identified by the Objections Function. For devastating objections (fundamental flaws), substantially revises content. For forceful objections (appear strong but aren't), adds language to remove even apparent force. For minor objections, adds subtle preemptive framing. Produces a change log showing how each objection was addressed.
+- **BOTTOMLINE Removal**: Completely removed the BOTTOMLINE function from the application. The Full Suite pipeline now goes directly from Reconstruction to Objections (2-stage pipeline instead of 3).
+- **Generate Objection-Proof Version**: Rewrites text to be invulnerable to objections identified by the Objections Function. For devastating objections (fundamental flaws), substantially revises content. For forceful objections (appear strong but aren't), adds language to remove even apparent force. For minor objections, adds subtle preemptive framing. Produces a change log showing how each objection was addressed.
 - **Text Model Validator Simplification**: Removed 6 validation modes (isomorphism, mathmodel, autodecide, truth-isomorphism, math-truth-select, axiomatic-transform). App now focuses exclusively on the RECONSTRUCTION function for conservative charitable interpretation of texts. Simplified UI and removed batch processing for this section.
-- **Axiomatic System Transformer**: Transforms natural language theoretical text into complete formal axiomatization with three components: (1) Axiomatization with primitive terms, axioms, and defined terms, (2) Uninterpreted formal calculus with pure symbolic logic, (3) Semantic model that satisfies all axioms. Never refuses - always produces output even for difficult inputs.
-- **Full Suite Pipeline**: One-click execution of the entire analysis pipeline: Reconstruction + BOTTOMLINE + Objections. Shows real-time progress through each stage with visual indicators.
-- **Objections Function**: STANDALONE function that generates 25 likely objections with compelling counter-arguments. Can be used independently with any input text OR as a follow-up to BOTTOMLINE.
-- **BOTTOMLINE Function**: Synthesizes analysis results into polished final output tailored to specific audience, objective, tone, length, and emphasis.
+- **Axiomatic System Transformer**: Transforms natural language theoretical text into complete formal axiomatization with three components: (1) Axiomatization with primitive terms, axioms, and defined terms, (2) Uninterpreted formal calculus with pure symbolic logic, (3) Semantic model that satisfies all axioms.
+- **Full Suite Pipeline**: One-click execution of the analysis pipeline: Reconstruction + Objections. Shows real-time progress through each stage with visual indicators.
+- **Objections Function**: Standalone function that generates 25 likely objections with compelling counter-arguments for any input text.
 
 ## External Dependencies
 - **AI Service Providers**: OpenAI API (GPT-4), Anthropic API (Claude), DeepSeek API, Perplexity AI, Grok API (xAI).

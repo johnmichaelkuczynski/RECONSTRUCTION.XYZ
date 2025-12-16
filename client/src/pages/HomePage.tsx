@@ -166,18 +166,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [validatorLiteralTruth, setValidatorLiteralTruth] = useState(false);
   const [validatorLLMProvider, setValidatorLLMProvider] = useState<string>("zhi5"); // Default to ZHI 5
   
-  // BOTTOMLINE Function State
-  const [bottomlineAudience, setBottomlineAudience] = useState("");
-  const [bottomlineObjective, setBottomlineObjective] = useState("");
-  const [bottomlineIdea, setBottomlineIdea] = useState("");
-  const [bottomlineLength, setBottomlineLength] = useState<"brief" | "medium" | "detailed">("medium");
-  const [bottomlineTone, setBottomlineTone] = useState<"formal" | "professional" | "conversational" | "persuasive">("professional");
-  const [bottomlineEmphasis, setBottomlineEmphasis] = useState("");
-  const [bottomlineOutput, setBottomlineOutput] = useState("");
-  const [bottomlineLoading, setBottomlineLoading] = useState(false);
-  const [showBottomlinePanel, setShowBottomlinePanel] = useState(true); // Default to expanded for discoverability
-  
-  // Objections Function State (standalone - can use BOTTOMLINE output or custom input)
+  // Objections Function State (standalone)
   const [objectionsOutput, setObjectionsOutput] = useState("");
   const [objectionsLoading, setObjectionsLoading] = useState(false);
   const [objectionsCustomInstructions, setObjectionsCustomInstructions] = useState("");
@@ -192,9 +181,9 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [objectionProofCustomInstructions, setObjectionProofCustomInstructions] = useState("");
   const [showObjectionProofPanel, setShowObjectionProofPanel] = useState(true);
 
-  // FULL SUITE Pipeline State - runs Batch → BOTTOMLINE → Objections in sequence
+  // FULL SUITE Pipeline State - runs Reconstruction → Objections in sequence
   const [fullSuiteLoading, setFullSuiteLoading] = useState(false);
-  const [fullSuiteStage, setFullSuiteStage] = useState<"idle" | "batch" | "bottomline" | "objections" | "complete" | "error">("idle");
+  const [fullSuiteStage, setFullSuiteStage] = useState<"idle" | "batch" | "objections" | "complete" | "error">("idle");
   const [fullSuiteError, setFullSuiteError] = useState<string>("");
   const [showFullSuitePanel, setShowFullSuitePanel] = useState(true);
   const [fullSuiteAdditionalInfo, setFullSuiteAdditionalInfo] = useState("");
@@ -697,99 +686,12 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     }
   };
 
-  // BOTTOMLINE Function Handler - synthesizes analysis into final polished output
-  const handleBottomline = async () => {
-    if (!validatorInputText.trim()) {
-      toast({
-        title: "No Input Text",
-        description: "Please enter your original text first",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (!bottomlineObjective.trim() && !bottomlineAudience.trim()) {
-      toast({
-        title: "Missing Details",
-        description: "Please specify your audience or objective",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setBottomlineLoading(true);
-    setBottomlineOutput("");
-
-    try {
-      // Collect intermediate results if any exist
-      const intermediateResults: Record<string, string> = {};
-      
-      // From single mode output
-      if (validatorOutput && validatorMode) {
-        intermediateResults[validatorMode] = validatorOutput;
-      }
-      
-      // From batch results
-      validatorBatchResults.forEach(result => {
-        if (result.success && result.output) {
-          intermediateResults[result.mode] = result.output;
-        }
-      });
-
-      const response = await fetch('/api/text-model-validator/bottomline', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          originalText: validatorInputText,
-          intermediateResults,
-          audience: bottomlineAudience,
-          objective: bottomlineObjective,
-          idea: bottomlineIdea,
-          length: bottomlineLength,
-          tone: bottomlineTone,
-          emphasis: bottomlineEmphasis,
-          llmProvider: validatorLLMProvider,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'BOTTOMLINE synthesis failed');
-      }
-
-      const data = await response.json();
-      if (data.success && data.output) {
-        setBottomlineOutput(data.output);
-        toast({
-          title: "BOTTOMLINE Complete!",
-          description: `Final output generated for ${bottomlineAudience || 'your audience'}`,
-        });
-      }
-    } catch (error: any) {
-      console.error('BOTTOMLINE error:', error);
-      toast({
-        title: "BOTTOMLINE Failed",
-        description: error.message || "An error occurred during synthesis.",
-        variant: "destructive",
-      });
-    } finally {
-      setBottomlineLoading(false);
-    }
-  };
-
   // Objections Function Handler - generates 25 objections and counter-objections
-  const handleObjections = async (useBottomlineOutput: boolean = false) => {
-    // Determine which input to use
-    const inputText = useBottomlineOutput ? bottomlineOutput : objectionsInputText;
-    const audience = useBottomlineOutput ? bottomlineAudience : objectionsAudience;
-    const objective = useBottomlineOutput ? bottomlineObjective : objectionsObjective;
-    
-    if (!inputText.trim()) {
+  const handleObjections = async () => {
+    if (!objectionsInputText.trim()) {
       toast({
         title: "No Input Provided",
-        description: useBottomlineOutput 
-          ? "Please run the BOTTOMLINE function first to generate content."
-          : "Please enter text to analyze for objections.",
+        description: "Please enter text to analyze for objections.",
         variant: "destructive"
       });
       return;
@@ -803,12 +705,12 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          bottomlineOutput: inputText,
-          audience: audience,
-          objective: objective,
-          idea: useBottomlineOutput ? bottomlineIdea : "",
-          tone: useBottomlineOutput ? bottomlineTone : "professional",
-          emphasis: useBottomlineOutput ? bottomlineEmphasis : "",
+          bottomlineOutput: objectionsInputText,
+          audience: objectionsAudience,
+          objective: objectionsObjective,
+          idea: "",
+          tone: "professional",
+          emphasis: "",
           customInstructions: objectionsCustomInstructions,
           llmProvider: validatorLLMProvider,
         }),
@@ -839,22 +741,13 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     }
   };
 
-  // FULL SUITE Handler - Runs Batch → BOTTOMLINE → Objections in sequence
+  // FULL SUITE Handler - Runs Reconstruction → Objections in sequence
   const handleRunFullSuite = async () => {
     // Validate inputs
     if (!validatorInputText.trim()) {
       toast({
         title: "No Input Text",
         description: "Please enter text to analyze.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (!bottomlineAudience.trim() && !bottomlineObjective.trim()) {
-      toast({
-        title: "Missing Settings",
-        description: "Please specify at least an audience or objective for the BOTTOMLINE synthesis.",
         variant: "destructive"
       });
       return;
@@ -867,14 +760,13 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     
     // Clear previous outputs
     setValidatorBatchResults([]);
-    setBottomlineOutput("");
     setObjectionsOutput("");
 
     const allModes = ["reconstruction"];
 
     try {
-      // ============ STAGE 1: BATCH PROCESSING ============
-      console.log("[FULL SUITE] Stage 1: Running batch processing...");
+      // ============ STAGE 1: RECONSTRUCTION ============
+      console.log("[FULL SUITE] Stage 1: Running reconstruction...");
       
       const batchResults: Array<{mode: string; success: boolean; output?: string; error?: string}> = [];
       
@@ -887,7 +779,6 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
               text: validatorInputText,
               mode: mode,
               targetDomain: validatorTargetDomain || undefined,
-              // Enforced aggressive settings for Full Suite
               fidelityLevel: "aggressive",
               mathFramework: "axiomatic-set-theory",
               constraintType: "true-statements",
@@ -918,65 +809,28 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       // Check if we have at least some successful results
       const successfulResults = batchResults.filter(r => r.success);
       if (successfulResults.length === 0) {
-        throw new Error("All batch processing modes failed. Cannot proceed to BOTTOMLINE.");
+        throw new Error("Reconstruction failed. Cannot proceed to Objections.");
       }
 
-      console.log(`[FULL SUITE] Stage 1 complete: ${successfulResults.length}/${allModes.length} modes succeeded`);
+      console.log(`[FULL SUITE] Stage 1 complete: Reconstruction succeeded`);
 
-      // ============ STAGE 2: BOTTOMLINE ============
-      setFullSuiteStage("bottomline");
-      console.log("[FULL SUITE] Stage 2: Running BOTTOMLINE synthesis...");
+      // Use the reconstruction output for objections
+      const reconstructionOutput = successfulResults[0]?.output || validatorInputText;
 
-      // Build intermediate results from batch
-      const intermediateResults: Record<string, string> = {};
-      for (const result of successfulResults) {
-        intermediateResults[result.mode] = result.output!;
-      }
-
-      const bottomlineResponse = await fetch('/api/text-model-validator/bottomline', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          originalText: validatorInputText,
-          intermediateResults,
-          audience: bottomlineAudience,
-          objective: bottomlineObjective,
-          idea: bottomlineIdea,
-          length: bottomlineLength,
-          tone: bottomlineTone,
-          emphasis: bottomlineEmphasis,
-          additionalInfo: fullSuiteAdditionalInfo,
-          llmProvider: validatorLLMProvider,
-        }),
-      });
-
-      if (!bottomlineResponse.ok) {
-        const errorData = await bottomlineResponse.json();
-        throw new Error(errorData.message || 'BOTTOMLINE synthesis failed');
-      }
-
-      const bottomlineData = await bottomlineResponse.json();
-      if (!bottomlineData.success || !bottomlineData.output) {
-        throw new Error('BOTTOMLINE returned no output');
-      }
-
-      setBottomlineOutput(bottomlineData.output);
-      console.log("[FULL SUITE] Stage 2 complete: BOTTOMLINE synthesis succeeded");
-
-      // ============ STAGE 3: OBJECTIONS ============
+      // ============ STAGE 2: OBJECTIONS ============
       setFullSuiteStage("objections");
-      console.log("[FULL SUITE] Stage 3: Running Objections generation...");
+      console.log("[FULL SUITE] Stage 2: Running Objections generation...");
 
       const objectionsResponse = await fetch('/api/text-model-validator/objections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          bottomlineOutput: bottomlineData.output,
-          audience: bottomlineAudience,
-          objective: bottomlineObjective,
-          idea: bottomlineIdea,
-          tone: bottomlineTone,
-          emphasis: bottomlineEmphasis,
+          bottomlineOutput: reconstructionOutput,
+          audience: objectionsAudience,
+          objective: objectionsObjective,
+          idea: "",
+          tone: "professional",
+          emphasis: "",
           customInstructions: objectionsCustomInstructions,
           llmProvider: validatorLLMProvider,
         }),
@@ -993,13 +847,15 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       }
 
       setObjectionsOutput(objectionsData.output);
-      console.log("[FULL SUITE] Stage 3 complete: Objections generated");
+      // Also set the objections input text so it can be used in objection-proof
+      setObjectionsInputText(reconstructionOutput);
+      console.log("[FULL SUITE] Stage 2 complete: Objections generated");
 
       // ============ COMPLETE ============
       setFullSuiteStage("complete");
       toast({
         title: "Full Suite Complete!",
-        description: `Pipeline finished: ${successfulResults.length} analyses → BOTTOMLINE → 25 Objections`,
+        description: "Pipeline finished: Reconstruction + 25 Objections",
       });
 
     } catch (error: any) {
@@ -3060,7 +2916,7 @@ Generated on: ${new Date().toLocaleString()}`;
                 <Zap className="w-6 h-6 text-violet-600" />
                 Run Full Suite
                 <Badge variant="outline" className="ml-2 bg-violet-200 dark:bg-violet-800 text-violet-800 dark:text-violet-200">
-                  Batch + BOTTOMLINE + Objections
+                  Reconstruction + Objections
                 </Badge>
               </h3>
               <Button variant="ghost" size="icon" data-testid="button-toggle-full-suite">
@@ -3072,135 +2928,31 @@ Generated on: ${new Date().toLocaleString()}`;
               </Button>
             </div>
             <p className="text-sm text-violet-700 dark:text-violet-300 mt-2">
-              Run all 5 analysis functions, synthesize with BOTTOMLINE, and generate 25 objections - all in one click.
+              Run reconstruction analysis and generate 25 objections - all in one click.
             </p>
 
             {showFullSuitePanel && (
               <div className="mt-4 space-y-4">
-                {/* Required Settings for Full Suite */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium text-violet-800 dark:text-violet-200">
-                      Target Audience <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      value={bottomlineAudience}
-                      onChange={(e) => setBottomlineAudience(e.target.value)}
-                      placeholder="Who is this for? (e.g., 'Investors', 'Academic reviewers')"
-                      className="mt-1 border-violet-300 focus:border-violet-500"
-                      data-testid="input-fullsuite-audience"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-violet-800 dark:text-violet-200">
-                      Objective <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      value={bottomlineObjective}
-                      onChange={(e) => setBottomlineObjective(e.target.value)}
-                      placeholder="What do you want to achieve? (e.g., 'Convince them to invest')"
-                      className="mt-1 border-violet-300 focus:border-violet-500"
-                      data-testid="input-fullsuite-objective"
-                    />
-                  </div>
-                </div>
-
-                {/* Optional Settings */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium text-violet-800 dark:text-violet-200">
-                      Core Idea (optional)
-                    </Label>
-                    <Input
-                      value={bottomlineIdea}
-                      onChange={(e) => setBottomlineIdea(e.target.value)}
-                      placeholder="The main message to convey"
-                      className="mt-1"
-                      data-testid="input-fullsuite-idea"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-violet-800 dark:text-violet-200">
-                      Tone
-                    </Label>
-                    <Select value={bottomlineTone} onValueChange={(v: any) => setBottomlineTone(v)}>
-                      <SelectTrigger className="mt-1" data-testid="select-fullsuite-tone">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="formal">Formal</SelectItem>
-                        <SelectItem value="professional">Professional</SelectItem>
-                        <SelectItem value="conversational">Conversational</SelectItem>
-                        <SelectItem value="persuasive">Persuasive</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-violet-800 dark:text-violet-200">
-                      Length
-                    </Label>
-                    <Select value={bottomlineLength} onValueChange={(v: any) => setBottomlineLength(v)}>
-                      <SelectTrigger className="mt-1" data-testid="select-fullsuite-length">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="brief">Brief (1-2 paragraphs)</SelectItem>
-                        <SelectItem value="medium">Medium (3-5 paragraphs)</SelectItem>
-                        <SelectItem value="detailed">Detailed (full document)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Additional Information */}
-                <div>
-                  <Label className="text-sm font-medium text-violet-800 dark:text-violet-200">
-                    Additional Information (optional)
-                  </Label>
-                  <Textarea
-                    value={fullSuiteAdditionalInfo}
-                    onChange={(e) => setFullSuiteAdditionalInfo(e.target.value)}
-                    placeholder="Any extra context, background information, or special considerations you want the AI to factor in..."
-                    className="mt-1 min-h-[80px]"
-                    data-testid="input-fullsuite-additional-info"
-                  />
-                </div>
-
                 {/* Progress Tracker */}
                 {fullSuiteLoading && (
                   <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-violet-200 dark:border-violet-700">
                     <div className="flex items-center gap-4 justify-center flex-wrap">
-                      {/* Stage 1: Batch */}
+                      {/* Stage 1: Reconstruction */}
                       <div className={`flex items-center gap-2 ${
                         ["batch"].includes(fullSuiteStage) ? "text-violet-600 font-semibold" : 
-                        ["bottomline", "objections", "complete"].includes(fullSuiteStage) ? "text-green-600" : "text-gray-400"
-                      }`}>
-                        {["batch"].includes(fullSuiteStage) ? (
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : ["bottomline", "objections", "complete"].includes(fullSuiteStage) ? (
-                          <CheckCircle className="w-5 h-5" />
-                        ) : (
-                          <Circle className="w-5 h-5" />
-                        )}
-                        <span>1. Batch Analysis</span>
-                      </div>
-                      <ArrowRight className="w-4 h-4 text-gray-400" />
-                      {/* Stage 2: BOTTOMLINE */}
-                      <div className={`flex items-center gap-2 ${
-                        ["bottomline"].includes(fullSuiteStage) ? "text-violet-600 font-semibold" : 
                         ["objections", "complete"].includes(fullSuiteStage) ? "text-green-600" : "text-gray-400"
                       }`}>
-                        {["bottomline"].includes(fullSuiteStage) ? (
+                        {["batch"].includes(fullSuiteStage) ? (
                           <Loader2 className="w-5 h-5 animate-spin" />
                         ) : ["objections", "complete"].includes(fullSuiteStage) ? (
                           <CheckCircle className="w-5 h-5" />
                         ) : (
                           <Circle className="w-5 h-5" />
                         )}
-                        <span>2. BOTTOMLINE</span>
+                        <span>1. Reconstruction</span>
                       </div>
                       <ArrowRight className="w-4 h-4 text-gray-400" />
-                      {/* Stage 3: Objections */}
+                      {/* Stage 2: Objections */}
                       <div className={`flex items-center gap-2 ${
                         ["objections"].includes(fullSuiteStage) ? "text-violet-600 font-semibold" : 
                         ["complete"].includes(fullSuiteStage) ? "text-green-600" : "text-gray-400"
@@ -3212,7 +2964,7 @@ Generated on: ${new Date().toLocaleString()}`;
                         ) : (
                           <Circle className="w-5 h-5" />
                         )}
-                        <span>3. Objections</span>
+                        <span>2. Objections</span>
                       </div>
                     </div>
                   </div>
@@ -3244,7 +2996,7 @@ Generated on: ${new Date().toLocaleString()}`;
                   ) : (
                     <>
                       <Zap className="w-5 h-5 mr-2" />
-                      Run Full Suite (Reconstruction + BOTTOMLINE + 25 Objections)
+                      Run Full Suite (Reconstruction + 25 Objections)
                     </>
                   )}
                 </Button>
@@ -3272,12 +3024,6 @@ Generated on: ${new Date().toLocaleString()}`;
                           }),
                           "",
                           "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-                          "                          BOTTOMLINE",
-                          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-                          "",
-                          bottomlineOutput || "(No BOTTOMLINE output)",
-                          "",
-                          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
                           "                    OBJECTIONS & COUNTER-ARGUMENTS",
                           "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
                           "",
@@ -3297,7 +3043,7 @@ Generated on: ${new Date().toLocaleString()}`;
                       data-testid="button-copy-all-fullsuite"
                     >
                       <Copy className="w-4 h-4 mr-2" />
-                      Copy All Results (Batch + BOTTOMLINE + Objections)
+                      Copy All Results (Reconstruction + Objections)
                     </Button>
                   </div>
                 )}
@@ -3631,438 +3377,158 @@ Generated on: ${new Date().toLocaleString()}`;
             </div>
           )}
 
-          {/* BOTTOMLINE Function Panel */}
-          <div className="mt-8 border-t border-gray-200 dark:border-gray-700 pt-8">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <h3 className="text-xl font-bold text-purple-900 dark:text-purple-100 flex items-center gap-2">
-                  <Target className="w-6 h-6 text-purple-600" />
-                  BOTTOMLINE
-                </h3>
-                <Badge variant="outline" className="bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200">
-                  Final Synthesis
-                </Badge>
+          {/* Objections Output Display */}
+          {objectionsOutput && (
+            <div className="mt-6 bg-white dark:bg-gray-800 p-6 rounded-lg border-2 border-orange-300 dark:border-orange-700">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-lg font-semibold text-orange-900 dark:text-orange-100 flex items-center gap-2">
+                  <MessageSquareWarning className="w-5 h-5 text-orange-600" />
+                  Objections & Counter-Arguments
+                  <Badge variant="outline" className="ml-2 bg-orange-100 dark:bg-orange-900/30">
+                    25 Items
+                  </Badge>
+                </h4>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDownloadText(objectionsOutput, 'objections-responses.txt')}
+                    data-testid="button-download-objections"
+                  >
+                    <Download className="w-4 h-4" />
+                  </Button>
+                  <CopyButton text={objectionsOutput} />
+                </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowBottomlinePanel(!showBottomlinePanel)}
-                data-testid="button-toggle-bottomline-panel"
-              >
-                {showBottomlinePanel ? (
-                  <>
-                    <ChevronUp className="w-4 h-4 mr-1" />
-                    Collapse
-                  </>
+              <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[700px] overflow-y-auto">
+                <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
+                  {objectionsOutput}
+                </pre>
+              </div>
+            </div>
+          )}
+
+          {/* STANDALONE OBJECTIONS FUNCTION - Always visible */}
+          <div className="mt-8 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30 p-6 rounded-lg border border-orange-200 dark:border-orange-800">
+            <div 
+              className="flex items-center justify-between cursor-pointer"
+              onClick={() => setShowObjectionsPanel(!showObjectionsPanel)}
+            >
+              <h3 className="text-xl font-semibold text-orange-900 dark:text-orange-100 flex items-center gap-2">
+                <MessageSquareWarning className="w-6 h-6 text-orange-600" />
+                Objections Function (Standalone)
+                <Badge variant="outline" className="ml-2 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">
+                  25 Objections + Responses
+                </Badge>
+              </h3>
+              <Button variant="ghost" size="icon" data-testid="button-toggle-standalone-objections">
+                {showObjectionsPanel ? (
+                  <ChevronUp className="w-5 h-5" />
                 ) : (
-                  <>
-                    <ChevronDown className="w-4 h-4 mr-1" />
-                    Expand
-                  </>
+                  <ChevronDown className="w-5 h-5" />
                 )}
               </Button>
             </div>
-            
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Transform your analysis into a polished final product tailored to your specific audience and objectives.
-              {(validatorOutput || validatorBatchResults.length > 0) && (
-                <span className="text-purple-600 dark:text-purple-400 ml-1">
-                  ({Object.keys(validatorBatchResults.length > 0 ? validatorBatchResults.filter(r => r.success) : (validatorOutput ? [1] : [])).length} analysis results available)
-                </span>
-              )}
+            <p className="text-sm text-orange-700 dark:text-orange-300 mt-2 mb-4">
+              Generate 25 likely objections and compelling counter-arguments for any text.
             </p>
 
-            {showBottomlinePanel && (
-              <div className="space-y-4 bg-purple-50 dark:bg-purple-950/20 p-6 rounded-lg border border-purple-200 dark:border-purple-800">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Who is your audience?
-                    </label>
-                    <Input
-                      placeholder="e.g., My boss at the private equity firm, academic committee, client..."
-                      value={bottomlineAudience}
-                      onChange={(e) => setBottomlineAudience(e.target.value)}
-                      data-testid="input-bottomline-audience"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      What is your objective?
-                    </label>
-                    <Input
-                      placeholder="e.g., Convince them to approve the investment, explain the methodology..."
-                      value={bottomlineObjective}
-                      onChange={(e) => setBottomlineObjective(e.target.value)}
-                      data-testid="input-bottomline-objective"
-                    />
-                  </div>
-                </div>
-
+            {showObjectionsPanel && (
+              <div className="space-y-4">
+                {/* Input Text */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    What idea are you trying to convey?
-                  </label>
+                  <Label className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                    Text to Analyze
+                  </Label>
                   <Textarea
-                    placeholder="The core message or argument you want your audience to understand..."
-                    value={bottomlineIdea}
-                    onChange={(e) => setBottomlineIdea(e.target.value)}
-                    className="min-h-[80px]"
-                    data-testid="input-bottomline-idea"
+                    value={objectionsInputText}
+                    onChange={(e) => setObjectionsInputText(e.target.value)}
+                    placeholder="Paste your text here - this can be any argument, proposal, pitch, essay, or content you want to anticipate objections for..."
+                    className="min-h-[150px] mt-2"
+                    data-testid="textarea-objections-input"
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Audience & Objective */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Desired Length
-                    </label>
-                    <Select value={bottomlineLength} onValueChange={(v: "brief" | "medium" | "detailed") => setBottomlineLength(v)}>
-                      <SelectTrigger data-testid="select-bottomline-length">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="brief">Brief (1-2 paragraphs)</SelectItem>
-                        <SelectItem value="medium">Medium (3-5 paragraphs)</SelectItem>
-                        <SelectItem value="detailed">Detailed (full document)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Tone
-                    </label>
-                    <Select value={bottomlineTone} onValueChange={(v: "formal" | "professional" | "conversational" | "persuasive") => setBottomlineTone(v)}>
-                      <SelectTrigger data-testid="select-bottomline-tone">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="formal">Formal (academic/legal)</SelectItem>
-                        <SelectItem value="professional">Professional (business)</SelectItem>
-                        <SelectItem value="conversational">Conversational</SelectItem>
-                        <SelectItem value="persuasive">Persuasive (pitch)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      What to emphasize?
-                    </label>
+                    <Label className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                      Target Audience (optional)
+                    </Label>
                     <Input
-                      placeholder="e.g., ROI, data, emotional appeal..."
-                      value={bottomlineEmphasis}
-                      onChange={(e) => setBottomlineEmphasis(e.target.value)}
-                      data-testid="input-bottomline-emphasis"
+                      value={objectionsAudience}
+                      onChange={(e) => setObjectionsAudience(e.target.value)}
+                      placeholder="e.g., 'Investors', 'Academic reviewers', 'Skeptical customers'"
+                      className="mt-1"
+                      data-testid="input-objections-audience"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                      Objective (optional)
+                    </Label>
+                    <Input
+                      value={objectionsObjective}
+                      onChange={(e) => setObjectionsObjective(e.target.value)}
+                      placeholder="e.g., 'Convince them to invest', 'Get paper accepted'"
+                      className="mt-1"
+                      data-testid="input-objections-objective"
                     />
                   </div>
                 </div>
 
-                <div className="flex gap-3 pt-4">
+                {/* Custom Instructions */}
+                <div>
+                  <Label className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                    Custom Instructions (optional)
+                  </Label>
+                  <Textarea
+                    value={objectionsCustomInstructions}
+                    onChange={(e) => setObjectionsCustomInstructions(e.target.value)}
+                    placeholder="e.g., 'Focus on financial objections' or 'Include legal/regulatory concerns' or 'Consider skeptics who distrust AI'"
+                    className="min-h-[80px] mt-1"
+                    data-testid="textarea-objections-custom-instructions"
+                  />
+                </div>
+
+                {/* Generate Button */}
+                <div className="flex gap-2">
                   <Button
-                    onClick={handleBottomline}
-                    disabled={bottomlineLoading || !validatorInputText.trim()}
-                    className="bg-purple-600 hover:bg-purple-700 text-white"
-                    data-testid="button-run-bottomline"
+                    onClick={() => handleObjections()}
+                    disabled={objectionsLoading || !objectionsInputText.trim()}
+                    className="bg-orange-600 hover:bg-orange-700 text-white"
+                    data-testid="button-generate-objections-standalone"
                   >
-                    {bottomlineLoading ? (
+                    {objectionsLoading ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Synthesizing...
+                        Generating Objections...
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Generate Final Output
+                        <MessageSquareWarning className="w-4 h-4 mr-2" />
+                        Generate 25 Objections
                       </>
                     )}
                   </Button>
-                  {bottomlineOutput && (
+                  {objectionsInputText && (
                     <Button
                       variant="outline"
-                      onClick={() => setBottomlineOutput("")}
-                      data-testid="button-clear-bottomline"
+                      onClick={() => {
+                        setObjectionsInputText("");
+                        setObjectionsAudience("");
+                        setObjectionsObjective("");
+                        setObjectionsCustomInstructions("");
+                      }}
+                      data-testid="button-clear-objections-form"
                     >
                       <Trash2 className="w-4 h-4 mr-2" />
-                      Clear Output
+                      Clear Form
                     </Button>
                   )}
                 </div>
               </div>
             )}
-
-            {/* BOTTOMLINE Output Display */}
-            {bottomlineOutput && (
-              <div className="mt-6 bg-white dark:bg-gray-800 p-6 rounded-lg border-2 border-purple-300 dark:border-purple-700">
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="text-lg font-semibold text-purple-900 dark:text-purple-100 flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-purple-600" />
-                    Final Product
-                    {bottomlineAudience && (
-                      <Badge variant="outline" className="ml-2 bg-purple-100 dark:bg-purple-900/30">
-                        For: {bottomlineAudience}
-                      </Badge>
-                    )}
-                  </h4>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDownloadText(bottomlineOutput, 'bottomline-output.txt')}
-                      data-testid="button-download-bottomline"
-                    >
-                      <Download className="w-4 h-4" />
-                    </Button>
-                    <CopyButton text={bottomlineOutput} />
-                  </div>
-                </div>
-                <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[600px] overflow-y-auto">
-                  <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
-                    {bottomlineOutput}
-                  </pre>
-                </div>
-
-                {/* Objections Panel - appears after BOTTOMLINE output */}
-                <div className="mt-6 border-t border-purple-200 dark:border-purple-800 pt-6">
-                  <div 
-                    className="flex items-center justify-between cursor-pointer"
-                    onClick={() => setShowObjectionsPanel(!showObjectionsPanel)}
-                  >
-                    <h4 className="text-lg font-semibold text-orange-900 dark:text-orange-100 flex items-center gap-2">
-                      <MessageSquareWarning className="w-5 h-5 text-orange-600" />
-                      Generate Objections & Responses
-                    </h4>
-                    <Button variant="ghost" size="icon" data-testid="button-toggle-objections-panel">
-                      {showObjectionsPanel ? (
-                        <ChevronUp className="w-5 h-5" />
-                      ) : (
-                        <ChevronDown className="w-5 h-5" />
-                      )}
-                    </Button>
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                    Generate 25 likely objections to your output and craft compelling responses
-                  </p>
-
-                  {showObjectionsPanel && (
-                    <div className="mt-4 space-y-4">
-                      <div className="bg-orange-50 dark:bg-orange-950/30 p-4 rounded-lg border border-orange-200 dark:border-orange-800">
-                        <p className="text-sm text-orange-800 dark:text-orange-200 mb-3">
-                          This will use your BOTTOMLINE settings (audience, objective, tone, emphasis) to generate targeted objections. 
-                          Optionally add custom instructions below.
-                        </p>
-                        <Textarea
-                          value={objectionsCustomInstructions}
-                          onChange={(e) => setObjectionsCustomInstructions(e.target.value)}
-                          placeholder="Optional: Add specific instructions (e.g., 'Focus on financial objections' or 'Include legal concerns' or 'Consider skeptics who distrust statistics')"
-                          className="min-h-[80px] text-sm"
-                          data-testid="textarea-objections-instructions"
-                        />
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                          Leave blank to use default settings based on your audience and objective
-                        </p>
-                      </div>
-
-                      <div className="flex gap-2">
-                        <Button
-                          onClick={() => handleObjections(true)}
-                          disabled={objectionsLoading}
-                          className="bg-orange-600 hover:bg-orange-700 text-white"
-                          data-testid="button-generate-objections-from-bottomline"
-                        >
-                          {objectionsLoading ? (
-                            <>
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              Generating Objections...
-                            </>
-                          ) : (
-                            <>
-                              <MessageSquareWarning className="w-4 h-4 mr-2" />
-                              Generate 25 Objections
-                            </>
-                          )}
-                        </Button>
-                        {objectionsOutput && (
-                          <Button
-                            variant="outline"
-                            onClick={() => setObjectionsOutput("")}
-                            data-testid="button-clear-objections"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Clear
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Objections Output Display */}
-            {objectionsOutput && (
-              <div className="mt-6 bg-white dark:bg-gray-800 p-6 rounded-lg border-2 border-orange-300 dark:border-orange-700">
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="text-lg font-semibold text-orange-900 dark:text-orange-100 flex items-center gap-2">
-                    <MessageSquareWarning className="w-5 h-5 text-orange-600" />
-                    Objections & Counter-Arguments
-                    <Badge variant="outline" className="ml-2 bg-orange-100 dark:bg-orange-900/30">
-                      25 Items
-                    </Badge>
-                  </h4>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDownloadText(objectionsOutput, 'objections-responses.txt')}
-                      data-testid="button-download-objections"
-                    >
-                      <Download className="w-4 h-4" />
-                    </Button>
-                    <CopyButton text={objectionsOutput} />
-                  </div>
-                </div>
-                <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[700px] overflow-y-auto">
-                  <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
-                    {objectionsOutput}
-                  </pre>
-                </div>
-              </div>
-            )}
-
-            {/* STANDALONE OBJECTIONS FUNCTION - Always visible */}
-            <div className="mt-8 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30 p-6 rounded-lg border border-orange-200 dark:border-orange-800">
-              <div 
-                className="flex items-center justify-between cursor-pointer"
-                onClick={() => setShowObjectionsPanel(!showObjectionsPanel)}
-              >
-                <h3 className="text-xl font-semibold text-orange-900 dark:text-orange-100 flex items-center gap-2">
-                  <MessageSquareWarning className="w-6 h-6 text-orange-600" />
-                  Objections Function (Standalone)
-                  <Badge variant="outline" className="ml-2 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">
-                    25 Objections + Responses
-                  </Badge>
-                </h3>
-                <Button variant="ghost" size="icon" data-testid="button-toggle-standalone-objections">
-                  {showObjectionsPanel ? (
-                    <ChevronUp className="w-5 h-5" />
-                  ) : (
-                    <ChevronDown className="w-5 h-5" />
-                  )}
-                </Button>
-              </div>
-              <p className="text-sm text-orange-700 dark:text-orange-300 mt-2 mb-4">
-                Generate 25 likely objections and compelling counter-arguments for any text. Works independently or with BOTTOMLINE output.
-              </p>
-
-              {showObjectionsPanel && (
-                <div className="space-y-4">
-                  {/* Input Text */}
-                  <div>
-                    <Label className="text-sm font-medium text-orange-800 dark:text-orange-200">
-                      Text to Analyze
-                    </Label>
-                    <Textarea
-                      value={objectionsInputText}
-                      onChange={(e) => setObjectionsInputText(e.target.value)}
-                      placeholder="Paste your text here - this can be any argument, proposal, pitch, essay, or content you want to anticipate objections for..."
-                      className="min-h-[150px] mt-2"
-                      data-testid="textarea-objections-input"
-                    />
-                    {bottomlineOutput && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-2"
-                        onClick={() => setObjectionsInputText(bottomlineOutput)}
-                        data-testid="button-use-bottomline-for-objections"
-                      >
-                        <FileText className="w-4 h-4 mr-2" />
-                        Use BOTTOMLINE Output
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* Audience & Objective */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-sm font-medium text-orange-800 dark:text-orange-200">
-                        Target Audience (optional)
-                      </Label>
-                      <Input
-                        value={objectionsAudience}
-                        onChange={(e) => setObjectionsAudience(e.target.value)}
-                        placeholder="e.g., 'Investors', 'Academic reviewers', 'Skeptical customers'"
-                        className="mt-1"
-                        data-testid="input-objections-audience"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium text-orange-800 dark:text-orange-200">
-                        Objective (optional)
-                      </Label>
-                      <Input
-                        value={objectionsObjective}
-                        onChange={(e) => setObjectionsObjective(e.target.value)}
-                        placeholder="e.g., 'Convince them to invest', 'Get paper accepted'"
-                        className="mt-1"
-                        data-testid="input-objections-objective"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Custom Instructions */}
-                  <div>
-                    <Label className="text-sm font-medium text-orange-800 dark:text-orange-200">
-                      Custom Instructions (optional)
-                    </Label>
-                    <Textarea
-                      value={objectionsCustomInstructions}
-                      onChange={(e) => setObjectionsCustomInstructions(e.target.value)}
-                      placeholder="e.g., 'Focus on financial objections' or 'Include legal/regulatory concerns' or 'Consider skeptics who distrust AI'"
-                      className="min-h-[80px] mt-1"
-                      data-testid="textarea-objections-custom-instructions"
-                    />
-                  </div>
-
-                  {/* Generate Button */}
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={() => handleObjections(false)}
-                      disabled={objectionsLoading || !objectionsInputText.trim()}
-                      className="bg-orange-600 hover:bg-orange-700 text-white"
-                      data-testid="button-generate-objections-standalone"
-                    >
-                      {objectionsLoading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Generating Objections...
-                        </>
-                      ) : (
-                        <>
-                          <MessageSquareWarning className="w-4 h-4 mr-2" />
-                          Generate 25 Objections
-                        </>
-                      )}
-                    </Button>
-                    {objectionsInputText && (
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setObjectionsInputText("");
-                          setObjectionsAudience("");
-                          setObjectionsObjective("");
-                          setObjectionsCustomInstructions("");
-                        }}
-                        data-testid="button-clear-objections-form"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Clear Form
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
 
           {/* Redo Modal with Custom Instructions */}
@@ -4191,7 +3657,7 @@ Generated on: ${new Date().toLocaleString()}`;
           {showObjectionProofPanel && (
             <div className="space-y-6">
               {/* Check if prerequisites are met */}
-              {!objectionsInputText && !bottomlineOutput && (
+              {!objectionsInputText && (
                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg p-4">
                   <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
                     <AlertCircle className="w-5 h-5" />
@@ -4216,7 +3682,7 @@ Generated on: ${new Date().toLocaleString()}`;
               )}
 
               {/* Show source info when we have prerequisites */}
-              {(objectionsInputText || bottomlineOutput) && objectionsOutput && (
+              {objectionsInputText && objectionsOutput && (
                 <>
                   <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-rose-200 dark:border-rose-700">
                     <h4 className="font-medium text-rose-900 dark:text-rose-100 mb-2 flex items-center gap-2">
@@ -4225,12 +3691,12 @@ Generated on: ${new Date().toLocaleString()}`;
                     </h4>
                     <div className="bg-gray-50 dark:bg-gray-900 p-3 rounded border border-gray-200 dark:border-gray-700 max-h-[200px] overflow-y-auto">
                       <pre className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
-                        {(objectionsInputText || bottomlineOutput).substring(0, 500)}
-                        {(objectionsInputText || bottomlineOutput).length > 500 && '...'}
+                        {objectionsInputText.substring(0, 500)}
+                        {objectionsInputText.length > 500 && '...'}
                       </pre>
                     </div>
                     <p className="text-xs text-gray-500 mt-2">
-                      {(objectionsInputText || bottomlineOutput).split(/\s+/).length} words total
+                      {objectionsInputText.split(/\s+/).length} words total
                     </p>
                   </div>
 
@@ -4273,7 +3739,7 @@ Generated on: ${new Date().toLocaleString()}`;
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
-                            originalText: objectionsInputText || bottomlineOutput,
+                            originalText: objectionsInputText,
                             objectionsOutput: objectionsOutput,
                             customInstructions: objectionProofCustomInstructions,
                           }),
