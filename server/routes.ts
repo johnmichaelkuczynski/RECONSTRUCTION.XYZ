@@ -3162,7 +3162,7 @@ Remember: NO markdown formatting. Use plain text with CAPS headers only.`;
       } else {
         return res.status(400).json({
           success: false,
-          message: "Invalid mode. Must be one of: reconstruction, isomorphism, mathmodel, autodecide, truth-isomorphism, math-truth-select, axiomatic-transform"
+          message: "Invalid mode. Must be: reconstruction"
         });
       }
 

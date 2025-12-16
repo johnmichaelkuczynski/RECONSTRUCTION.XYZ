@@ -144,7 +144,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   
   // Text Model Validator State
   const [validatorInputText, setValidatorInputText] = useState("");
-  const [validatorMode, setValidatorMode] = useState<"reconstruction" | "isomorphism" | "mathmodel" | "autodecide" | "truth-isomorphism" | "math-truth-select" | "axiomatic-transform" | null>(null);
+  const [validatorMode, setValidatorMode] = useState<"reconstruction" | null>(null);
   const [validatorOutput, setValidatorOutput] = useState<string>("");
   const [validatorLoading, setValidatorLoading] = useState(false);
   // Multi-mode batch processing
@@ -539,7 +539,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   };
 
   // Text Model Validator Handler
-  const handleValidatorProcess = async (mode: "reconstruction" | "isomorphism" | "mathmodel" | "autodecide" | "truth-isomorphism" | "math-truth-select" | "axiomatic-transform") => {
+  const handleValidatorProcess = async (mode: "reconstruction") => {
     if (!validatorInputText.trim()) {
       toast({
         title: "No Input Text",
@@ -864,7 +864,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setBottomlineOutput("");
     setObjectionsOutput("");
 
-    const allModes = ["reconstruction", "isomorphism", "mathmodel", "truth-isomorphism", "math-truth-select"];
+    const allModes = ["reconstruction"];
 
     try {
       // ============ STAGE 1: BATCH PROCESSING ============
@@ -3238,7 +3238,7 @@ Generated on: ${new Date().toLocaleString()}`;
                   ) : (
                     <>
                       <Zap className="w-5 h-5 mr-2" />
-                      Run Full Suite (5 Analyses + BOTTOMLINE + 25 Objections)
+                      Run Full Suite (Reconstruction + BOTTOMLINE + 25 Objections)
                     </>
                   )}
                 </Button>
@@ -3261,11 +3261,7 @@ Generated on: ${new Date().toLocaleString()}`;
                           "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
                           "",
                           ...validatorBatchResults.filter(r => r.success).map(r => {
-                            const modeName = r.mode === "reconstruction" ? "CONSERVATIVE RECONSTRUCTION" :
-                              r.mode === "isomorphism" ? "ISOMORPHISM ANALYSIS" :
-                              r.mode === "mathmodel" ? "MATHEMATICAL MODEL" :
-                              r.mode === "truth-isomorphism" ? "TRUTH SELECT" :
-                              r.mode === "math-truth-select" ? "MATH TRUTH SELECT" : r.mode.toUpperCase();
+                            const modeName = "RECONSTRUCTION";
                             return `▸ ${modeName}\n${"─".repeat(50)}\n${r.output}\n`;
                           }),
                           "",
@@ -3303,339 +3299,26 @@ Generated on: ${new Date().toLocaleString()}`;
             )}
           </div>
 
-          {/* Multi-Mode Toggle */}
-          <div className="flex items-center justify-between mb-4 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg">
-            <div className="flex items-center gap-3">
-              <Switch
-                checked={validatorMultiMode}
-                onCheckedChange={(checked) => {
-                  setValidatorMultiMode(checked);
-                  if (!checked) {
-                    setValidatorSelectedModes([]);
-                    setValidatorBatchResults([]);
-                  }
-                }}
-                data-testid="switch-multi-mode"
-              />
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Run Multiple Functions
-              </label>
-            </div>
-            {validatorMultiMode && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="outline" className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200">
-                  {validatorSelectedModes.length} selected
-                </Badge>
-                <Badge variant="outline" className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 text-xs">
-                  Aggressive + Maximal Truth
-                </Badge>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setValidatorSelectedModes(["reconstruction", "isomorphism", "mathmodel", "truth-isomorphism", "math-truth-select"])}
-                  disabled={validatorBatchLoading}
-                  data-testid="button-select-all-modes"
-                >
-                  Select All
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setValidatorSelectedModes([])}
-                  disabled={validatorBatchLoading}
-                  data-testid="button-clear-selection"
-                >
-                  Clear
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Six Main Buttons */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-            <div className="relative">
-              {validatorMultiMode && (
-                <div 
-                  className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center cursor-pointer ${
-                    validatorSelectedModes.includes("reconstruction")
-                      ? "bg-emerald-600 border-emerald-600 text-white"
-                      : "bg-white dark:bg-gray-700 border-gray-400"
-                  }`}
-                  onClick={() => toggleValidatorModeSelection("reconstruction")}
-                >
-                  {validatorSelectedModes.includes("reconstruction") && <CheckCircle className="w-4 h-4" />}
-                </div>
-              )}
-              <Button
-                onClick={() => {
-                  if (validatorMultiMode) {
-                    toggleValidatorModeSelection("reconstruction");
-                  } else {
-                    setShowValidatorCustomization(prev => validatorMode === "reconstruction" ? !prev : true);
-                    setValidatorMode("reconstruction");
-                  }
-                }}
-                className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
-                  validatorMultiMode
-                    ? validatorSelectedModes.includes("reconstruction")
-                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                      : "bg-white dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-2 border-emerald-300"
-                    : validatorMode === "reconstruction" 
-                      ? "bg-emerald-600 hover:bg-emerald-700 text-white" 
-                      : "bg-white dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-2 border-emerald-300"
-                }`}
-                disabled={validatorLoading || validatorBatchLoading}
-                data-testid="button-reconstruction"
-              >
-                <RefreshCw className="w-6 h-6 mb-2" />
-                <span className="font-bold text-lg">RECONSTRUCTION</span>
-                <span className="text-xs mt-1 text-center opacity-80">Clean up logic</span>
-              </Button>
-            </div>
-
-            <div className="relative">
-              {validatorMultiMode && (
-                <div 
-                  className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center cursor-pointer ${
-                    validatorSelectedModes.includes("isomorphism")
-                      ? "bg-teal-600 border-teal-600 text-white"
-                      : "bg-white dark:bg-gray-700 border-gray-400"
-                  }`}
-                  onClick={() => toggleValidatorModeSelection("isomorphism")}
-                >
-                  {validatorSelectedModes.includes("isomorphism") && <CheckCircle className="w-4 h-4" />}
-                </div>
-              )}
-              <Button
-                onClick={() => {
-                  if (validatorMultiMode) {
-                    toggleValidatorModeSelection("isomorphism");
-                  } else {
-                    setShowValidatorCustomization(prev => validatorMode === "isomorphism" ? !prev : true);
-                    setValidatorMode("isomorphism");
-                  }
-                }}
-                className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
-                  validatorMultiMode
-                    ? validatorSelectedModes.includes("isomorphism")
-                      ? "bg-teal-600 hover:bg-teal-700 text-white"
-                      : "bg-white dark:bg-gray-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 text-teal-700 dark:text-teal-300 border-2 border-teal-300"
-                    : validatorMode === "isomorphism" 
-                      ? "bg-teal-600 hover:bg-teal-700 text-white" 
-                      : "bg-white dark:bg-gray-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 text-teal-700 dark:text-teal-300 border-2 border-teal-300"
-                }`}
-                disabled={validatorLoading || validatorBatchLoading}
-                data-testid="button-isomorphism"
-              >
-                <FileEdit className="w-6 h-6 mb-2" />
-                <span className="font-bold text-lg">ISOMORPHISM</span>
-                <span className="text-xs mt-1 text-center opacity-80">Swap domains</span>
-              </Button>
-            </div>
-
-            <div className="relative">
-              {validatorMultiMode && (
-                <div 
-                  className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center cursor-pointer ${
-                    validatorSelectedModes.includes("mathmodel")
-                      ? "bg-blue-600 border-blue-600 text-white"
-                      : "bg-white dark:bg-gray-700 border-gray-400"
-                  }`}
-                  onClick={() => toggleValidatorModeSelection("mathmodel")}
-                >
-                  {validatorSelectedModes.includes("mathmodel") && <CheckCircle className="w-4 h-4" />}
-                </div>
-              )}
-              <Button
-                onClick={() => {
-                  if (validatorMultiMode) {
-                    toggleValidatorModeSelection("mathmodel");
-                  } else {
-                    setShowValidatorCustomization(prev => validatorMode === "mathmodel" ? !prev : true);
-                    setValidatorMode("mathmodel");
-                  }
-                }}
-                className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
-                  validatorMultiMode
-                    ? validatorSelectedModes.includes("mathmodel")
-                      ? "bg-blue-600 hover:bg-blue-700 text-white"
-                      : "bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-2 border-blue-300"
-                    : validatorMode === "mathmodel" 
-                      ? "bg-blue-600 hover:bg-blue-700 text-white" 
-                      : "bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-2 border-blue-300"
-                }`}
-                disabled={validatorLoading || validatorBatchLoading}
-                data-testid="button-mathmodel"
-              >
-                <Zap className="w-6 h-6 mb-2" />
-                <span className="font-bold text-lg">MATH MODEL</span>
-                <span className="text-xs mt-1 text-center opacity-80">Formalize it</span>
-              </Button>
-            </div>
-
-            <div className="relative">
-              {validatorMultiMode && (
-                <div 
-                  className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center cursor-pointer ${
-                    validatorSelectedModes.includes("truth-isomorphism")
-                      ? "bg-orange-600 border-orange-600 text-white"
-                      : "bg-white dark:bg-gray-700 border-gray-400"
-                  }`}
-                  onClick={() => toggleValidatorModeSelection("truth-isomorphism")}
-                >
-                  {validatorSelectedModes.includes("truth-isomorphism") && <CheckCircle className="w-4 h-4" />}
-                </div>
-              )}
-              <Button
-                onClick={() => {
-                  if (validatorMultiMode) {
-                    toggleValidatorModeSelection("truth-isomorphism");
-                  } else {
-                    setShowValidatorCustomization(prev => validatorMode === "truth-isomorphism" ? !prev : true);
-                    setValidatorMode("truth-isomorphism");
-                  }
-                }}
-                className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
-                  validatorMultiMode
-                    ? validatorSelectedModes.includes("truth-isomorphism")
-                      ? "bg-orange-600 hover:bg-orange-700 text-white"
-                      : "bg-white dark:bg-gray-800 hover:bg-orange-50 dark:hover:bg-orange-900/20 text-orange-700 dark:text-orange-300 border-2 border-orange-300"
-                    : validatorMode === "truth-isomorphism" 
-                      ? "bg-orange-600 hover:bg-orange-700 text-white" 
-                      : "bg-white dark:bg-gray-800 hover:bg-orange-50 dark:hover:bg-orange-900/20 text-orange-700 dark:text-orange-300 border-2 border-orange-300"
-                }`}
-                disabled={validatorLoading || validatorBatchLoading}
-                data-testid="button-truth-isomorphism"
-              >
-                <Shield className="w-6 h-6 mb-2" />
-                <span className="font-bold text-lg">TRUTH SELECT</span>
-                <span className="text-xs mt-1 text-center opacity-80">Choose truth mapping</span>
-              </Button>
-            </div>
-
-            <div className="relative">
-              {validatorMultiMode && (
-                <div 
-                  className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center cursor-pointer ${
-                    validatorSelectedModes.includes("math-truth-select")
-                      ? "bg-indigo-600 border-indigo-600 text-white"
-                      : "bg-white dark:bg-gray-700 border-gray-400"
-                  }`}
-                  onClick={() => toggleValidatorModeSelection("math-truth-select")}
-                >
-                  {validatorSelectedModes.includes("math-truth-select") && <CheckCircle className="w-4 h-4" />}
-                </div>
-              )}
-              <Button
-                onClick={() => {
-                  if (validatorMultiMode) {
-                    toggleValidatorModeSelection("math-truth-select");
-                  } else {
-                    setShowValidatorCustomization(prev => validatorMode === "math-truth-select" ? !prev : true);
-                    setValidatorMode("math-truth-select");
-                  }
-                }}
-                className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
-                  validatorMultiMode
-                    ? validatorSelectedModes.includes("math-truth-select")
-                      ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-                      : "bg-white dark:bg-gray-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border-2 border-indigo-300"
-                    : validatorMode === "math-truth-select" 
-                      ? "bg-indigo-600 hover:bg-indigo-700 text-white" 
-                      : "bg-white dark:bg-gray-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border-2 border-indigo-300"
-                }`}
-                disabled={validatorLoading || validatorBatchLoading}
-                data-testid="button-math-truth-select"
-              >
-                <BarChart3 className="w-6 h-6 mb-2" />
-                <span className="font-bold text-lg">MATH + TRUTH</span>
-                <span className="text-xs mt-1 text-center opacity-80">Formalize with truth control</span>
-              </Button>
-            </div>
-
-            {/* Axiomatic System Transformer */}
-            <div className="relative">
-              {validatorMultiMode && (
-                <div 
-                  className={`absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer ${
-                    validatorSelectedModes.includes("axiomatic-transform") 
-                      ? "bg-purple-600 text-white" 
-                      : "bg-gray-200 dark:bg-gray-700 text-gray-500"
-                  }`}
-                  onClick={() => toggleValidatorModeSelection("axiomatic-transform")}
-                >
-                  {validatorSelectedModes.includes("axiomatic-transform") && <CheckCircle className="w-4 h-4" />}
-                </div>
-              )}
-              <Button
-                onClick={() => {
-                  if (validatorMultiMode) {
-                    toggleValidatorModeSelection("axiomatic-transform");
-                  } else {
-                    setShowValidatorCustomization(prev => validatorMode === "axiomatic-transform" ? !prev : true);
-                    setValidatorMode("axiomatic-transform");
-                  }
-                }}
-                className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
-                  validatorMultiMode
-                    ? validatorSelectedModes.includes("axiomatic-transform")
-                      ? "bg-purple-600 hover:bg-purple-700 text-white"
-                      : "bg-white dark:bg-gray-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-purple-700 dark:text-purple-300 border-2 border-purple-300"
-                    : validatorMode === "axiomatic-transform" 
-                      ? "bg-purple-600 hover:bg-purple-700 text-white" 
-                      : "bg-white dark:bg-gray-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-purple-700 dark:text-purple-300 border-2 border-purple-300"
-                }`}
-                disabled={validatorLoading || validatorBatchLoading}
-                data-testid="button-axiomatic-transform"
-              >
-                <FileCode className="w-6 h-6 mb-2" />
-                <span className="font-bold text-lg">AXIOMATIC</span>
-                <span className="text-xs mt-1 text-center opacity-80">Full formal system</span>
-              </Button>
-            </div>
-
+          {/* Reconstruction Button */}
+          <div className="mb-6">
             <Button
               onClick={() => {
-                setShowValidatorCustomization(false);
-                handleValidatorProcess("autodecide");
+                setShowValidatorCustomization(prev => validatorMode === "reconstruction" ? !prev : true);
+                setValidatorMode("reconstruction");
               }}
-              className={`flex flex-col items-center justify-center p-6 h-auto ${
-                validatorMode === "autodecide" 
-                  ? "bg-purple-600 hover:bg-purple-700 text-white" 
-                  : "bg-white dark:bg-gray-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-purple-700 dark:text-purple-300 border-2 border-purple-300"
-              } ${validatorMultiMode ? "opacity-50 cursor-not-allowed" : ""}`}
-              disabled={validatorLoading || validatorBatchLoading || validatorMultiMode}
-              data-testid="button-autodecide"
+              className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
+                validatorMode === "reconstruction" 
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white" 
+                  : "bg-white dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-2 border-emerald-300"
+              }`}
+              disabled={validatorLoading || validatorBatchLoading}
+              data-testid="button-reconstruction"
             >
-              <Brain className="w-6 h-6 mb-2" />
-              <span className="font-bold text-lg">AUTO-DECIDE</span>
-              <span className="text-xs mt-1 text-center opacity-80">{validatorMultiMode ? "Not available in multi-mode" : "Let AI choose"}</span>
+              <RefreshCw className="w-6 h-6 mb-2" />
+              <span className="font-bold text-lg">RECONSTRUCTION</span>
+              <span className="text-xs mt-1 text-center opacity-80">Clean up logic</span>
             </Button>
           </div>
-
-          {/* Run Selected Button (Multi-Mode) */}
-          {validatorMultiMode && validatorSelectedModes.length > 0 && (
-            <div className="mb-6 text-center">
-              <Button
-                onClick={handleValidatorBatchProcess}
-                disabled={validatorBatchLoading}
-                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-8 py-3 text-lg"
-                data-testid="button-run-selected-modes"
-              >
-                {validatorBatchLoading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Processing {validatorSelectedModes.length} Functions...
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-5 h-5 mr-2" />
-                    Run {validatorSelectedModes.length} Selected Functions
-                  </>
-                )}
-              </Button>
-            </div>
-          )}
 
           {/* Clear All Button */}
           <div className="mt-4 text-center">
@@ -3659,12 +3342,12 @@ Generated on: ${new Date().toLocaleString()}`;
             <Textarea
               value={validatorCustomInstructions}
               onChange={(e) => setValidatorCustomInstructions(e.target.value)}
-              placeholder="e.g., 'Identify an isomorphism from biochemistry' or 'Reconstruct as a control theory model' or 'Use game theory framework'"
+              placeholder="e.g., 'Focus on the logical structure' or 'Reconstruct as a control theory model' or 'Emphasize clarity over fidelity'"
               className="min-h-[100px] text-sm"
               data-testid="textarea-validator-custom-instructions"
             />
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              Provide specific guidance about the nature of the reconstruction, isomorphism, formalization, etc.
+              Provide specific guidance about the nature of the reconstruction.
             </p>
           </div>
 
@@ -3691,221 +3374,38 @@ Generated on: ${new Date().toLocaleString()}`;
           </div>
 
           {/* Customization Panel */}
-          {showValidatorCustomization && validatorMode && validatorMode !== "autodecide" && (
+          {showValidatorCustomization && validatorMode && (
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border-2 border-gray-200 dark:border-gray-700 mb-6">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <FileEdit className="w-5 h-5" />
-                Customization Options - {validatorMode.toUpperCase()}
+                Customization Options - RECONSTRUCTION
               </h3>
 
-              {validatorMode === "reconstruction" && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Target Domain</label>
-                    <input
-                      type="text"
-                      value={validatorTargetDomain}
-                      onChange={(e) => setValidatorTargetDomain(e.target.value)}
-                      placeholder="e.g., cognitive science, information theory, computational model"
-                      className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
-                      data-testid="input-target-domain"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Fidelity Level</label>
-                    <Select value={validatorFidelityLevel} onValueChange={(value: "conservative" | "aggressive") => setValidatorFidelityLevel(value)}>
-                      <SelectTrigger data-testid="select-fidelity-level">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="conservative">Conservative (Stay close to original)</SelectItem>
-                        <SelectItem value="aggressive">Aggressive (Maximize clarity)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Target Domain</label>
+                  <input
+                    type="text"
+                    value={validatorTargetDomain}
+                    onChange={(e) => setValidatorTargetDomain(e.target.value)}
+                    placeholder="e.g., cognitive science, information theory, computational model"
+                    className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+                    data-testid="input-target-domain"
+                  />
                 </div>
-              )}
-
-              {validatorMode === "isomorphism" && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Target Domain</label>
-                    <input
-                      type="text"
-                      value={validatorTargetDomain}
-                      onChange={(e) => setValidatorTargetDomain(e.target.value)}
-                      placeholder="e.g., economics, evolutionary psychology, thermodynamics"
-                      className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
-                      data-testid="input-target-domain"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Constraint Type</label>
-                    <Select value={validatorConstraintType} onValueChange={(value: "pure-swap" | "true-statements" | "historical") => setValidatorConstraintType(value)}>
-                      <SelectTrigger data-testid="select-constraint-type">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pure-swap">Pure Swap (Just replace terms)</SelectItem>
-                        <SelectItem value="true-statements">True Statements (Find verified true claims)</SelectItem>
-                        <SelectItem value="historical">Historical (Find historical theory)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Fidelity Level</label>
+                  <Select value={validatorFidelityLevel} onValueChange={(value: "conservative" | "aggressive") => setValidatorFidelityLevel(value)}>
+                    <SelectTrigger data-testid="select-fidelity-level">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="conservative">Conservative (Stay close to original)</SelectItem>
+                      <SelectItem value="aggressive">Aggressive (Maximize clarity)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
-
-              {validatorMode === "mathmodel" && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Mathematical Framework</label>
-                    <Select value={validatorMathFramework} onValueChange={setValidatorMathFramework}>
-                      <SelectTrigger data-testid="select-math-framework">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="variational-inference">Variational Inference</SelectItem>
-                        <SelectItem value="game-theory">Game Theory</SelectItem>
-                        <SelectItem value="category-theory">Category Theory</SelectItem>
-                        <SelectItem value="dynamical-systems">Dynamical Systems</SelectItem>
-                        <SelectItem value="graph-theory">Graph Theory</SelectItem>
-                        <SelectItem value="optimization">Optimization Problems</SelectItem>
-                        <SelectItem value="probability">Probability Theory</SelectItem>
-                        <SelectItem value="differential-equations">Differential Equations</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Rigor Level</label>
-                    <Select value={validatorRigorLevel} onValueChange={(value: "sketch" | "semi-formal" | "proof-ready") => setValidatorRigorLevel(value)}>
-                      <SelectTrigger data-testid="select-rigor-level">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="sketch">Sketch (Intuitive formalization)</SelectItem>
-                        <SelectItem value="semi-formal">Semi-formal (Notation with explanations)</SelectItem>
-                        <SelectItem value="proof-ready">Proof-ready (Complete formal spec)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-
-              {validatorMode === "truth-isomorphism" && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Target Domain</label>
-                    <input
-                      type="text"
-                      value={validatorTargetDomain}
-                      onChange={(e) => setValidatorTargetDomain(e.target.value)}
-                      placeholder="e.g., physics, sociology, computer science"
-                      className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
-                      data-testid="input-target-domain-truth"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Truth-Value Mapping</label>
-                    <Select value={validatorTruthMapping} onValueChange={(value: "false-to-true" | "true-to-true" | "true-to-false") => setValidatorTruthMapping(value)}>
-                      <SelectTrigger data-testid="select-truth-mapping">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="false-to-true">FALSE → TRUE (Map false statements to true ones)</SelectItem>
-                        <SelectItem value="true-to-true">TRUE → TRUE (Preserve truth while swapping domains)</SelectItem>
-                        <SelectItem value="true-to-false">TRUE → FALSE (Map true statements to false ones)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                      Choose how to handle truth values when mapping to the target domain
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between p-3 border rounded dark:border-gray-600 bg-blue-50 dark:bg-blue-900/20">
-                    <div>
-                      <label htmlFor="literal-truth-toggle" className="text-sm font-medium cursor-pointer">
-                        Literal Truth Mode
-                      </label>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Ensure statements are LITERALLY true (not approximately or qualifiedly true)
-                      </p>
-                    </div>
-                    <Switch
-                      id="literal-truth-toggle"
-                      checked={validatorLiteralTruth}
-                      onCheckedChange={setValidatorLiteralTruth}
-                      data-testid="switch-literal-truth"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {validatorMode === "math-truth-select" && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Mathematical Framework</label>
-                    <Select value={validatorMathFramework} onValueChange={setValidatorMathFramework}>
-                      <SelectTrigger data-testid="select-math-framework-truth">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="variational-inference">Variational Inference</SelectItem>
-                        <SelectItem value="game-theory">Game Theory</SelectItem>
-                        <SelectItem value="category-theory">Category Theory</SelectItem>
-                        <SelectItem value="dynamical-systems">Dynamical Systems</SelectItem>
-                        <SelectItem value="graph-theory">Graph Theory</SelectItem>
-                        <SelectItem value="optimization">Optimization Problems</SelectItem>
-                        <SelectItem value="probability">Probability Theory</SelectItem>
-                        <SelectItem value="differential-equations">Differential Equations</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Truth-Value Assignment</label>
-                    <Select value={validatorMathTruthMapping} onValueChange={(value: "make-true" | "keep-true" | "make-false") => setValidatorMathTruthMapping(value)}>
-                      <SelectTrigger data-testid="select-math-truth-mapping">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="make-true">MAKE TRUE (Assign values to make formalization true)</SelectItem>
-                        <SelectItem value="keep-true">KEEP TRUE (Assign values preserving truth)</SelectItem>
-                        <SelectItem value="make-false">MAKE FALSE (Assign values to make formalization false)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                      Control truth value through semantic value assignment to mathematical constants
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Rigor Level</label>
-                    <Select value={validatorRigorLevel} onValueChange={(value: "sketch" | "semi-formal" | "proof-ready") => setValidatorRigorLevel(value)}>
-                      <SelectTrigger data-testid="select-rigor-level-truth">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="sketch">Sketch (Intuitive formalization)</SelectItem>
-                        <SelectItem value="semi-formal">Semi-formal (Notation with explanations)</SelectItem>
-                        <SelectItem value="proof-ready">Proof-ready (Complete formal spec)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-center justify-between p-3 border rounded dark:border-gray-600 bg-blue-50 dark:bg-blue-900/20">
-                    <div>
-                      <label htmlFor="literal-truth-toggle-math" className="text-sm font-medium cursor-pointer">
-                        Literal Truth Mode
-                      </label>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Ensure statements are LITERALLY true (not approximately or qualifiedly true)
-                      </p>
-                    </div>
-                    <Switch
-                      id="literal-truth-toggle-math"
-                      checked={validatorLiteralTruth}
-                      onCheckedChange={setValidatorLiteralTruth}
-                      data-testid="switch-literal-truth-math"
-                    />
-                  </div>
-                </div>
-              )}
+              </div>
 
               <div className="flex gap-3 mt-6">
                 <Button
@@ -3993,16 +3493,9 @@ Generated on: ${new Date().toLocaleString()}`;
                 </div>
               </div>
               <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[600px] overflow-y-auto">
-                {validatorMode === "mathmodel" ? (
-                  <MathRenderer 
-                    content={validatorOutput} 
-                    className="text-gray-800 dark:text-gray-200"
-                  />
-                ) : (
-                  <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
-                    {validatorOutput}
-                  </pre>
-                )}
+                <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
+                  {validatorOutput}
+                </pre>
               </div>
             </div>
           )}
@@ -4066,28 +3559,13 @@ Generated on: ${new Date().toLocaleString()}`;
 
               {validatorBatchResults.map((result, index) => {
                 const modeLabels: Record<string, string> = {
-                  'reconstruction': 'Reconstruction',
-                  'isomorphism': 'Isomorphism',
-                  'mathmodel': 'Math Model',
-                  'truth-isomorphism': 'Truth Select',
-                  'math-truth-select': 'Math + Truth',
-                  'axiomatic-transform': 'Axiomatic System'
+                  'reconstruction': 'Reconstruction'
                 };
                 const modeBorderClasses: Record<string, string> = {
-                  'reconstruction': 'border-emerald-300 dark:border-emerald-700',
-                  'isomorphism': 'border-teal-300 dark:border-teal-700',
-                  'mathmodel': 'border-blue-300 dark:border-blue-700',
-                  'truth-isomorphism': 'border-orange-300 dark:border-orange-700',
-                  'math-truth-select': 'border-indigo-300 dark:border-indigo-700',
-                  'axiomatic-transform': 'border-purple-300 dark:border-purple-700'
+                  'reconstruction': 'border-emerald-300 dark:border-emerald-700'
                 };
                 const modeBadgeClasses: Record<string, string> = {
-                  'reconstruction': 'bg-emerald-600',
-                  'isomorphism': 'bg-teal-600',
-                  'mathmodel': 'bg-blue-600',
-                  'truth-isomorphism': 'bg-orange-600',
-                  'math-truth-select': 'bg-indigo-600',
-                  'axiomatic-transform': 'bg-purple-600'
+                  'reconstruction': 'bg-emerald-600'
                 };
 
                 return (
@@ -4130,16 +3608,9 @@ Generated on: ${new Date().toLocaleString()}`;
                     
                     {result.success ? (
                       <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[400px] overflow-y-auto">
-                        {result.mode === "mathmodel" ? (
-                          <MathRenderer 
-                            content={result.output || ''} 
-                            className="text-gray-800 dark:text-gray-200"
-                          />
-                        ) : (
-                          <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
-                            {result.output}
-                          </pre>
-                        )}
+                        <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
+                          {result.output}
+                        </pre>
                       </div>
                     ) : (
                       <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded border border-red-200 dark:border-red-700">
