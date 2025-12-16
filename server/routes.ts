@@ -3942,6 +3942,137 @@ ${output}`;
     }
   });
 
+  // Objection-Proof Rewrite - Rewrite text to be invulnerable to identified objections
+  app.post("/api/objection-proof-rewrite", async (req: Request, res: Response) => {
+    try {
+      const { originalText, objectionsOutput, customInstructions } = req.body;
+
+      if (!originalText) {
+        return res.status(400).json({
+          success: false,
+          message: "Original text is required"
+        });
+      }
+
+      if (!objectionsOutput) {
+        return res.status(400).json({
+          success: false,
+          message: "Objections output is required. Please run the Objections function first."
+        });
+      }
+
+      console.log(`[OBJECTION-PROOF] Rewriting text of length: ${originalText.length}`);
+      console.log(`[OBJECTION-PROOF] Objections length: ${objectionsOutput.length}`);
+      console.log(`[OBJECTION-PROOF] Custom instructions: ${customInstructions ? 'provided' : 'none'}`);
+
+      const systemPrompt = `You are an expert academic editor and argumentation specialist. Your task is to rewrite a text so that it becomes OBJECTION-PROOF - meaning it pre-emptively addresses and neutralizes all identified objections.
+
+YOUR REWRITING STRATEGY:
+
+1. CATEGORIZE EACH OBJECTION:
+   - DEVASTATING OBJECTIONS: These expose fundamental flaws, logical contradictions, or fatal errors in the argument. For these, you MUST substantially revise the content, claims, or thesis to eliminate the vulnerability. This may require changing the core argument significantly.
+   - FORCEFUL BUT NON-DEVASTATING OBJECTIONS: These appear to have weight but don't actually undermine the core argument. For these, add clarifying language, qualifications, or preemptive responses that make these objections lose even their apparent force.
+   - MINOR/RHETORICAL OBJECTIONS: These are easily dismissed. Add brief anticipatory language or subtle framing that prevents readers from even raising them.
+
+2. REWRITING PRINCIPLES:
+   - Preserve the author's voice and style as much as possible
+   - Maintain the core thesis UNLESS a devastating objection requires modification
+   - Add anticipatory language ("One might object that... however...")
+   - Strengthen weak points in the argument
+   - Add qualifications where claims are overstated
+   - Include evidence or examples where assertions are unsupported
+   - Restructure if necessary to present ideas in a more defensible order
+
+3. OUTPUT FORMAT:
+   First provide a brief CHANGE LOG listing each objection and how you addressed it (1-2 sentences each).
+   Then provide the REWRITTEN TEXT in full.`;
+
+      const userPrompt = `ORIGINAL TEXT:
+${originalText}
+
+═══════════════════════════════════════════════════
+OBJECTIONS IDENTIFIED (from Objections Function):
+═══════════════════════════════════════════════════
+${objectionsOutput}
+
+${customInstructions ? `═══════════════════════════════════════════════════
+CUSTOM INSTRUCTIONS FROM USER:
+${customInstructions}
+═══════════════════════════════════════════════════` : ''}
+
+Now rewrite the original text to make it objection-proof. Remember:
+- For DEVASTATING objections: Substantially change content/claims to eliminate the vulnerability
+- For FORCEFUL objections: Add language that removes even the appearance of force
+- For MINOR objections: Add subtle preemptive framing
+
+Provide:
+1. A CHANGE LOG showing how each major objection was addressed
+2. The complete REWRITTEN TEXT`;
+
+      let output = "";
+
+      // Use Anthropic Claude for the rewriting (best for nuanced writing tasks)
+      if (process.env.ANTHROPIC_API_KEY) {
+        const Anthropic = (await import('@anthropic-ai/sdk')).default;
+        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+        const response = await anthropic.messages.create({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 8000,
+          messages: [
+            { role: "user", content: `${systemPrompt}\n\n${userPrompt}` }
+          ]
+        });
+
+        const textContent = response.content.find((block: any) => block.type === 'text');
+        output = textContent ? (textContent as any).text : "";
+      } else if (process.env.OPENAI_API_KEY) {
+        // Fallback to OpenAI
+        const OpenAI = (await import('openai')).default;
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o",
+          max_tokens: 8000,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ]
+        });
+        
+        output = response.choices[0]?.message?.content || "";
+      } else {
+        return res.status(500).json({
+          success: false,
+          message: "No AI provider configured for objection-proof rewriting"
+        });
+      }
+
+      // Add header
+      const header = `═══════════════════════════════════════════════════
+OBJECTION-PROOF VERSION
+═══════════════════════════════════════════════════
+Generated by analyzing and pre-empting identified objections
+═══════════════════════════════════════════════════
+
+${output}`;
+
+      console.log(`[OBJECTION-PROOF] Generated successfully`);
+
+      res.json({
+        success: true,
+        output: header
+      });
+
+    } catch (error: any) {
+      console.error("OBJECTION-PROOF error:", error);
+      res.status(500).json({ 
+        success: false,
+        message: error.message || "Objection-proof rewriting failed" 
+      });
+    }
+  });
+
   // Coherence Meter endpoint - Analyze and improve text coherence  
   app.post("/api/coherence-meter", async (req: Request, res: Response) => {
     try {

@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target, ChevronUp, ChevronDown, MessageSquareWarning, Circle, ArrowRight, Settings } from "lucide-react";
+import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, ShieldCheck, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target, ChevronUp, ChevronDown, MessageSquareWarning, Circle, ArrowRight, Settings } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { analyzeDocument, compareDocuments, checkForAI } from "@/lib/analysis";
 import { AnalysisMode, DocumentInput as DocumentInputType, AIDetectionResult, DocumentAnalysis, DocumentComparison } from "@/lib/types";
@@ -185,6 +185,12 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [objectionsInputText, setObjectionsInputText] = useState(""); // Standalone input
   const [objectionsAudience, setObjectionsAudience] = useState(""); // Standalone audience
   const [objectionsObjective, setObjectionsObjective] = useState(""); // Standalone objective
+
+  // Objection-Proof Rewrite State
+  const [objectionProofOutput, setObjectionProofOutput] = useState("");
+  const [objectionProofLoading, setObjectionProofLoading] = useState(false);
+  const [objectionProofCustomInstructions, setObjectionProofCustomInstructions] = useState("");
+  const [showObjectionProofPanel, setShowObjectionProofPanel] = useState(true);
 
   // FULL SUITE Pipeline State - runs Batch → BOTTOMLINE → Objections in sequence
   const [fullSuiteLoading, setFullSuiteLoading] = useState(false);
@@ -4148,6 +4154,205 @@ Generated on: ${new Date().toLocaleString()}`;
               </DialogFooter>
             </DialogContent>
           </Dialog>
+        </div>
+      </div>
+
+      {/* OBJECTION-PROOF VERSION - Rewrite text to pre-empt identified objections */}
+      <div className="mt-16 bg-gradient-to-r from-rose-50 to-pink-50 dark:from-rose-900/10 dark:to-pink-900/10 p-8 rounded-lg border-2 border-rose-200 dark:border-rose-700">
+        <div className="max-w-7xl mx-auto">
+          <div 
+            className="flex items-center justify-between cursor-pointer"
+            onClick={() => setShowObjectionProofPanel(!showObjectionProofPanel)}
+          >
+            <div className="flex items-center gap-3">
+              <h2 className="text-3xl font-bold text-rose-900 dark:text-rose-100 flex items-center gap-3">
+                <ShieldCheck className="w-8 h-8 text-rose-600" />
+                Generate Objection-Proof Version
+              </h2>
+              <Badge variant="outline" className="bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300">
+                Invulnerable Rewrite
+              </Badge>
+            </div>
+            <Button variant="ghost" size="icon" data-testid="button-toggle-objection-proof-panel">
+              {showObjectionProofPanel ? (
+                <ChevronUp className="w-5 h-5" />
+              ) : (
+                <ChevronDown className="w-5 h-5" />
+              )}
+            </Button>
+          </div>
+          <p className="text-lg text-gray-700 dark:text-gray-300 mt-2 mb-4">
+            Rewrite your text to be invulnerable to the objections identified by the Objections Function
+          </p>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+            For devastating objections, content will be substantially revised. For forceful objections, language is added to remove even their apparent force.
+          </p>
+
+          {showObjectionProofPanel && (
+            <div className="space-y-6">
+              {/* Check if prerequisites are met */}
+              {!objectionsInputText && !bottomlineOutput && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
+                    <AlertCircle className="w-5 h-5" />
+                    <span className="font-medium">No source text available</span>
+                  </div>
+                  <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                    First, enter text in the Objections Function panel above, then generate objections before using this feature.
+                  </p>
+                </div>
+              )}
+
+              {!objectionsOutput && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
+                    <AlertCircle className="w-5 h-5" />
+                    <span className="font-medium">No objections generated yet</span>
+                  </div>
+                  <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                    Run the Objections Function first to generate 25 objections and counter-arguments, then return here to create an objection-proof version.
+                  </p>
+                </div>
+              )}
+
+              {/* Show source info when we have prerequisites */}
+              {(objectionsInputText || bottomlineOutput) && objectionsOutput && (
+                <>
+                  <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-rose-200 dark:border-rose-700">
+                    <h4 className="font-medium text-rose-900 dark:text-rose-100 mb-2 flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      Source Text
+                    </h4>
+                    <div className="bg-gray-50 dark:bg-gray-900 p-3 rounded border border-gray-200 dark:border-gray-700 max-h-[200px] overflow-y-auto">
+                      <pre className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
+                        {(objectionsInputText || bottomlineOutput).substring(0, 500)}
+                        {(objectionsInputText || bottomlineOutput).length > 500 && '...'}
+                      </pre>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      {(objectionsInputText || bottomlineOutput).split(/\s+/).length} words total
+                    </p>
+                  </div>
+
+                  <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-rose-200 dark:border-rose-700">
+                    <h4 className="font-medium text-rose-900 dark:text-rose-100 mb-2 flex items-center gap-2">
+                      <MessageSquareWarning className="w-4 h-4" />
+                      Objections to Address
+                    </h4>
+                    <div className="bg-gray-50 dark:bg-gray-900 p-3 rounded border border-gray-200 dark:border-gray-700 max-h-[200px] overflow-y-auto">
+                      <pre className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
+                        {objectionsOutput.substring(0, 800)}
+                        {objectionsOutput.length > 800 && '...'}
+                      </pre>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Full objections output will be used for rewriting
+                    </p>
+                  </div>
+
+                  {/* Custom Instructions */}
+                  <div>
+                    <Label className="text-sm font-medium text-rose-800 dark:text-rose-200">
+                      Custom Instructions (optional)
+                    </Label>
+                    <Textarea
+                      value={objectionProofCustomInstructions}
+                      onChange={(e) => setObjectionProofCustomInstructions(e.target.value)}
+                      placeholder="e.g., 'Prioritize addressing the financial objections' or 'Keep the original length' or 'Maintain a formal academic tone'"
+                      className="min-h-[80px] mt-2"
+                      data-testid="textarea-objection-proof-instructions"
+                    />
+                  </div>
+
+                  {/* Generate Button */}
+                  <Button
+                    onClick={async () => {
+                      setObjectionProofLoading(true);
+                      try {
+                        const response = await fetch('/api/objection-proof-rewrite', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            originalText: objectionsInputText || bottomlineOutput,
+                            objectionsOutput: objectionsOutput,
+                            customInstructions: objectionProofCustomInstructions,
+                          }),
+                        });
+                        const data = await response.json();
+                        if (data.success) {
+                          setObjectionProofOutput(data.output);
+                          toast({
+                            title: "Objection-Proof Version Generated",
+                            description: "Your text has been rewritten to pre-empt identified objections",
+                          });
+                        } else {
+                          toast({
+                            title: "Error",
+                            description: data.message || "Failed to generate objection-proof version",
+                            variant: "destructive",
+                          });
+                        }
+                      } catch (error: any) {
+                        toast({
+                          title: "Error",
+                          description: error.message || "Failed to generate objection-proof version",
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setObjectionProofLoading(false);
+                      }
+                    }}
+                    disabled={objectionProofLoading || !objectionsOutput}
+                    className="w-full bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white py-3"
+                    data-testid="button-generate-objection-proof"
+                  >
+                    {objectionProofLoading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                        Generating Objection-Proof Version...
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="w-5 h-5 mr-2" />
+                        Generate Objection-Proof Version
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
+
+              {/* Output Display */}
+              {objectionProofOutput && (
+                <div className="mt-6 bg-white dark:bg-gray-800 p-6 rounded-lg border-2 border-rose-300 dark:border-rose-700">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-lg font-semibold text-rose-900 dark:text-rose-100 flex items-center gap-2">
+                      <ShieldCheck className="w-5 h-5 text-rose-600" />
+                      Objection-Proof Version
+                      <Badge variant="outline" className="ml-2 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                        Complete
+                      </Badge>
+                    </h4>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDownloadText(objectionProofOutput, 'objection-proof-version.txt')}
+                        data-testid="button-download-objection-proof"
+                      >
+                        <Download className="w-4 h-4" />
+                      </Button>
+                      <CopyButton text={objectionProofOutput} />
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[700px] overflow-y-auto">
+                    <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
+                      {objectionProofOutput}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
