@@ -4532,6 +4532,68 @@ Provide ONLY the rewritten section. Do not include any explanations, description
     }
   });
 
+  // Database-backed Sequential Coherence Processing
+  app.post("/api/coherence-sequential", async (req: Request, res: Response) => {
+    try {
+      const { text, mode, provider = "openai" } = req.body;
+
+      if (!text) {
+        return res.status(400).json({
+          success: false,
+          message: "Text is required"
+        });
+      }
+
+      const wordCount = text.trim().split(/\s+/).length;
+      console.log(`Sequential Coherence - Mode: ${mode || 'auto-detect'}, Provider: ${provider}, Words: ${wordCount}`);
+
+      const { processDocumentSequentially } = await import('./services/coherenceProcessor');
+
+      const result = await processDocumentSequentially(text, mode, provider);
+
+      res.json({
+        success: true,
+        documentId: result.documentId,
+        mode: result.mode,
+        overallStatus: result.overallStatus,
+        chunks: result.chunks,
+        finalState: result.finalState,
+        summary: result.summary
+      });
+    } catch (error: any) {
+      console.error("Sequential Coherence error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Sequential coherence processing failed"
+      });
+    }
+  });
+
+  // Get coherence document status
+  app.get("/api/coherence-sequential/:documentId/:mode", async (req: Request, res: Response) => {
+    try {
+      const { documentId, mode } = req.params;
+
+      const { getDocumentStatus } = await import('./services/coherenceProcessor');
+
+      const status = await getDocumentStatus(documentId, mode as any);
+
+      res.json({
+        success: true,
+        documentId,
+        mode,
+        state: status.state,
+        chunks: status.chunks
+      });
+    } catch (error: any) {
+      console.error("Get coherence status error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to get coherence status"
+      });
+    }
+  });
+
   // Helper function to split text into sections
   function splitIntoSections(text: string, targetWords: number = 400): Array<{text: string, wordCount: number}> {
     const paragraphs = text.split(/\n\n+/);
