@@ -181,12 +181,13 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [objectionProofCustomInstructions, setObjectionProofCustomInstructions] = useState("");
   const [showObjectionProofPanel, setShowObjectionProofPanel] = useState(true);
 
-  // FULL SUITE Pipeline State - runs Reconstruction → Objections in sequence
+  // FULL SUITE Pipeline State - runs Reconstruction → Objections → Objection-Proof in sequence
   const [fullSuiteLoading, setFullSuiteLoading] = useState(false);
-  const [fullSuiteStage, setFullSuiteStage] = useState<"idle" | "batch" | "objections" | "complete" | "error">("idle");
+  const [fullSuiteStage, setFullSuiteStage] = useState<"idle" | "batch" | "objections" | "objection-proof" | "complete" | "error">("idle");
   const [fullSuiteError, setFullSuiteError] = useState<string>("");
   const [showFullSuitePanel, setShowFullSuitePanel] = useState(true);
   const [fullSuiteAdditionalInfo, setFullSuiteAdditionalInfo] = useState("");
+  const [fullSuiteObjectionProofOutput, setFullSuiteObjectionProofOutput] = useState("");
   
   // Coherence Meter State
   const [coherenceInputText, setCoherenceInputText] = useState("");
@@ -761,6 +762,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     // Clear previous outputs
     setValidatorBatchResults([]);
     setObjectionsOutput("");
+    setFullSuiteObjectionProofOutput("");
 
     const allModes = ["reconstruction"];
 
@@ -851,11 +853,39 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       setObjectionsInputText(reconstructionOutput);
       console.log("[FULL SUITE] Stage 2 complete: Objections generated");
 
+      // ============ STAGE 3: OBJECTION-PROOF VERSION ============
+      setFullSuiteStage("objection-proof");
+      console.log("[FULL SUITE] Stage 3: Generating objection-proof version...");
+
+      const objectionProofResponse = await fetch('/api/objection-proof-rewrite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          originalText: reconstructionOutput,
+          objectionsOutput: objectionsData.output,
+          customInstructions: validatorCustomInstructions || "",
+        }),
+      });
+
+      if (!objectionProofResponse.ok) {
+        const errorData = await objectionProofResponse.json();
+        throw new Error(errorData.message || 'Objection-proof generation failed');
+      }
+
+      const objectionProofData = await objectionProofResponse.json();
+      if (!objectionProofData.success || !objectionProofData.output) {
+        throw new Error('Objection-proof returned no output');
+      }
+
+      setFullSuiteObjectionProofOutput(objectionProofData.output);
+      setObjectionProofOutput(objectionProofData.output); // Also set standalone state
+      console.log("[FULL SUITE] Stage 3 complete: Objection-proof version generated");
+
       // ============ COMPLETE ============
       setFullSuiteStage("complete");
       toast({
         title: "Full Suite Complete!",
-        description: "Pipeline finished: Reconstruction + 25 Objections",
+        description: "Pipeline finished: Reconstruction + Objections + Objection-Proof Version",
       });
 
     } catch (error: any) {
@@ -2916,7 +2946,7 @@ Generated on: ${new Date().toLocaleString()}`;
                 <Zap className="w-6 h-6 text-violet-600" />
                 Run Full Suite
                 <Badge variant="outline" className="ml-2 bg-violet-200 dark:bg-violet-800 text-violet-800 dark:text-violet-200">
-                  Reconstruction + Objections
+                  Complete Pipeline
                 </Badge>
               </h3>
               <Button variant="ghost" size="icon" data-testid="button-toggle-full-suite">
@@ -2928,7 +2958,7 @@ Generated on: ${new Date().toLocaleString()}`;
               </Button>
             </div>
             <p className="text-sm text-violet-700 dark:text-violet-300 mt-2">
-              Run reconstruction analysis and generate 25 objections - all in one click.
+              Run the complete pipeline: Reconstruction, 25 Objections with responses, and an Objection-Proof final version - all in one click.
             </p>
 
             {showFullSuitePanel && (
@@ -2940,11 +2970,11 @@ Generated on: ${new Date().toLocaleString()}`;
                       {/* Stage 1: Reconstruction */}
                       <div className={`flex items-center gap-2 ${
                         ["batch"].includes(fullSuiteStage) ? "text-violet-600 font-semibold" : 
-                        ["objections", "complete"].includes(fullSuiteStage) ? "text-green-600" : "text-gray-400"
+                        ["objections", "objection-proof", "complete"].includes(fullSuiteStage) ? "text-green-600" : "text-gray-400"
                       }`}>
                         {["batch"].includes(fullSuiteStage) ? (
                           <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : ["objections", "complete"].includes(fullSuiteStage) ? (
+                        ) : ["objections", "objection-proof", "complete"].includes(fullSuiteStage) ? (
                           <CheckCircle className="w-5 h-5" />
                         ) : (
                           <Circle className="w-5 h-5" />
@@ -2955,16 +2985,31 @@ Generated on: ${new Date().toLocaleString()}`;
                       {/* Stage 2: Objections */}
                       <div className={`flex items-center gap-2 ${
                         ["objections"].includes(fullSuiteStage) ? "text-violet-600 font-semibold" : 
-                        ["complete"].includes(fullSuiteStage) ? "text-green-600" : "text-gray-400"
+                        ["objection-proof", "complete"].includes(fullSuiteStage) ? "text-green-600" : "text-gray-400"
                       }`}>
                         {["objections"].includes(fullSuiteStage) ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : ["objection-proof", "complete"].includes(fullSuiteStage) ? (
+                          <CheckCircle className="w-5 h-5" />
+                        ) : (
+                          <Circle className="w-5 h-5" />
+                        )}
+                        <span>2. Objections</span>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-gray-400" />
+                      {/* Stage 3: Objection-Proof */}
+                      <div className={`flex items-center gap-2 ${
+                        ["objection-proof"].includes(fullSuiteStage) ? "text-violet-600 font-semibold" : 
+                        ["complete"].includes(fullSuiteStage) ? "text-green-600" : "text-gray-400"
+                      }`}>
+                        {["objection-proof"].includes(fullSuiteStage) ? (
                           <Loader2 className="w-5 h-5 animate-spin" />
                         ) : ["complete"].includes(fullSuiteStage) ? (
                           <CheckCircle className="w-5 h-5" />
                         ) : (
                           <Circle className="w-5 h-5" />
                         )}
-                        <span>2. Objections</span>
+                        <span>3. Final Version</span>
                       </div>
                     </div>
                   </div>
@@ -2991,22 +3036,123 @@ Generated on: ${new Date().toLocaleString()}`;
                   {fullSuiteLoading ? (
                     <>
                       <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Running Full Suite... ({fullSuiteStage})
+                      Running Full Suite... ({fullSuiteStage === "batch" ? "Reconstruction" : fullSuiteStage === "objections" ? "Generating Objections" : fullSuiteStage === "objection-proof" ? "Creating Final Version" : fullSuiteStage})
                     </>
                   ) : (
                     <>
                       <Zap className="w-5 h-5 mr-2" />
-                      Run Full Suite (Reconstruction + 25 Objections)
+                      Run Full Suite (Complete Pipeline)
                     </>
                   )}
                 </Button>
 
                 {fullSuiteStage === "complete" && (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <div className="flex items-center justify-center gap-2 text-green-600 dark:text-green-400">
                       <CheckCircle className="w-5 h-5" />
                       <span className="font-medium">Full Suite completed!</span>
                     </div>
+                    
+                    {/* Results Display - Expandable Sections */}
+                    <div className="space-y-3">
+                      {/* Section 1: Reconstruction */}
+                      <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg overflow-hidden">
+                        <details className="group">
+                          <summary className="flex items-center justify-between p-3 cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-800/30">
+                            <div className="flex items-center gap-2">
+                              <RefreshCw className="w-4 h-4 text-emerald-600" />
+                              <span className="font-medium text-emerald-800 dark:text-emerald-200">1. Reconstruction</span>
+                            </div>
+                            <ChevronDown className="w-4 h-4 text-emerald-600 group-open:rotate-180 transition-transform" />
+                          </summary>
+                          <div className="p-3 border-t border-emerald-200 dark:border-emerald-700">
+                            <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200 max-h-96 overflow-auto">
+                              {validatorBatchResults.filter(r => r.success)[0]?.output || "(No reconstruction output)"}
+                            </pre>
+                            <Button
+                              onClick={() => {
+                                navigator.clipboard.writeText(validatorBatchResults.filter(r => r.success)[0]?.output || "");
+                                toast({ title: "Copied!", description: "Reconstruction copied to clipboard." });
+                              }}
+                              size="sm"
+                              variant="outline"
+                              className="mt-2"
+                              data-testid="button-copy-reconstruction"
+                            >
+                              <Copy className="w-3 h-3 mr-1" />
+                              Copy Reconstruction
+                            </Button>
+                          </div>
+                        </details>
+                      </div>
+
+                      {/* Section 2: Objections */}
+                      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg overflow-hidden">
+                        <details className="group">
+                          <summary className="flex items-center justify-between p-3 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-800/30">
+                            <div className="flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4 text-amber-600" />
+                              <span className="font-medium text-amber-800 dark:text-amber-200">2. Objections & Counter-Arguments</span>
+                            </div>
+                            <ChevronDown className="w-4 h-4 text-amber-600 group-open:rotate-180 transition-transform" />
+                          </summary>
+                          <div className="p-3 border-t border-amber-200 dark:border-amber-700">
+                            <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200 max-h-96 overflow-auto">
+                              {objectionsOutput || "(No objections output)"}
+                            </pre>
+                            <Button
+                              onClick={() => {
+                                navigator.clipboard.writeText(objectionsOutput || "");
+                                toast({ title: "Copied!", description: "Objections copied to clipboard." });
+                              }}
+                              size="sm"
+                              variant="outline"
+                              className="mt-2"
+                              data-testid="button-copy-objections"
+                            >
+                              <Copy className="w-3 h-3 mr-1" />
+                              Copy Objections
+                            </Button>
+                          </div>
+                        </details>
+                      </div>
+
+                      {/* Section 3: Objection-Proof Final Version */}
+                      <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-700 rounded-lg overflow-hidden">
+                        <details className="group" open>
+                          <summary className="flex items-center justify-between p-3 cursor-pointer hover:bg-rose-100 dark:hover:bg-rose-800/30">
+                            <div className="flex items-center gap-2">
+                              <ShieldCheck className="w-4 h-4 text-rose-600" />
+                              <span className="font-medium text-rose-800 dark:text-rose-200">3. Objection-Proof Final Version</span>
+                              <Badge variant="outline" className="bg-rose-100 dark:bg-rose-800 text-rose-700 dark:text-rose-300 text-xs">
+                                Recommended
+                              </Badge>
+                            </div>
+                            <ChevronDown className="w-4 h-4 text-rose-600 group-open:rotate-180 transition-transform" />
+                          </summary>
+                          <div className="p-3 border-t border-rose-200 dark:border-rose-700">
+                            <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200 max-h-96 overflow-auto">
+                              {fullSuiteObjectionProofOutput || "(No objection-proof output)"}
+                            </pre>
+                            <Button
+                              onClick={() => {
+                                navigator.clipboard.writeText(fullSuiteObjectionProofOutput || "");
+                                toast({ title: "Copied!", description: "Objection-proof version copied to clipboard." });
+                              }}
+                              size="sm"
+                              variant="outline"
+                              className="mt-2"
+                              data-testid="button-copy-objection-proof"
+                            >
+                              <Copy className="w-3 h-3 mr-1" />
+                              Copy Final Version
+                            </Button>
+                          </div>
+                        </details>
+                      </div>
+                    </div>
+
+                    {/* Copy All Button */}
                     <Button
                       onClick={() => {
                         const allOutput = [
@@ -3015,19 +3161,22 @@ Generated on: ${new Date().toLocaleString()}`;
                           "═══════════════════════════════════════════════════════════════",
                           "",
                           "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-                          "                         BATCH ANALYSIS",
+                          "                         1. RECONSTRUCTION",
                           "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
                           "",
-                          ...validatorBatchResults.filter(r => r.success).map(r => {
-                            const modeName = "RECONSTRUCTION";
-                            return `▸ ${modeName}\n${"─".repeat(50)}\n${r.output}\n`;
-                          }),
+                          validatorBatchResults.filter(r => r.success)[0]?.output || "(No reconstruction output)",
                           "",
                           "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-                          "                    OBJECTIONS & COUNTER-ARGUMENTS",
+                          "                    2. OBJECTIONS & COUNTER-ARGUMENTS",
                           "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
                           "",
                           objectionsOutput || "(No Objections output)",
+                          "",
+                          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                          "                    3. OBJECTION-PROOF FINAL VERSION",
+                          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                          "",
+                          fullSuiteObjectionProofOutput || "(No objection-proof output)",
                           "",
                           "═══════════════════════════════════════════════════════════════",
                           "                         END OF REPORT",
@@ -3043,7 +3192,7 @@ Generated on: ${new Date().toLocaleString()}`;
                       data-testid="button-copy-all-fullsuite"
                     >
                       <Copy className="w-4 h-4 mr-2" />
-                      Copy All Results (Reconstruction + Objections)
+                      Copy Complete Report (All 3 Sections)
                     </Button>
                   </div>
                 )}
