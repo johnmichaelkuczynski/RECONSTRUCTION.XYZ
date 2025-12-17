@@ -36,7 +36,7 @@ The application employs a monorepo structure, separating client and server compo
 
 ## Recent Changes (December 2024)
 - **Refine Output Feature**: Added ability to refine both Reconstruction output and Final Objection-Proof version with target word count and/or custom instructions (e.g., "Add a Plato quote", "Reduce to 400 words").
-- **Aggressive Mode Toggle**: Made the Conservative/Aggressive fidelity toggle always visible directly under the RECONSTRUCTION button (no longer hidden in a panel).
+- **Aggressive Mode Default**: Changed "Aggressive" to be the default mode for Reconstruction (and other functions with that toggle). Toggle is always visible directly under the RECONSTRUCTION button.
 - **Full Suite Pipeline Improvements**: Pipeline now outputs ONLY the clean final version (no change log or commentary) for the Objection-Proof output.
 
 ### Previous Changes

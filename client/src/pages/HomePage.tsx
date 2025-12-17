@@ -153,7 +153,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [validatorBatchResults, setValidatorBatchResults] = useState<Array<{mode: string; success: boolean; output?: string; error?: string}>>([]);
   const [validatorBatchLoading, setValidatorBatchLoading] = useState(false);
   const [validatorTargetDomain, setValidatorTargetDomain] = useState("");
-  const [validatorFidelityLevel, setValidatorFidelityLevel] = useState<"conservative" | "aggressive">("conservative");
+  const [validatorFidelityLevel, setValidatorFidelityLevel] = useState<"conservative" | "aggressive">("aggressive");
   const [validatorMathFramework, setValidatorMathFramework] = useState("variational-inference");
   const [validatorConstraintType, setValidatorConstraintType] = useState<"pure-swap" | "true-statements" | "historical">("pure-swap");
   const [validatorRigorLevel, setValidatorRigorLevel] = useState<"sketch" | "semi-formal" | "proof-ready">("semi-formal");
