@@ -4171,6 +4171,112 @@ Respond with ONLY the coherence type (e.g., "logical-consistency" or "scientific
     }
   });
 
+  // Global Coherence Analysis - Uses GCO for cross-chunk coherence preservation
+  app.post("/api/coherence-global", async (req: Request, res: Response) => {
+    try {
+      const { text, coherenceType, mode, aggressiveness = "moderate" } = req.body;
+
+      if (!text || !coherenceType || !mode) {
+        return res.status(400).json({
+          success: false,
+          message: "Text, coherenceType, and mode are required"
+        });
+      }
+
+      const wordCount = text.trim().split(/\s+/).length;
+      console.log(`Global Coherence - Type: ${coherenceType}, Mode: ${mode}, Words: ${wordCount}`);
+
+      const { 
+        analyzeGlobalCoherence, 
+        rewriteWithGlobalCoherence,
+        extractGlobalContextObject 
+      } = await import('./services/coherenceMeter');
+
+      // Determine the coherence mode to use
+      let appliedCoherenceType = coherenceType;
+      
+      if (coherenceType === "auto-detect") {
+        const Anthropic = (await import('@anthropic-ai/sdk')).default;
+        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        
+        const detectPrompt = `Analyze this text and determine which coherence type it is attempting to achieve. Choose the SINGLE BEST match:
+
+- logical-consistency: Avoiding contradictions and maintaining logical consistency
+- logical-cohesiveness: Claims actively support each other in a directed way
+- scientific-explanatory: Explanations align with natural law and scientific mechanisms
+- thematic-psychological: Mood, imagery, emotional trajectory hold together
+- instructional: Provides actionable instructions or directives
+- motivational: Aims to inspire specific feelings or psychological states
+- mathematical: Mathematical proofs, derivations, or quantitative arguments
+- philosophical: Conceptual rigor, distinctions, and philosophical arguments
+
+TEXT:
+${text.substring(0, 2000)}
+
+Respond with ONLY the coherence type (e.g., "logical-consistency"). No explanation.`;
+
+        const detectMessage = await anthropic.messages.create({
+          model: "claude-3-7-sonnet-20250219",
+          max_tokens: 50,
+          temperature: 0,
+          messages: [{ role: "user", content: detectPrompt }]
+        });
+
+        const detectedType = detectMessage.content[0].type === 'text' 
+          ? detectMessage.content[0].text.trim().toLowerCase() 
+          : 'logical-consistency';
+        
+        const validTypes = ["logical-consistency", "logical-cohesiveness", "scientific-explanatory", "thematic-psychological", "instructional", "motivational", "mathematical", "philosophical"];
+        appliedCoherenceType = validTypes.includes(detectedType) ? detectedType : "logical-consistency";
+        
+        console.log(`Auto-detected coherence type for global analysis: ${appliedCoherenceType}`);
+      }
+
+      if (mode === "analyze") {
+        const result = await analyzeGlobalCoherence(text, appliedCoherenceType);
+        
+        res.json({
+          success: true,
+          isGlobalCoherence: true,
+          globalContextObject: result.globalContextObject,
+          chunkResults: result.chunkResults,
+          analysis: result.aggregatedAnalysis,
+          score: result.overallScore,
+          assessment: result.overallAssessment,
+          detectedCoherenceType: coherenceType === "auto-detect" ? appliedCoherenceType : undefined,
+          wasAutoDetected: coherenceType === "auto-detect"
+        });
+      } else if (mode === "rewrite") {
+        const result = await rewriteWithGlobalCoherence(
+          text, 
+          appliedCoherenceType, 
+          aggressiveness as "conservative" | "moderate" | "aggressive"
+        );
+        
+        res.json({
+          success: true,
+          isGlobalCoherence: true,
+          rewrite: result.rewrittenText,
+          globalContextObject: result.gco,
+          changes: result.changes,
+          detectedCoherenceType: coherenceType === "auto-detect" ? appliedCoherenceType : undefined,
+          wasAutoDetected: coherenceType === "auto-detect"
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: "Mode must be 'analyze' or 'rewrite'"
+        });
+      }
+    } catch (error: any) {
+      console.error("Global Coherence error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Global coherence analysis failed"
+      });
+    }
+  });
+
   // Outline-Guided Coherence Processing - Two-Stage approach for long texts
   app.post("/api/coherence-outline-guided", async (req: Request, res: Response) => {
     try {

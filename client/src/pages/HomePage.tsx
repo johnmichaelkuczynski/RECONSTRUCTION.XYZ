@@ -360,7 +360,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     });
   };
 
-  // Text chunking for large documents (500+ words)
+  // Text chunking for large documents (1000+ words)
   const handleChunkText = async (text: string) => {
     try {
       const response = await fetch('/api/chunk-text', {
@@ -376,7 +376,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           setShowChunkSelector(true);
           toast({
             title: "Text Chunked",
-            description: `Document divided into ${data.chunks.length} chunks of ~500 words each.`,
+            description: `Document divided into ${data.chunks.length} chunks of ~1000 words each with global coherence preservation.`,
           });
         }
       }
@@ -1063,15 +1063,12 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       return;
     }
     
-    // If text is longer than 500 words, create chunks and show selector
-    if (wordCount > 500) {
-      const chunks = createCoherenceChunks(coherenceInputText);
-      setCoherenceChunks(chunks);
-      setSelectedCoherenceChunks(chunks.map(c => c.id)); // Select all by default
-      setShowCoherenceChunkSelector(true);
+    // Check word limit (5000 words max)
+    if (wordCount > 5000) {
       toast({
-        title: "Text Too Long for Single Analysis",
-        description: `Your text has ${wordCount} words. It has been divided into ${chunks.length} sections. Select which sections to analyze.`,
+        title: "Text Too Long",
+        description: `Your text has ${wordCount} words. Maximum is 5000 words.`,
+        variant: "destructive"
       });
       return;
     }
@@ -1084,7 +1081,18 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setDetectedCoherenceType(null);
 
     try {
-      const response = await fetch('/api/coherence-meter', {
+      // Use global coherence endpoint for long texts (>1000 words)
+      const isLongText = wordCount > 1000;
+      const endpoint = isLongText ? '/api/coherence-global' : '/api/coherence-meter';
+      
+      if (isLongText) {
+        toast({
+          title: "Processing Long Text",
+          description: `Analyzing ${wordCount} words with Global Coherence Preservation Protocol...`,
+        });
+      }
+      
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1197,15 +1205,12 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       return;
     }
     
-    // If text is longer than 500 words, create chunks and show selector
-    if (wordCount > 500) {
-      const chunks = createCoherenceChunks(coherenceInputText);
-      setCoherenceChunks(chunks);
-      setSelectedCoherenceChunks(chunks.map(c => c.id)); // Select all by default
-      setShowCoherenceChunkSelector(true);
+    // Check word limit (5000 words max)
+    if (wordCount > 5000) {
       toast({
-        title: "Text Too Long for Single Rewrite",
-        description: `Your text has ${wordCount} words. It has been divided into ${chunks.length} sections. Select which sections to rewrite.`,
+        title: "Text Too Long",
+        description: `Your text has ${wordCount} words. Maximum is 5000 words.`,
+        variant: "destructive"
       });
       return;
     }
@@ -1219,7 +1224,18 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setDetectedCoherenceType(null);
 
     try {
-      const response = await fetch('/api/coherence-meter', {
+      // Use global coherence endpoint for long texts (>1000 words)
+      const isLongText = wordCount > 1000;
+      const endpoint = isLongText ? '/api/coherence-global' : '/api/coherence-meter';
+      
+      if (isLongText) {
+        toast({
+          title: "Processing Long Text",
+          description: `Rewriting ${wordCount} words with Global Coherence Preservation Protocol...`,
+        });
+      }
+      
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4311,11 +4327,11 @@ Generated on: ${new Date().toLocaleString()}`;
           <div className="mb-6">
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-semibold text-indigo-800 dark:text-indigo-200">
-                Input Text (500 word limit)
+                Input Text (5000 word limit)
               </label>
               <div className="flex items-center gap-3">
                 <span className="text-sm text-gray-600 dark:text-gray-400">
-                  Word Count: {coherenceInputText.trim() ? coherenceInputText.trim().split(/\s+/).length : 0} / 500
+                  Word Count: {coherenceInputText.trim() ? coherenceInputText.trim().split(/\s+/).length : 0} / 5000
                 </span>
                 <label className="cursor-pointer">
                   <input
@@ -4347,13 +4363,13 @@ Generated on: ${new Date().toLocaleString()}`;
             <Textarea
               value={coherenceInputText}
               onChange={(e) => setCoherenceInputText(e.target.value)}
-              placeholder="Paste your text here to analyze coherence... (under 500 words)"
+              placeholder="Paste your text here to analyze coherence... (up to 5000 words - long texts are chunked with global coherence preservation)"
               className="min-h-[200px] font-mono text-sm"
               data-testid="textarea-coherence-input"
             />
           </div>
 
-          {/* Chunk Selector - appears when text > 500 words */}
+          {/* Chunk Selector - appears when text > 1000 words */}
           {showCoherenceChunkSelector && coherenceChunks.length > 0 && (
             <div className="mb-6 bg-yellow-50 dark:bg-yellow-900/20 p-6 rounded-lg border-2 border-yellow-400 dark:border-yellow-600">
               <div className="flex items-center justify-between mb-4">
@@ -4610,7 +4626,7 @@ Generated on: ${new Date().toLocaleString()}`;
           {/* Processing Mode Selection */}
           <div className="mb-6 bg-white dark:bg-gray-800 p-6 rounded-lg border border-indigo-200 dark:border-indigo-700">
             <label className="block text-sm font-semibold text-indigo-800 dark:text-indigo-200 mb-4">
-              Processing Mode for Long Texts (&gt;500 words):
+              Processing Mode for Long Texts (&gt;1000 words):
             </label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label 
@@ -5652,7 +5668,7 @@ Generated on: ${new Date().toLocaleString()}`;
                       data-testid="button-chunk-box-a"
                     >
                       <FileText className="w-3 h-3 mr-1" />
-                      Chunk Large Text (500 words)
+                      Chunk Large Text (1000 words)
                     </Button>
                   )}
                 </div>

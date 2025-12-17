@@ -17,9 +17,369 @@ export interface CoherenceRewriteResult {
   changes: string;
 }
 
+// Global Context Object for cross-chunk coherence preservation
+export interface GlobalContextObject {
+  coreTopics: string[];
+  centralFramework: string | null;
+  keyConcepts: string[];
+  argumentDirection: string | null;
+  emotionalTrajectory: string | null;
+  instructionalGoal: string | null;
+  mathematicalAssumptions: string | null;
+}
+
+export interface ChunkCoherenceResult {
+  chunkIndex: number;
+  status: "preserved" | "weakened" | "shifted";
+  strainLocations: string[];
+  repairSuggestions: string[];
+  analysis: string;
+  score: number;
+}
+
+export interface GlobalCoherenceAnalysisResult {
+  globalContextObject: GlobalContextObject;
+  chunkResults: ChunkCoherenceResult[];
+  overallScore: number;
+  overallAssessment: "PASS" | "WEAK" | "FAIL";
+  aggregatedAnalysis: string;
+}
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
+
+// STEP 1: Extract Global Context Object (GCO) - lightweight, non-generative
+export async function extractGlobalContextObject(fullText: string): Promise<GlobalContextObject> {
+  const systemPrompt = `You are a document analyzer. Extract ONLY the following structural elements from the text. Do NOT rewrite, evaluate, or generate new content. This is a lightweight extraction task.
+
+Return a JSON object with these fields:
+- coreTopics: Array of 1-5 main topics/subjects
+- centralFramework: The main explanatory or argumentative framework (or null if none)
+- keyConcepts: Array of key concepts, variables, or entities mentioned
+- argumentDirection: The direction of argument if present (e.g., "proving X", "refuting Y", "explaining Z")
+- emotionalTrajectory: Emotional/motivational arc if present (e.g., "building urgency", "calming reassurance")
+- instructionalGoal: The instructional objective if present (e.g., "teach X", "guide through Y")
+- mathematicalAssumptions: Mathematical assumptions or proof targets if present`;
+
+  const userPrompt = `Extract the Global Context Object from this text. Keep total output under 300 words.
+
+TEXT:
+${fullText.substring(0, 8000)}
+
+Respond with ONLY valid JSON, no markdown formatting.`;
+
+  const message = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 1024,
+    temperature: 0,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }]
+  });
+
+  const output = message.content[0].type === 'text' ? message.content[0].text : '{}';
+  
+  try {
+    const cleanJson = output.replace(/```json\n?|\n?```/g, '').trim();
+    const parsed = JSON.parse(cleanJson);
+    return {
+      coreTopics: parsed.coreTopics || [],
+      centralFramework: parsed.centralFramework || null,
+      keyConcepts: parsed.keyConcepts || [],
+      argumentDirection: parsed.argumentDirection || null,
+      emotionalTrajectory: parsed.emotionalTrajectory || null,
+      instructionalGoal: parsed.instructionalGoal || null,
+      mathematicalAssumptions: parsed.mathematicalAssumptions || null
+    };
+  } catch {
+    return {
+      coreTopics: [],
+      centralFramework: null,
+      keyConcepts: [],
+      argumentDirection: null,
+      emotionalTrajectory: null,
+      instructionalGoal: null,
+      mathematicalAssumptions: null
+    };
+  }
+}
+
+// STEP 2 & 3: Analyze chunk with GCO injection and mode-specific rules
+export async function analyzeChunkWithGCO(
+  chunkText: string, 
+  chunkIndex: number,
+  gco: GlobalContextObject, 
+  coherenceMode: string
+): Promise<ChunkCoherenceResult> {
+  
+  const modeRules: Record<string, string> = {
+    "logical-consistency": `Check for contradictions between this chunk and the GCO. Ignore argument strength or style. Look for: direct logical conflicts, claims that contradict earlier established facts, inconsistent use of terms.`,
+    
+    "logical-cohesiveness": `Check whether this chunk advances, supports, or presupposes argumentative steps implied by the GCO. Flag: gaps in reasoning, logical jumps, regressions relative to earlier structure, missing premises.`,
+    
+    "scientific-explanatory": `Check whether explanations in this chunk: use the same causal level as the GCO, do not switch from mechanism to correlation or vice versa, preserve explanatory direction across chunks.`,
+    
+    "thematic-psychological": `Check whether tone, affect, and psychological framing continue or intentionally shift relative to the GCO. Flag: abrupt or unjustified affective breaks, tonal inconsistencies.`,
+    
+    "instructional": `Check whether this chunk: presupposes steps not yet introduced, reorders instructions inconsistently, breaks actionability established earlier.`,
+    
+    "motivational": `Check whether emotional direction (urgency, encouragement, warning, etc.) remains aligned with the GCO. Flag: motivational reversals or dilution.`,
+    
+    "mathematical": `Check whether this chunk: uses assumptions consistent with the GCO, does not invoke results not yet established, preserves proof direction (forward, backward, contradiction, induction).`,
+    
+    "philosophical": `Check whether core concepts retain the same meaning, scope, and contrast classes as defined or implied in the GCO. Flag: equivocation, category drift, or silent redefinition.`
+  };
+
+  const systemPrompt = `You are evaluating a text chunk for cross-chunk coherence. The chunk must be evaluated RELATIVE TO the Global Context Object (GCO), not in isolation.
+
+COHERENCE MODE: ${coherenceMode}
+MODE-SPECIFIC RULE: ${modeRules[coherenceMode] || modeRules["logical-consistency"]}
+
+CRITICAL: Never return "incoherent", "error", or "cannot evaluate". Always provide constructive analysis.`;
+
+  const gcoSummary = `
+GLOBAL CONTEXT OBJECT:
+- Core Topics: ${gco.coreTopics.join(", ") || "Not specified"}
+- Central Framework: ${gco.centralFramework || "None identified"}
+- Key Concepts: ${gco.keyConcepts.join(", ") || "Not specified"}
+- Argument Direction: ${gco.argumentDirection || "None identified"}
+- Emotional Trajectory: ${gco.emotionalTrajectory || "None identified"}
+- Instructional Goal: ${gco.instructionalGoal || "None identified"}
+- Mathematical Assumptions: ${gco.mathematicalAssumptions || "None identified"}`;
+
+  const userPrompt = `Evaluate this chunk for coherence RELATIVE TO the global context.
+
+${gcoSummary}
+
+CHUNK ${chunkIndex + 1}:
+${chunkText}
+
+Provide analysis in this EXACT JSON format:
+{
+  "status": "preserved" | "weakened" | "shifted",
+  "strainLocations": ["specific location 1", "specific location 2"],
+  "repairSuggestions": ["minimal local repair suggestion 1"],
+  "score": 1-10,
+  "analysis": "Detailed explanation of coherence status relative to GCO"
+}
+
+STATUS DEFINITIONS:
+- preserved: Chunk maintains full coherence with GCO
+- weakened: Chunk shows some strain but doesn't break coherence
+- shifted: Chunk introduces significant deviation from GCO
+
+Respond with ONLY valid JSON.`;
+
+  const message = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 2048,
+    temperature: 0.2,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }]
+  });
+
+  const output = message.content[0].type === 'text' ? message.content[0].text : '{}';
+  
+  try {
+    const cleanJson = output.replace(/```json\n?|\n?```/g, '').trim();
+    const parsed = JSON.parse(cleanJson);
+    return {
+      chunkIndex,
+      status: parsed.status || "preserved",
+      strainLocations: parsed.strainLocations || [],
+      repairSuggestions: parsed.repairSuggestions || [],
+      analysis: parsed.analysis || "Analysis completed",
+      score: parsed.score || 7
+    };
+  } catch {
+    return {
+      chunkIndex,
+      status: "preserved",
+      strainLocations: [],
+      repairSuggestions: [],
+      analysis: output,
+      score: 7
+    };
+  }
+}
+
+// Full global coherence analysis with chunking
+export async function analyzeGlobalCoherence(
+  fullText: string,
+  coherenceMode: string,
+  chunkSize: number = 1000
+): Promise<GlobalCoherenceAnalysisResult> {
+  
+  // Split into chunks (~1000 words each)
+  const words = fullText.split(/\s+/);
+  const chunks: string[] = [];
+  
+  for (let i = 0; i < words.length; i += chunkSize) {
+    chunks.push(words.slice(i, i + chunkSize).join(' '));
+  }
+
+  // STEP 1: Extract Global Context Object
+  console.log("Extracting Global Context Object...");
+  const gco = await extractGlobalContextObject(fullText);
+  
+  // STEP 2 & 3: Analyze each chunk with GCO
+  console.log(`Analyzing ${chunks.length} chunks with GCO injection...`);
+  const chunkResults: ChunkCoherenceResult[] = [];
+  
+  for (let i = 0; i < chunks.length; i++) {
+    const result = await analyzeChunkWithGCO(chunks[i], i, gco, coherenceMode);
+    chunkResults.push(result);
+  }
+  
+  // Calculate overall score
+  const avgScore = chunkResults.reduce((sum, r) => sum + r.score, 0) / chunkResults.length;
+  const overallScore = Math.round(avgScore * 10) / 10;
+  
+  // Determine overall assessment
+  let overallAssessment: "PASS" | "WEAK" | "FAIL";
+  if (overallScore >= 8) overallAssessment = "PASS";
+  else if (overallScore >= 5) overallAssessment = "WEAK";
+  else overallAssessment = "FAIL";
+  
+  // Generate aggregated analysis
+  const statusCounts = {
+    preserved: chunkResults.filter(r => r.status === "preserved").length,
+    weakened: chunkResults.filter(r => r.status === "weakened").length,
+    shifted: chunkResults.filter(r => r.status === "shifted").length
+  };
+  
+  const aggregatedAnalysis = `
+GLOBAL COHERENCE ANALYSIS (${coherenceMode})
+============================================
+
+GLOBAL CONTEXT OBJECT:
+- Core Topics: ${gco.coreTopics.join(", ") || "Not identified"}
+- Central Framework: ${gco.centralFramework || "None"}
+- Key Concepts: ${gco.keyConcepts.join(", ") || "None identified"}
+- Argument Direction: ${gco.argumentDirection || "None"}
+
+CHUNK ANALYSIS SUMMARY:
+- Total Chunks: ${chunks.length}
+- Preserved: ${statusCounts.preserved} (${Math.round(statusCounts.preserved/chunks.length*100)}%)
+- Weakened: ${statusCounts.weakened} (${Math.round(statusCounts.weakened/chunks.length*100)}%)
+- Shifted: ${statusCounts.shifted} (${Math.round(statusCounts.shifted/chunks.length*100)}%)
+
+OVERALL SCORE: ${overallScore}/10
+ASSESSMENT: ${overallAssessment}
+
+${chunkResults.map((r, i) => `
+CHUNK ${i + 1}: ${r.status.toUpperCase()} (Score: ${r.score}/10)
+${r.strainLocations.length > 0 ? `Strain Locations: ${r.strainLocations.join("; ")}` : "No strain detected"}
+${r.repairSuggestions.length > 0 ? `Repair Suggestions: ${r.repairSuggestions.join("; ")}` : ""}
+`).join("\n")}
+`.trim();
+
+  return {
+    globalContextObject: gco,
+    chunkResults,
+    overallScore,
+    overallAssessment,
+    aggregatedAnalysis
+  };
+}
+
+// Rewrite chunks with global coherence preservation
+export async function rewriteWithGlobalCoherence(
+  fullText: string,
+  coherenceMode: string,
+  aggressiveness: "conservative" | "moderate" | "aggressive" = "moderate",
+  chunkSize: number = 1000
+): Promise<{ rewrittenText: string; gco: GlobalContextObject; changes: string }> {
+  
+  // Split into chunks
+  const words = fullText.split(/\s+/);
+  const chunks: string[] = [];
+  
+  for (let i = 0; i < words.length; i += chunkSize) {
+    chunks.push(words.slice(i, i + chunkSize).join(' '));
+  }
+
+  // Extract GCO first
+  console.log("Extracting Global Context Object for rewrite...");
+  const gco = await extractGlobalContextObject(fullText);
+  
+  const aggressivenessInstructions = {
+    conservative: "Make minimal changes. Only fix clear coherence breaks. Preserve author voice completely.",
+    moderate: "Fix coherence issues while preserving core meaning. Improve flow and connections between ideas.",
+    aggressive: "Substantially improve coherence. Reorganize if needed. Strengthen logical connections throughout."
+  };
+
+  const gcoSummary = `
+GLOBAL CONTEXT OBJECT (MUST BE PRESERVED):
+- Core Topics: ${gco.coreTopics.join(", ") || "Not specified"}
+- Central Framework: ${gco.centralFramework || "None identified"}
+- Key Concepts: ${gco.keyConcepts.join(", ") || "Not specified"}
+- Argument Direction: ${gco.argumentDirection || "None identified"}
+- Emotional Trajectory: ${gco.emotionalTrajectory || "None identified"}
+- Instructional Goal: ${gco.instructionalGoal || "None identified"}`;
+
+  // Rewrite each chunk with GCO awareness
+  console.log(`Rewriting ${chunks.length} chunks with GCO preservation...`);
+  const rewrittenChunks: string[] = [];
+  const allChanges: string[] = [];
+  
+  for (let i = 0; i < chunks.length; i++) {
+    const systemPrompt = `You are rewriting text to improve ${coherenceMode} coherence while preserving global coherence across chunks.
+
+${aggressivenessInstructions[aggressiveness]}
+
+CRITICAL RULES:
+1. Maintain consistency with the Global Context Object
+2. Preserve cross-chunk coherence - this chunk must flow naturally from previous content
+3. Use terms consistently as defined in the GCO
+4. Maintain the same argument direction and emotional trajectory`;
+
+    const userPrompt = `Rewrite this chunk to improve ${coherenceMode} coherence.
+
+${gcoSummary}
+
+${i > 0 ? `PREVIOUS CHUNK ENDED WITH: "${rewrittenChunks[i-1].slice(-200)}..."` : "This is the first chunk."}
+
+CHUNK ${i + 1} OF ${chunks.length}:
+${chunks[i]}
+
+Provide:
+1. REWRITTEN_TEXT: The improved version (preserve approximate word count)
+2. CHANGES: Brief list of coherence improvements made
+
+Format your response as:
+REWRITTEN_TEXT:
+[your rewritten text here]
+
+CHANGES:
+[bullet points of changes]`;
+
+    const message = await anthropic.messages.create({
+      model: "claude-3-7-sonnet-20250219",
+      max_tokens: 4096,
+      temperature: 0.3,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }]
+    });
+
+    const output = message.content[0].type === 'text' ? message.content[0].text : chunks[i];
+    
+    // Parse rewritten text and changes
+    const textMatch = output.match(/REWRITTEN_TEXT:\s*([\s\S]*?)(?=CHANGES:|$)/i);
+    const changesMatch = output.match(/CHANGES:\s*([\s\S]*?)$/i);
+    
+    rewrittenChunks.push(textMatch ? textMatch[1].trim() : chunks[i]);
+    if (changesMatch) {
+      allChanges.push(`Chunk ${i + 1}: ${changesMatch[1].trim()}`);
+    }
+  }
+
+  return {
+    rewrittenText: rewrittenChunks.join("\n\n"),
+    gco,
+    changes: allChanges.join("\n\n")
+  };
+}
 
 export async function analyzeCoherence(text: string): Promise<CoherenceAnalysisResult> {
   const systemPrompt = `You are a coherence analyzer specializing in evaluating INTERNAL LOGICAL CONSISTENCY, CLARITY, and STRUCTURAL UNITY.
