@@ -1,6 +1,25 @@
 import { executeFourPhaseProtocol } from './fourPhaseProtocol';
 import fetch from 'node-fetch';
 
+// Utility to strip markdown formatting from text
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+/gm, '')         // Remove heading markers
+    .replace(/\*\*\*([^*]+)\*\*\*/g, '$1') // Remove bold+italic
+    .replace(/\*\*([^*]+)\*\*/g, '$1')   // Remove bold
+    .replace(/\*([^*]+)\*/g, '$1')       // Remove italic
+    .replace(/___([^_]+)___/g, '$1')     // Remove bold+italic (underscores)
+    .replace(/__([^_]+)__/g, '$1')       // Remove bold (underscores)
+    .replace(/_([^_]+)_/g, '$1')         // Remove italic (underscores)
+    .replace(/~~([^~]+)~~/g, '$1')       // Remove strikethrough
+    .replace(/`([^`]+)`/g, '$1')         // Remove inline code
+    .replace(/^\s*[-*+]\s+/gm, '')       // Remove bullet points
+    .replace(/^\s*\d+\.\s+/gm, '')       // Remove numbered lists
+    .replace(/^\s*>\s*/gm, '')           // Remove blockquotes
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove links, keep text
+    .trim();
+}
+
 type LLMProvider = 'openai' | 'anthropic' | 'perplexity' | 'deepseek' | 'grok';
 
 interface ZhiQueryResponse {
@@ -177,6 +196,7 @@ OUTPUT REQUIREMENTS:
 - Must be self-contained and complete
 - Match TARGET STYLE precisely (sharp, direct, example-rich)
 - Start immediately with the content
+- CRITICAL: Do NOT use any markdown formatting. No #, ##, *, **, -, or any markdown symbols. Plain prose only.
 
 COMPLETE ${isTextFiction ? 'STORY' : 'ESSAY'}:`;
 
@@ -262,8 +282,8 @@ COMPLETE ${isTextFiction ? 'STORY' : 'ESSAY'}:`;
       throw new Error(`Unsupported provider: ${provider}`);
     }
     
-    // Strip out AI commentary if it slipped through
-    rewrittenText = rewrittenText
+    // Strip out AI commentary and markdown formatting
+    rewrittenText = stripMarkdown(rewrittenText
       .replace(/^Here's.*?:/i, '')
       .replace(/^This.*?version.*?:/i, '')
       .replace(/^The following.*?:/i, '')
@@ -271,7 +291,7 @@ COMPLETE ${isTextFiction ? 'STORY' : 'ESSAY'}:`;
       .replace(/^\*\*.*?\*\*:?/gm, '')
       .replace(/^--+/gm, '')
       .replace(/^Rewritten.*?:/i, '')
-      .trim();
+      .trim());
       
   } catch (error) {
     console.error(`Error during rewrite with ${provider}:`, error);

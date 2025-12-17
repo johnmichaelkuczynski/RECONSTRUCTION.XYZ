@@ -1,5 +1,24 @@
 import Anthropic from '@anthropic-ai/sdk';
 
+// Utility to strip markdown formatting from text
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+/gm, '')         // Remove heading markers
+    .replace(/\*\*\*([^*]+)\*\*\*/g, '$1') // Remove bold+italic
+    .replace(/\*\*([^*]+)\*\*/g, '$1')   // Remove bold
+    .replace(/\*([^*]+)\*/g, '$1')       // Remove italic
+    .replace(/___([^_]+)___/g, '$1')     // Remove bold+italic (underscores)
+    .replace(/__([^_]+)__/g, '$1')       // Remove bold (underscores)
+    .replace(/_([^_]+)_/g, '$1')         // Remove italic (underscores)
+    .replace(/~~([^~]+)~~/g, '$1')       // Remove strikethrough
+    .replace(/`([^`]+)`/g, '$1')         // Remove inline code
+    .replace(/^\s*[-*+]\s+/gm, '')       // Remove bullet points
+    .replace(/^\s*\d+\.\s+/gm, '')       // Remove numbered lists
+    .replace(/^\s*>\s*/gm, '')           // Remove blockquotes
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove links, keep text
+    .trim();
+}
+
 export interface CoherenceAnalysisResult {
   score: number;
   assessment: "PASS" | "WEAK" | "FAIL";
@@ -1386,9 +1405,11 @@ Provide:
 2. CHANGES: How you preserved/advanced the state
 3. STATE_UPDATE: JSON describing any state changes
 
+CRITICAL: Do NOT use any markdown formatting in the rewritten text. No #, ##, *, **, -, or any other markdown symbols. Output plain prose only.
+
 Format your response as:
 REWRITTEN_TEXT:
-[your rewritten text here]
+[your rewritten text here - plain text only, no markdown]
 
 CHANGES:
 [bullet points of changes]
@@ -1410,7 +1431,7 @@ STATE_UPDATE:
     const textMatch = output.match(/REWRITTEN_TEXT:\s*([\s\S]*?)(?=CHANGES:|$)/i);
     const changesMatch = output.match(/CHANGES:\s*([\s\S]*?)(?=STATE_UPDATE:|$)/i);
     
-    rewrittenChunks.push(textMatch ? textMatch[1].trim() : chunks[i]);
+    rewrittenChunks.push(stripMarkdown(textMatch ? textMatch[1].trim() : chunks[i]));
     if (changesMatch) {
       allChanges.push(`Chunk ${i + 1}: ${changesMatch[1].trim()}`);
     }
@@ -1682,7 +1703,7 @@ CRITICAL RULES:
 ORIGINAL TEXT:
 ${text}
 
-Output ONLY the rewritten text. No headers, no labels, no commentary.`;
+Output ONLY the rewritten text. No headers, no labels, no commentary, and NO MARKDOWN FORMATTING (no #, ##, *, **, -, etc.). Plain prose only.`;
 
   const message = await anthropic.messages.create({
     model: "claude-3-7-sonnet-20250219",
@@ -1692,7 +1713,7 @@ Output ONLY the rewritten text. No headers, no labels, no commentary.`;
     messages: [{ role: "user", content: userPrompt }]
   });
 
-  const rewrittenText = message.content[0].type === 'text' ? message.content[0].text : '';
+  const rewrittenText = stripMarkdown(message.content[0].type === 'text' ? message.content[0].text : '');
 
   const changesAnalysisPrompt = `Compare these two versions and explain what coherence changes were made (focus on internal consistency, clarity, structural improvements only):
 
@@ -1972,6 +1993,8 @@ OUTPUT FORMAT:
 First, output the completely rewritten text with all scientific corrections applied.
 Then add a separator "---CORRECTIONS---" followed by a numbered list of the scientific corrections you made.
 
+CRITICAL: Do NOT use any markdown formatting in the rewritten text. No #, ##, *, **, -, or any markdown symbols. Plain prose only.
+
 REWRITTEN TEXT:`;
 
   const message = await anthropic.messages.create({
@@ -1991,8 +2014,10 @@ REWRITTEN TEXT:`;
   
   if (separatorMatch) {
     const parts = fullOutput.split(/---CORRECTIONS---/i);
-    rewrittenText = parts[0].trim();
+    rewrittenText = stripMarkdown(parts[0].trim());
     correctionsSection = parts[1] ? parts[1].trim() : "";
+  } else {
+    rewrittenText = stripMarkdown(rewrittenText);
   }
 
   // Parse corrections into array
@@ -2217,7 +2242,7 @@ CRITICAL: Preserve ALL mathematical content exactly. Only improve structure, flo
 ORIGINAL PROOF:
 ${text}
 
-Output the structurally improved proof with NO commentary or headers - just the improved proof text.`;
+Output the structurally improved proof with NO commentary or headers - just the improved proof text. CRITICAL: Do NOT use any markdown formatting. No #, ##, *, **, -, or any markdown symbols. Plain prose only.`;
 
   const message = await anthropic.messages.create({
     model: "claude-3-7-sonnet-20250219",
@@ -2227,7 +2252,7 @@ Output the structurally improved proof with NO commentary or headers - just the 
     messages: [{ role: "user", content: userPrompt }]
   });
 
-  const rewrittenProof = message.content[0].type === 'text' ? message.content[0].text : '';
+  const rewrittenProof = stripMarkdown(message.content[0].type === 'text' ? message.content[0].text : '');
 
   // Analyze what structural changes were made
   const changesPrompt = `Compare these two versions of a proof and describe the STRUCTURAL changes made (not mathematical changes).
