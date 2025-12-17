@@ -3058,98 +3058,89 @@ Generated on: ${new Date().toLocaleString()}`;
                     <div className="space-y-3">
                       {/* Section 1: Reconstruction */}
                       <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg overflow-hidden">
-                        <details className="group">
-                          <summary className="flex items-center justify-between p-3 cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-800/30">
-                            <div className="flex items-center gap-2">
-                              <RefreshCw className="w-4 h-4 text-emerald-600" />
-                              <span className="font-medium text-emerald-800 dark:text-emerald-200">1. Reconstruction</span>
-                            </div>
-                            <ChevronDown className="w-4 h-4 text-emerald-600 group-open:rotate-180 transition-transform" />
-                          </summary>
-                          <div className="p-3 border-t border-emerald-200 dark:border-emerald-700">
-                            <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200 max-h-96 overflow-auto">
-                              {validatorBatchResults.filter(r => r.success)[0]?.output || "(No reconstruction output)"}
-                            </pre>
-                            <Button
-                              onClick={() => {
-                                navigator.clipboard.writeText(validatorBatchResults.filter(r => r.success)[0]?.output || "");
-                                toast({ title: "Copied!", description: "Reconstruction copied to clipboard." });
-                              }}
-                              size="sm"
-                              variant="outline"
-                              className="mt-2"
-                              data-testid="button-copy-reconstruction"
-                            >
-                              <Copy className="w-3 h-3 mr-1" />
-                              Copy Reconstruction
-                            </Button>
+                        <div className="flex items-center justify-between p-3 border-b border-emerald-200 dark:border-emerald-700">
+                          <div className="flex items-center gap-2">
+                            <RefreshCw className="w-4 h-4 text-emerald-600" />
+                            <span className="font-medium text-emerald-800 dark:text-emerald-200">1. Reconstruction</span>
                           </div>
-                        </details>
+                          <Button
+                            onClick={() => {
+                              navigator.clipboard.writeText(validatorBatchResults.filter(r => r.success)[0]?.output || "");
+                              toast({ title: "Copied!", description: "Reconstruction copied to clipboard." });
+                            }}
+                            size="sm"
+                            variant="outline"
+                            className="bg-emerald-100 dark:bg-emerald-800 border-emerald-300 dark:border-emerald-600"
+                            data-testid="button-copy-reconstruction"
+                          >
+                            <Copy className="w-3 h-3 mr-1" />
+                            Copy
+                          </Button>
+                        </div>
+                        <div className="p-3 max-h-64 overflow-auto">
+                          <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">
+                            {validatorBatchResults.filter(r => r.success)[0]?.output || "(No reconstruction output)"}
+                          </pre>
+                        </div>
                       </div>
 
                       {/* Section 2: Objections */}
                       <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg overflow-hidden">
-                        <details className="group">
-                          <summary className="flex items-center justify-between p-3 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-800/30">
-                            <div className="flex items-center gap-2">
-                              <AlertCircle className="w-4 h-4 text-amber-600" />
-                              <span className="font-medium text-amber-800 dark:text-amber-200">2. Objections & Counter-Arguments</span>
-                            </div>
-                            <ChevronDown className="w-4 h-4 text-amber-600 group-open:rotate-180 transition-transform" />
-                          </summary>
-                          <div className="p-3 border-t border-amber-200 dark:border-amber-700">
-                            <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200 max-h-96 overflow-auto">
-                              {objectionsOutput || "(No objections output)"}
-                            </pre>
-                            <Button
-                              onClick={() => {
-                                navigator.clipboard.writeText(objectionsOutput || "");
-                                toast({ title: "Copied!", description: "Objections copied to clipboard." });
-                              }}
-                              size="sm"
-                              variant="outline"
-                              className="mt-2"
-                              data-testid="button-copy-objections"
-                            >
-                              <Copy className="w-3 h-3 mr-1" />
-                              Copy Objections
-                            </Button>
+                        <div className="flex items-center justify-between p-3 border-b border-amber-200 dark:border-amber-700">
+                          <div className="flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 text-amber-600" />
+                            <span className="font-medium text-amber-800 dark:text-amber-200">2. Objections & Counter-Arguments (25)</span>
                           </div>
-                        </details>
+                          <Button
+                            onClick={() => {
+                              navigator.clipboard.writeText(objectionsOutput || "");
+                              toast({ title: "Copied!", description: "All 25 objections copied to clipboard." });
+                            }}
+                            size="sm"
+                            variant="outline"
+                            className="bg-amber-100 dark:bg-amber-800 border-amber-300 dark:border-amber-600"
+                            data-testid="button-copy-objections"
+                          >
+                            <Copy className="w-3 h-3 mr-1" />
+                            Copy All Objections
+                          </Button>
+                        </div>
+                        <div className="p-3 max-h-64 overflow-auto">
+                          <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">
+                            {objectionsOutput || "(No objections output)"}
+                          </pre>
+                        </div>
                       </div>
 
                       {/* Section 3: Objection-Proof Final Version */}
                       <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-700 rounded-lg overflow-hidden">
-                        <details className="group" open>
-                          <summary className="flex items-center justify-between p-3 cursor-pointer hover:bg-rose-100 dark:hover:bg-rose-800/30">
-                            <div className="flex items-center gap-2">
-                              <ShieldCheck className="w-4 h-4 text-rose-600" />
-                              <span className="font-medium text-rose-800 dark:text-rose-200">3. Objection-Proof Final Version</span>
-                              <Badge variant="outline" className="bg-rose-100 dark:bg-rose-800 text-rose-700 dark:text-rose-300 text-xs">
-                                Recommended
-                              </Badge>
-                            </div>
-                            <ChevronDown className="w-4 h-4 text-rose-600 group-open:rotate-180 transition-transform" />
-                          </summary>
-                          <div className="p-3 border-t border-rose-200 dark:border-rose-700">
-                            <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200 max-h-96 overflow-auto">
-                              {fullSuiteObjectionProofOutput || "(No objection-proof output)"}
-                            </pre>
-                            <Button
-                              onClick={() => {
-                                navigator.clipboard.writeText(fullSuiteObjectionProofOutput || "");
-                                toast({ title: "Copied!", description: "Objection-proof version copied to clipboard." });
-                              }}
-                              size="sm"
-                              variant="outline"
-                              className="mt-2"
-                              data-testid="button-copy-objection-proof"
-                            >
-                              <Copy className="w-3 h-3 mr-1" />
-                              Copy Final Version
-                            </Button>
+                        <div className="flex items-center justify-between p-3 border-b border-rose-200 dark:border-rose-700">
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className="w-4 h-4 text-rose-600" />
+                            <span className="font-medium text-rose-800 dark:text-rose-200">3. Objection-Proof Final Version</span>
+                            <Badge variant="outline" className="bg-rose-100 dark:bg-rose-800 text-rose-700 dark:text-rose-300 text-xs">
+                              Recommended
+                            </Badge>
                           </div>
-                        </details>
+                          <Button
+                            onClick={() => {
+                              navigator.clipboard.writeText(fullSuiteObjectionProofOutput || "");
+                              toast({ title: "Copied!", description: "Objection-proof version copied to clipboard." });
+                            }}
+                            size="sm"
+                            variant="outline"
+                            className="bg-rose-100 dark:bg-rose-800 border-rose-300 dark:border-rose-600"
+                            data-testid="button-copy-objection-proof"
+                          >
+                            <Copy className="w-3 h-3 mr-1" />
+                            Copy Final Version
+                          </Button>
+                        </div>
+                        <div className="p-3 max-h-96 overflow-auto">
+                          <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">
+                            {fullSuiteObjectionProofOutput || "(No objection-proof output)"}
+                          </pre>
+                        </div>
                       </div>
                     </div>
 
