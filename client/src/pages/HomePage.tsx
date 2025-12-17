@@ -577,9 +577,10 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       const data = await response.json();
       if (data.success && data.output) {
         setValidatorOutput(data.output);
+        setObjectionsInputText(data.output);
         toast({
           title: "Validation Complete!",
-          description: `Text validated using ${mode} mode`,
+          description: `Text validated using ${mode} mode. Reconstructed text has been loaded into the Objections input.`,
         });
       }
     } catch (error: any) {
