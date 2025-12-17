@@ -354,3 +354,132 @@ export type UserCredits = typeof userCredits.$inferSelect;
 
 export type InsertCreditTransaction = z.infer<typeof insertCreditTransactionSchema>;
 export type CreditTransaction = typeof creditTransactions.$inferSelect;
+
+// Cross-chunk coherence system tables
+export const coherenceDocuments = pgTable("coherence_documents", {
+  id: serial("id").primaryKey(),
+  documentId: text("document_id").notNull(),
+  coherenceMode: text("coherence_mode").notNull(),
+  globalState: jsonb("global_state").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const coherenceChunks = pgTable("coherence_chunks", {
+  id: serial("id").primaryKey(),
+  documentId: text("document_id").notNull(),
+  coherenceMode: text("coherence_mode").notNull(),
+  chunkIndex: integer("chunk_index").notNull(),
+  chunkText: text("chunk_text"),
+  evaluationResult: jsonb("evaluation_result"),
+  stateAfter: jsonb("state_after"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCoherenceDocumentSchema = createInsertSchema(coherenceDocuments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCoherenceChunkSchema = createInsertSchema(coherenceChunks).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCoherenceDocument = z.infer<typeof insertCoherenceDocumentSchema>;
+export type CoherenceDocument = typeof coherenceDocuments.$inferSelect;
+export type InsertCoherenceChunk = z.infer<typeof insertCoherenceChunkSchema>;
+export type CoherenceChunk = typeof coherenceChunks.$inferSelect;
+
+// Coherence mode types
+export type CoherenceModeType = 
+  | "logical_consistency"
+  | "logical_cohesiveness"
+  | "scientific_explanatory"
+  | "thematic_psychological"
+  | "instructional"
+  | "motivational"
+  | "mathematical"
+  | "philosophical";
+
+// State templates by mode
+export interface LogicalConsistencyState {
+  mode: "logical_consistency";
+  assertions: string[];
+  negations: string[];
+  disjoint_pairs: [string, string][];
+}
+
+export interface LogicalCohesivenessState {
+  mode: "logical_cohesiveness";
+  thesis: string;
+  support_queue: string[];
+  current_stage: "setup" | "development" | "conclusion";
+  bridge_required: string;
+}
+
+export interface ScientificExplanatoryState {
+  mode: "scientific_explanatory";
+  causal_nodes: string[];
+  causal_edges: { from: string; to: string; mechanism: string }[];
+  level: string;
+  active_feedback_loops: { name: string; nodes: string[] }[];
+  mechanism_requirements: string[];
+}
+
+export interface ThematicPsychologicalState {
+  mode: "thematic_psychological";
+  dominant_affect: string;
+  tempo: string;
+  stance: string;
+}
+
+export interface InstructionalState {
+  mode: "instructional";
+  goal: string;
+  steps_done: string[];
+  prereqs: string[];
+  open_loops: string[];
+}
+
+export interface MotivationalState {
+  mode: "motivational";
+  direction: "encourage" | "warn" | "pressure" | "reassure";
+  intensity: number;
+  target: string;
+}
+
+export interface MathematicalState {
+  mode: "mathematical";
+  givens: string[];
+  proved: string[];
+  goal: string;
+  proof_method: string;
+  dependencies: { step: string; depends_on: string[] }[];
+}
+
+export interface PhilosophicalState {
+  mode: "philosophical";
+  core_concepts: Record<string, string>;
+  distinctions: string[];
+  dialectic: { objections_raised: string[]; replies_pending: string[] };
+  no_equivocation: string[];
+}
+
+export type CoherenceState =
+  | LogicalConsistencyState
+  | LogicalCohesivenessState
+  | ScientificExplanatoryState
+  | ThematicPsychologicalState
+  | InstructionalState
+  | MotivationalState
+  | MathematicalState
+  | PhilosophicalState;
+
+export interface ChunkEvaluationResult {
+  status: "preserved" | "weakened" | "broken";
+  violations: { location: string; type: string; description: string }[];
+  repairs: { location: string; suggestion: string }[];
+  state_update: Partial<CoherenceState>;
+}
