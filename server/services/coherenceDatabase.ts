@@ -16,36 +16,36 @@ import type {
 } from "@shared/schema";
 import { v4 as uuidv4 } from "uuid";
 
-// Initialize state template for a given mode
+// Initialize state template for a given mode (using hyphenated format)
 export function createInitialState(mode: CoherenceModeType): CoherenceState {
   switch (mode) {
-    case "logical_consistency":
+    case "logical-consistency":
       return {
-        mode: "logical_consistency",
+        mode: "logical-consistency",
         assertions: [],
         negations: [],
         disjoint_pairs: []
       };
-    case "logical_cohesiveness":
+    case "logical-cohesiveness":
       return {
-        mode: "logical_cohesiveness",
+        mode: "logical-cohesiveness",
         thesis: "",
         support_queue: [],
         current_stage: "setup",
         bridge_required: ""
       };
-    case "scientific_explanatory":
+    case "scientific-explanatory":
       return {
-        mode: "scientific_explanatory",
+        mode: "scientific-explanatory",
         causal_nodes: [],
         causal_edges: [],
         level: "",
         active_feedback_loops: [],
         mechanism_requirements: []
       };
-    case "thematic_psychological":
+    case "thematic-psychological":
       return {
-        mode: "thematic_psychological",
+        mode: "thematic-psychological",
         dominant_affect: "",
         tempo: "",
         stance: ""
@@ -206,7 +206,7 @@ export function applyStateUpdate(
   const mode = currentState.mode;
   
   switch (mode) {
-    case "logical_consistency": {
+    case "logical-consistency": {
       const s = currentState as LogicalConsistencyState;
       const u = stateUpdate as Partial<LogicalConsistencyState>;
       return {
@@ -223,7 +223,7 @@ export function applyStateUpdate(
       };
     }
     
-    case "logical_cohesiveness": {
+    case "logical-cohesiveness": {
       const s = currentState as LogicalCohesivenessState;
       const u = stateUpdate as Partial<LogicalCohesivenessState>;
       return {
@@ -237,7 +237,7 @@ export function applyStateUpdate(
       };
     }
     
-    case "scientific_explanatory": {
+    case "scientific-explanatory": {
       const s = currentState as ScientificExplanatoryState;
       const u = stateUpdate as Partial<ScientificExplanatoryState>;
       // Remove resolved loops (any loops marked for removal in update)
@@ -260,7 +260,7 @@ export function applyStateUpdate(
       };
     }
     
-    case "thematic_psychological": {
+    case "thematic-psychological": {
       const s = currentState as ThematicPsychologicalState;
       const u = stateUpdate as Partial<ThematicPsychologicalState>;
       return {
@@ -359,7 +359,7 @@ export function checkViolations(
   const violations: { location: string; type: string; description: string }[] = [];
   
   switch (state.mode) {
-    case "logical_consistency": {
+    case "logical-consistency": {
       const s = state as LogicalConsistencyState;
       const u = stateUpdate as Partial<LogicalConsistencyState>;
       // Check if new assertions contradict negations
@@ -410,7 +410,7 @@ export function checkViolations(
       break;
     }
     
-    case "logical_cohesiveness": {
+    case "logical-cohesiveness": {
       const s = state as LogicalCohesivenessState;
       const u = stateUpdate as Partial<LogicalCohesivenessState>;
       // Check stage regression

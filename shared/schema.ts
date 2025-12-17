@@ -392,12 +392,12 @@ export type CoherenceDocument = typeof coherenceDocuments.$inferSelect;
 export type InsertCoherenceChunk = z.infer<typeof insertCoherenceChunkSchema>;
 export type CoherenceChunk = typeof coherenceChunks.$inferSelect;
 
-// Coherence mode types
+// Coherence mode types - using hyphenated format to match existing codebase
 export type CoherenceModeType = 
-  | "logical_consistency"
-  | "logical_cohesiveness"
-  | "scientific_explanatory"
-  | "thematic_psychological"
+  | "logical-consistency"
+  | "logical-cohesiveness"
+  | "scientific-explanatory"
+  | "thematic-psychological"
   | "instructional"
   | "motivational"
   | "mathematical"
@@ -405,14 +405,14 @@ export type CoherenceModeType =
 
 // State templates by mode
 export interface LogicalConsistencyState {
-  mode: "logical_consistency";
+  mode: "logical-consistency";
   assertions: string[];
   negations: string[];
   disjoint_pairs: [string, string][];
 }
 
 export interface LogicalCohesivenessState {
-  mode: "logical_cohesiveness";
+  mode: "logical-cohesiveness";
   thesis: string;
   support_queue: string[];
   current_stage: "setup" | "development" | "conclusion";
@@ -420,7 +420,7 @@ export interface LogicalCohesivenessState {
 }
 
 export interface ScientificExplanatoryState {
-  mode: "scientific_explanatory";
+  mode: "scientific-explanatory";
   causal_nodes: string[];
   causal_edges: { from: string; to: string; mechanism: string }[];
   level: string;
@@ -429,7 +429,7 @@ export interface ScientificExplanatoryState {
 }
 
 export interface ThematicPsychologicalState {
-  mode: "thematic_psychological";
+  mode: "thematic-psychological";
   dominant_affect: string;
   tempo: string;
   stance: string;

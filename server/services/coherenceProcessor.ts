@@ -75,19 +75,19 @@ IMPORTANT:
 
 function getEvaluationCriteria(mode: CoherenceModeType): string {
   switch (mode) {
-    case "logical_consistency":
+    case "logical-consistency":
       return `- PASS: no contradiction with prior assertions
 - FAIL: asserts X when ¬X already asserted, or asserts both members of a disjoint pair`;
     
-    case "logical_cohesiveness":
+    case "logical-cohesiveness":
       return `- PASS: advances argument, discharges support obligations, maintains stage progression
 - FAIL: restates without advancing, skips required bridges, regresses stage`;
     
-    case "scientific_explanatory":
+    case "scientific-explanatory":
       return `- PASS: extends causal graph, maintains level or bridges explicitly, keeps feedback loops active
 - FAIL: resets to slogan, drops mechanism, changes level without link`;
     
-    case "thematic_psychological":
+    case "thematic-psychological":
       return `- PASS: continues affect or signals transition
 - FAIL: abrupt mood break, unexplained tempo shift`;
     
@@ -120,16 +120,16 @@ TEXT:
 ${firstChunk.substring(0, 2000)}
 
 Choose ONE mode from:
-- logical_consistency: Arguments with claims that could contradict
-- logical_cohesiveness: Structured arguments with thesis and support
-- scientific_explanatory: Causal explanations with mechanisms
-- thematic_psychological: Emotional/tonal narrative
+- logical-consistency: Arguments with claims that could contradict
+- logical-cohesiveness: Structured arguments with thesis and support
+- scientific-explanatory: Causal explanations with mechanisms
+- thematic-psychological: Emotional/tonal narrative
 - instructional: Step-by-step instructions or procedures
 - motivational: Encouragement, warnings, or persuasion
 - mathematical: Mathematical proofs or formal derivations
 - philosophical: Conceptual analysis with distinctions
 
-Respond with ONLY the mode name (e.g., "logical_consistency"), no explanation.`;
+Respond with ONLY the mode name (e.g., "logical-consistency"), no explanation.`;
 
   try {
     const response = await openai.chat.completions.create({
@@ -141,18 +141,18 @@ Respond with ONLY the mode name (e.g., "logical_consistency"), no explanation.`;
 
     const mode = response.choices[0]?.message?.content?.trim().toLowerCase() as CoherenceModeType;
     const validModes: CoherenceModeType[] = [
-      "logical_consistency", "logical_cohesiveness", "scientific_explanatory",
-      "thematic_psychological", "instructional", "motivational",
+      "logical-consistency", "logical-cohesiveness", "scientific-explanatory",
+      "thematic-psychological", "instructional", "motivational",
       "mathematical", "philosophical"
     ];
 
     if (validModes.includes(mode)) {
       return mode;
     }
-    return "logical_cohesiveness"; // Default fallback
+    return "logical-cohesiveness"; // Default fallback
   } catch (error) {
     console.error("Auto-detect mode error:", error);
-    return "logical_cohesiveness";
+    return "logical-cohesiveness";
   }
 }
 
