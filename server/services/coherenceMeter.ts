@@ -37,74 +37,75 @@ export interface BaseCoherenceState {
   stateHistory: string[]; // Log of state transitions
 }
 
-// Logical Consistency State
+// LC_STATE: Logical Consistency (Non-Contradiction Only)
 export interface LogicalConsistencyState extends BaseCoherenceState {
   mode: "logical-consistency";
-  propositionsAsserted: string[];
-  negationsRuledOut: string[];
-  termsWithDefinitions: Record<string, string>;
+  assertions: string[];           // list of atomic claims already asserted
+  negations: string[];            // list of claims explicitly denied
+  disjoint_pairs: [string, string][]; // pairs that cannot both be true in this text's frame
 }
 
-// Logical Cohesiveness State
+// LCH_STATE: Logical Cohesiveness (Argument Structure)
 export interface LogicalCohesivenessState extends BaseCoherenceState {
   mode: "logical-cohesiveness";
-  argumentPosition: "premise" | "development" | "conclusion";
-  activeClaimsRequiringSupport: string[];
-  establishedPremises: string[];
+  thesis: string;                 // what the argument is trying to establish
+  support_queue: string[];        // claims promised but not yet supported
+  current_stage: "setup" | "support" | "objection" | "reply" | "synthesis" | "conclusion";
+  bridge_required: string;        // what must connect prior chunk to next
 }
 
-// Scientific/Explanatory State
+// SCI_STATE: Scientific/Explanatory (Mechanism Continuity)
 export interface ScientificExplanatoryState extends BaseCoherenceState {
   mode: "scientific-explanatory";
-  activeCausalVariables: string[];
-  causalLevel: "mechanism" | "system" | "policy" | "behavior";
-  feedbackLoopsIntroduced: { name: string; participants: string[]; status: "active" | "resolved" }[];
-  activeMechanisms: { cause: string; effect: string; mechanism: string; status: "active" | "resolved" | "abandoned" }[];
-  openThreads: { claim: string; requiredFollowUp: string }[];
+  causal_graph_nodes: string[];   // variables named so far (runoff, imperviousness, peak flow, etc.)
+  causal_edges: { from: string; to: string; direction: "+" | "-"; mechanism: string }[];
+  level: "physical" | "socio-economic" | "institutional" | "mixed";
+  active_feedback_loops: { name: string; participants: string[]; status: "active" | "resolved" }[];
+  mechanism_requirements: Record<string, string>; // for each major claim: what mechanism was given
 }
 
-// Thematic/Psychological State
+// THEME_STATE: Thematic/Psychological (Emotional & Mood Flow)
 export interface ThematicPsychologicalState extends BaseCoherenceState {
   mode: "thematic-psychological";
-  dominantAffect: string;
-  emotionalTrajectory: "stable" | "escalating" | "resolving" | "shifting";
-  activeThemes: string[];
-  toneRegister: string;
+  dominant_affect: string;        // anxious | sober | outraged | hopeful | etc.
+  tempo: "calm" | "urgent" | "escalating" | "resolving";
+  stance: string;                 // analytic | warning | elegiac | motivational | etc.
 }
 
-// Instructional State
+// INST_STATE: Instructional (Clear, Actionable Message)
 export interface InstructionalState extends BaseCoherenceState {
   mode: "instructional";
-  stepsAlreadyGiven: string[];
-  preconditionsAssumedSatisfied: string[];
-  goalState: string;
-  currentPhase: "setup" | "execution" | "verification" | "completion";
+  goal: string;                   // the target outcome the instructions aim at
+  steps_done: string[];           // ordered steps already provided
+  prereqs: string[];              // assumptions required before later steps
+  open_loops: string[];           // steps promised but not yet given
 }
 
-// Motivational State
+// MOT_STATE: Motivational (Consistent Emotional Direction)
 export interface MotivationalState extends BaseCoherenceState {
   mode: "motivational";
-  motivationDirection: "encourage" | "warn" | "pressure" | "reassure";
-  intensityTrend: "increasing" | "stable" | "decreasing";
-  activeMotivationalClaims: string[];
+  direction: "encourage" | "pressure" | "reassure" | "challenge" | "warn";
+  intensity: number;              // 1-5
+  target: string;                 // who is being motivated (reader, policymaker, student)
 }
 
-// Mathematical State
+// MATH_STATE: Mathematical (Proof Validity)
 export interface MathematicalState extends BaseCoherenceState {
   mode: "mathematical";
-  assumptionsInForce: string[];
-  proofStrategy: "direct" | "contradiction" | "induction" | "construction" | "cases";
-  lemmasEstablished: string[];
-  currentProofPosition: string;
+  givens: string[];               // axioms/assumptions introduced
+  proved: string[];               // lemmas established
+  goal: string;                   // theorem statement
+  proof_method: "direct" | "contradiction" | "induction" | "construction" | "cases";
+  dependencies: Record<string, string[]>; // what each step relies on
 }
 
-// Philosophical State
+// PHIL_STATE: Philosophical (Conceptual Rigor; Dialectical Engagement)
 export interface PhilosophicalState extends BaseCoherenceState {
   mode: "philosophical";
-  coreConceptsWithRoles: Record<string, string>;
-  distinctionsDrawn: string[];
-  dialecticalPosition: string;
-  activeConceptualThreads: string[];
+  core_concepts: Record<string, string>; // term → role
+  distinctions: [string, string][];      // A vs B pairs
+  dialectic: { objections_raised: string[]; replies_pending: string[] };
+  no_equivocation: string[];             // list of terms that must not silently change meaning
 }
 
 // Union type for all coherence states
@@ -118,13 +119,93 @@ export type GlobalCoherenceState =
   | MathematicalState
   | PhilosophicalState;
 
-// State diff for tracking changes between chunks
+// Mode-specific diff payloads matching each template's fields
+export interface LogicalConsistencyDiff {
+  mode: "logical-consistency";
+  new_assertions: string[];
+  new_negations: string[];
+  new_disjoint_pairs: [string, string][];
+  contradictions_detected: string[]; // If any, marks FAIL
+}
+
+export interface LogicalCohesivenessDiff {
+  mode: "logical-cohesiveness";
+  thesis_update: string | null;
+  claims_supported: string[];       // Move from support_queue when supported
+  new_claims_requiring_support: string[];
+  stage_shift: { from: string; to: string } | null;
+  bridge_for_next_chunk: string;
+}
+
+export interface ScientificExplanatoryDiff {
+  mode: "scientific-explanatory";
+  new_causal_nodes: string[];
+  new_causal_edges: { from: string; to: string; direction: "+" | "-"; mechanism: string }[];
+  new_feedback_loops: { name: string; participants: string[] }[];
+  resolved_loops: string[];
+  level_shift: { from: string; to: string } | null;
+  mechanism_requirements_added: Record<string, string>;
+}
+
+export interface ThematicPsychologicalDiff {
+  mode: "thematic-psychological";
+  affect_change: { from: string; to: string } | null;
+  tempo_change: { from: string; to: string } | null;
+  stance_change: { from: string; to: string } | null;
+}
+
+export interface InstructionalDiff {
+  mode: "instructional";
+  new_steps: string[];
+  prereqs_satisfied: string[];
+  new_open_loops: string[];
+  loops_closed: string[];
+}
+
+export interface MotivationalDiff {
+  mode: "motivational";
+  direction_change: { from: string; to: string } | null;
+  intensity_change: { from: number; to: number } | null;
+  target_change: string | null;
+}
+
+export interface MathematicalDiff {
+  mode: "mathematical";
+  new_givens: string[];
+  new_proved: string[];
+  goal_update: string | null;
+  method_change: { from: string; to: string } | null;
+  new_dependencies: Record<string, string[]>;
+}
+
+export interface PhilosophicalDiff {
+  mode: "philosophical";
+  new_concepts: Record<string, string>;  // term → role
+  new_distinctions: [string, string][];
+  new_objections: string[];
+  objections_replied: string[];
+  equivocation_violations: string[];     // If any, marks FAIL
+}
+
+// Union type for all mode-specific diffs
+export type ModeSpecificDiff = 
+  | LogicalConsistencyDiff
+  | LogicalCohesivenessDiff
+  | ScientificExplanatoryDiff
+  | ThematicPsychologicalDiff
+  | InstructionalDiff
+  | MotivationalDiff
+  | MathematicalDiff
+  | PhilosophicalDiff;
+
+// Backwards-compatible generic diff (for parsing fallback)
 export interface CoherenceStateDiff {
   newElements: string[];
   resolvedElements: string[];
   abandonedElements: string[];
   levelOrPhaseShift: { from: string; to: string } | null;
   trajectoryChange: { from: string; to: string } | null;
+  modeSpecific?: ModeSpecificDiff;
 }
 
 // Legacy interfaces for backward compatibility
@@ -199,361 +280,532 @@ export function initializeGCS(mode: string, gco: GlobalContextObject): GlobalCoh
       return {
         mode: "logical-consistency",
         stateHistory: baseHistory,
-        propositionsAsserted: gco.keyConcepts || [],
-        negationsRuledOut: [],
-        termsWithDefinitions: {}
+        assertions: gco.keyConcepts || [],
+        negations: [],
+        disjoint_pairs: []
       };
     
     case "logical-cohesiveness":
       return {
         mode: "logical-cohesiveness",
         stateHistory: baseHistory,
-        argumentPosition: "premise",
-        activeClaimsRequiringSupport: gco.argumentDirection ? [gco.argumentDirection] : [],
-        establishedPremises: []
+        thesis: gco.argumentDirection || "",
+        support_queue: gco.keyConcepts || [],
+        current_stage: "setup",
+        bridge_required: ""
       };
     
     case "scientific-explanatory":
       return {
         mode: "scientific-explanatory",
         stateHistory: baseHistory,
-        activeCausalVariables: gco.keyConcepts || [],
-        causalLevel: detectCausalLevel(gco),
-        feedbackLoopsIntroduced: [],
-        activeMechanisms: gco.centralFramework ? [{
-          cause: "Central framework",
-          effect: gco.centralFramework,
-          mechanism: gco.centralFramework,
-          status: "active"
-        }] : [],
-        openThreads: gco.argumentDirection ? [{
-          claim: gco.argumentDirection,
-          requiredFollowUp: "Must be developed throughout"
-        }] : []
+        causal_graph_nodes: gco.keyConcepts || [],
+        causal_edges: [],
+        level: detectCausalLevel(gco),
+        active_feedback_loops: [],
+        mechanism_requirements: {}
       };
     
     case "thematic-psychological":
       return {
         mode: "thematic-psychological",
         stateHistory: baseHistory,
-        dominantAffect: gco.emotionalTrajectory || "neutral",
-        emotionalTrajectory: "stable",
-        activeThemes: gco.coreTopics || [],
-        toneRegister: "formal"
+        dominant_affect: gco.emotionalTrajectory || "neutral",
+        tempo: "calm",
+        stance: "analytic"
       };
     
     case "instructional":
       return {
         mode: "instructional",
         stateHistory: baseHistory,
-        stepsAlreadyGiven: [],
-        preconditionsAssumedSatisfied: [],
-        goalState: gco.instructionalGoal || "Complete the task",
-        currentPhase: "setup"
+        goal: gco.instructionalGoal || "Complete the task",
+        steps_done: [],
+        prereqs: [],
+        open_loops: []
       };
     
     case "motivational":
       return {
         mode: "motivational",
         stateHistory: baseHistory,
-        motivationDirection: "encourage",
-        intensityTrend: "stable",
-        activeMotivationalClaims: []
+        direction: "encourage",
+        intensity: 3,
+        target: "reader"
       };
     
     case "mathematical":
       return {
         mode: "mathematical",
         stateHistory: baseHistory,
-        assumptionsInForce: gco.mathematicalAssumptions ? [gco.mathematicalAssumptions] : [],
-        proofStrategy: "direct",
-        lemmasEstablished: [],
-        currentProofPosition: "beginning"
+        givens: gco.mathematicalAssumptions ? [gco.mathematicalAssumptions] : [],
+        proved: [],
+        goal: "",
+        proof_method: "direct",
+        dependencies: {}
       };
     
     case "philosophical":
       return {
         mode: "philosophical",
         stateHistory: baseHistory,
-        coreConceptsWithRoles: {},
-        distinctionsDrawn: [],
-        dialecticalPosition: gco.argumentDirection || "exploring",
-        activeConceptualThreads: gco.keyConcepts || []
+        core_concepts: {},
+        distinctions: [],
+        dialectic: { objections_raised: [], replies_pending: [] },
+        no_equivocation: gco.keyConcepts || []
       };
     
     default:
       return {
         mode: "logical-consistency",
         stateHistory: baseHistory,
-        propositionsAsserted: [],
-        negationsRuledOut: [],
-        termsWithDefinitions: {}
+        assertions: [],
+        negations: [],
+        disjoint_pairs: []
       };
   }
 }
 
-function detectCausalLevel(gco: GlobalContextObject): "mechanism" | "system" | "policy" | "behavior" {
+function detectCausalLevel(gco: GlobalContextObject): "physical" | "socio-economic" | "institutional" | "mixed" {
   const conceptsLower = (gco.keyConcepts || []).map(c => c.toLowerCase()).join(" ");
-  if (conceptsLower.includes("policy") || conceptsLower.includes("regulation")) return "policy";
-  if (conceptsLower.includes("system") || conceptsLower.includes("network")) return "system";
-  if (conceptsLower.includes("behavior") || conceptsLower.includes("action")) return "behavior";
-  return "mechanism";
+  if (conceptsLower.includes("policy") || conceptsLower.includes("regulation") || conceptsLower.includes("institution")) return "institutional";
+  if (conceptsLower.includes("economic") || conceptsLower.includes("social") || conceptsLower.includes("behavior")) return "socio-economic";
+  if (conceptsLower.includes("physical") || conceptsLower.includes("mechanism") || conceptsLower.includes("hydro")) return "physical";
+  return "mixed";
 }
 
-// Serialize GCS for injection into prompts
+// Serialize GCS for injection into prompts with worked examples
 export function serializeGCS(state: GlobalCoherenceState): string {
   const mode = state.mode;
   let stateDetails = "";
+  let workedExample = "";
   
   switch (mode) {
     case "logical-consistency": {
       const s = state as LogicalConsistencyState;
       stateDetails = `
-- Propositions Asserted: ${s.propositionsAsserted.join(", ") || "None yet"}
-- Negations Ruled Out: ${s.negationsRuledOut.join(", ") || "None yet"}
-- Terms Defined: ${Object.entries(s.termsWithDefinitions).map(([k, v]) => `${k}=${v}`).join(", ") || "None yet"}`;
+LC_STATE:
+- assertions: [${s.assertions.join(", ") || "None yet"}]
+- negations: [${s.negations.join(", ") || "None"}]
+- disjoint_pairs: [${s.disjoint_pairs.map(([a, b]) => `(${a}, ${b})`).join(", ") || "None"}]`;
+      workedExample = `
+WORKED EXAMPLE:
+- Chunk 1: "Levees reduce small floods." → assertions += [levees_reduce_small_floods]
+- Chunk 3: "Levees do not reduce small floods." → CONTRADICTION → FAIL
+- Chunk 3: "Levees reduce small floods but increase catastrophic risk." → PASS (not contradiction)`;
       break;
     }
     case "logical-cohesiveness": {
       const s = state as LogicalCohesivenessState;
       stateDetails = `
-- Argument Position: ${s.argumentPosition.toUpperCase()}
-- Claims Requiring Support: ${s.activeClaimsRequiringSupport.join(", ") || "None"}
-- Established Premises: ${s.establishedPremises.join(", ") || "None yet"}`;
+LCH_STATE:
+- thesis: "${s.thesis || "Not yet established"}"
+- support_queue: [${s.support_queue.join(", ") || "Empty"}]
+- current_stage: ${s.current_stage.toUpperCase()}
+- bridge_required: "${s.bridge_required || "None"}"`;
+      workedExample = `
+WORKED EXAMPLE:
+- Chunk 1 thesis: "Flood control fails due to feedback loops."
+- Chunk 2: adds example of treadmill effect → advances support → PASS
+- Chunk 3: restates "feedback loops exist" with no new support → stall → FAIL
+- Chunk 4: introduces "insurance incentives" without linking to thesis → missing bridge → FAIL unless it connects: "Insurance subsidies amplify the treadmill by..."`;
       break;
     }
     case "scientific-explanatory": {
       const s = state as ScientificExplanatoryState;
-      const activeMechs = s.activeMechanisms.filter(m => m.status === "active");
+      const activeLoops = s.active_feedback_loops.filter(l => l.status === "active");
       stateDetails = `
-- Causal Level: ${s.causalLevel.toUpperCase()}
-- Active Causal Variables: ${s.activeCausalVariables.join(", ") || "None"}
-- Active Mechanisms (${activeMechs.length}):
-${activeMechs.map(m => `  * ${m.cause} → ${m.effect} via ${m.mechanism}`).join("\n") || "  None yet"}
-- Feedback Loops: ${s.feedbackLoopsIntroduced.filter(l => l.status === "active").map(l => l.name).join(", ") || "None"}
-- Open Threads: ${s.openThreads.map(t => t.claim).join(", ") || "None"}`;
+SCI_STATE:
+- causal_graph_nodes: [${s.causal_graph_nodes.join(", ") || "None"}]
+- causal_edges: [${s.causal_edges.map(e => `${e.from} →${e.direction} ${e.to}`).join(", ") || "None"}]
+- level: ${s.level.toUpperCase()}
+- active_feedback_loops: [${activeLoops.map(l => l.name).join(", ") || "None"}]
+- mechanism_requirements: {${Object.entries(s.mechanism_requirements).map(([k, v]) => `"${k}": "${v}"`).join(", ") || ""}}`;
+      workedExample = `
+WORKED EXAMPLE:
+- Chunk 1: "impervious surfaces ↑ → infiltration ↓ → runoff ↑" → store as edges
+- Next chunk: "Drainage expansion induces development."
+- To be coherent, it MUST carry through mechanism: "Drainage capacity ↑ → perceived risk ↓ → development ↑ → imperviousness ↑ → runoff ↑"
+- If chunk merely says "feedback loops happen" without edges → FAIL (resets from mechanism to slogan)
+- PASS conditions: extend loop, use loop to explain new phenomenon, or explicitly close it`;
       break;
     }
     case "thematic-psychological": {
       const s = state as ThematicPsychologicalState;
       stateDetails = `
-- Dominant Affect: ${s.dominantAffect}
-- Emotional Trajectory: ${s.emotionalTrajectory}
-- Active Themes: ${s.activeThemes.join(", ") || "None"}
-- Tone Register: ${s.toneRegister}`;
+THEME_STATE:
+- dominant_affect: ${s.dominant_affect}
+- tempo: ${s.tempo}
+- stance: ${s.stance}`;
+      workedExample = `
+WORKED EXAMPLE:
+- Chunk 1: sober/analytic tone
+- Chunk 2 shifts to alarmist moralizing ("disastrous betrayal...") with no ramp → FAIL
+- Chunk 2 shifts to cautionary warning but signals it ("This is where the risk becomes political...") → PASS`;
       break;
     }
     case "instructional": {
       const s = state as InstructionalState;
       stateDetails = `
-- Current Phase: ${s.currentPhase.toUpperCase()}
-- Steps Already Given: ${s.stepsAlreadyGiven.join(", ") || "None yet"}
-- Preconditions Satisfied: ${s.preconditionsAssumedSatisfied.join(", ") || "None"}
-- Goal State: ${s.goalState}`;
+INST_STATE:
+- goal: "${s.goal}"
+- steps_done: [${s.steps_done.join(", ") || "None yet"}]
+- prereqs: [${s.prereqs.join(", ") || "None"}]
+- open_loops: [${s.open_loops.join(", ") || "None"}]`;
+      workedExample = `
+WORKED EXAMPLE:
+- Chunk 1: Step 1 "Map drainage basins." Step 2 "Identify choke points."
+- Chunk 2 jumps to "Implement permeable pavement" without prerequisites ("identify candidate corridors") → FAIL
+- Chunk 2 includes missing prereq step → PASS`;
       break;
     }
     case "motivational": {
       const s = state as MotivationalState;
       stateDetails = `
-- Motivation Direction: ${s.motivationDirection.toUpperCase()}
-- Intensity Trend: ${s.intensityTrend}
-- Active Claims: ${s.activeMotivationalClaims.join(", ") || "None"}`;
+MOT_STATE:
+- direction: ${s.direction.toUpperCase()}
+- intensity: ${s.intensity}/5
+- target: ${s.target}`;
+      workedExample = `
+WORKED EXAMPLE:
+- Chunk 1: reassure (2/5) "manageable with planning"
+- Chunk 2: doom (5/5) "hopeless unless revolution" → reversal → FAIL
+- Chunk 2: escalate to urgency (3/5) with continuity → PASS`;
       break;
     }
     case "mathematical": {
       const s = state as MathematicalState;
       stateDetails = `
-- Proof Strategy: ${s.proofStrategy.toUpperCase()}
-- Assumptions In Force: ${s.assumptionsInForce.join(", ") || "None"}
-- Lemmas Established: ${s.lemmasEstablished.join(", ") || "None yet"}
-- Current Position: ${s.currentProofPosition}`;
+MATH_STATE:
+- givens: [${s.givens.join(", ") || "None"}]
+- proved: [${s.proved.join(", ") || "None yet"}]
+- goal: "${s.goal || "Not stated"}"
+- proof_method: ${s.proof_method.toUpperCase()}
+- dependencies: {${Object.entries(s.dependencies).map(([k, v]) => `"${k}": [${v.join(", ")}]`).join(", ") || ""}}`;
+      workedExample = `
+WORKED EXAMPLE:
+- Chunk 1 defines assumption A and aims to prove T.
+- Chunk 2 uses lemma L without proving it or citing it as known → FAIL
+- Chunk 2 proves L then uses it → PASS`;
       break;
     }
     case "philosophical": {
       const s = state as PhilosophicalState;
       stateDetails = `
-- Dialectical Position: ${s.dialecticalPosition}
-- Distinctions Drawn: ${s.distinctionsDrawn.join(", ") || "None yet"}
-- Core Concepts: ${Object.entries(s.coreConceptsWithRoles).map(([k, v]) => `${k}(${v})`).join(", ") || "None defined"}
-- Active Threads: ${s.activeConceptualThreads.join(", ") || "None"}`;
+PHIL_STATE:
+- core_concepts: {${Object.entries(s.core_concepts).map(([k, v]) => `"${k}": "${v}"`).join(", ") || ""}}
+- distinctions: [${s.distinctions.map(([a, b]) => `(${a} vs ${b})`).join(", ") || "None"}]
+- dialectic: {objections: [${s.dialectic.objections_raised.join(", ")}], replies_pending: [${s.dialectic.replies_pending.join(", ")}]}
+- no_equivocation: [${s.no_equivocation.join(", ") || "None"}]`;
+      workedExample = `
+WORKED EXAMPLE:
+- Chunk 1: "structural cause" = policy/institutional determinants.
+- Chunk 3 uses "structural" to mean "physical infrastructure" → EQUIVOCATION → FAIL
+- Chunk 3 explicitly marks shift ("structural in the engineering sense") → PASS`;
       break;
     }
+  }
+  
+  // Add expected diff format for this mode
+  let expectedDiffFormat = "";
+  switch (mode) {
+    case "logical-consistency":
+      expectedDiffFormat = `
+EXPECTED STATE_UPDATE FORMAT:
+{"mode":"logical-consistency","new_assertions":["..."],"new_negations":["..."],"new_disjoint_pairs":[["A","B"]],"contradictions_detected":["..."]}`;
+      break;
+    case "logical-cohesiveness":
+      expectedDiffFormat = `
+EXPECTED STATE_UPDATE FORMAT:
+{"mode":"logical-cohesiveness","thesis_update":"...or null","claims_supported":["..."],"new_claims_requiring_support":["..."],"stage_shift":{"from":"setup","to":"support"},"bridge_for_next_chunk":"..."}`;
+      break;
+    case "scientific-explanatory":
+      expectedDiffFormat = `
+EXPECTED STATE_UPDATE FORMAT:
+{"mode":"scientific-explanatory","new_causal_nodes":["..."],"new_causal_edges":[{"from":"X","to":"Y","direction":"+","mechanism":"..."}],"new_feedback_loops":[{"name":"...","participants":["..."]}],"resolved_loops":["..."],"level_shift":null,"mechanism_requirements_added":{"claim":"mechanism"}}`;
+      break;
+    case "thematic-psychological":
+      expectedDiffFormat = `
+EXPECTED STATE_UPDATE FORMAT:
+{"mode":"thematic-psychological","affect_change":{"from":"sober","to":"urgent"},"tempo_change":{"from":"calm","to":"escalating"},"stance_change":null}`;
+      break;
+    case "instructional":
+      expectedDiffFormat = `
+EXPECTED STATE_UPDATE FORMAT:
+{"mode":"instructional","new_steps":["..."],"prereqs_satisfied":["..."],"new_open_loops":["..."],"loops_closed":["..."]}`;
+      break;
+    case "motivational":
+      expectedDiffFormat = `
+EXPECTED STATE_UPDATE FORMAT:
+{"mode":"motivational","direction_change":{"from":"encourage","to":"warn"},"intensity_change":{"from":2,"to":4},"target_change":null}`;
+      break;
+    case "mathematical":
+      expectedDiffFormat = `
+EXPECTED STATE_UPDATE FORMAT:
+{"mode":"mathematical","new_givens":["..."],"new_proved":["..."],"goal_update":"...or null","method_change":null,"new_dependencies":{"step":"[deps]"}}`;
+      break;
+    case "philosophical":
+      expectedDiffFormat = `
+EXPECTED STATE_UPDATE FORMAT:
+{"mode":"philosophical","new_concepts":{"term":"role"},"new_distinctions":[["A","B"]],"new_objections":["..."],"objections_replied":["..."],"equivocation_violations":["..."]}`;
+      break;
   }
   
   return `
 GLOBAL COHERENCE STATE (must be preserved or deliberately evolved):
 Mode: ${mode.toUpperCase().replace(/-/g, " ")}
-${stateDetails}`;
+${stateDetails}
+${workedExample}
+${expectedDiffFormat}`;
 }
 
-// Update GCS after processing a chunk - applies diff to mode-specific state fields
+// Update GCS after processing a chunk - applies mode-specific diffs to state fields
 export function updateGCS(state: GlobalCoherenceState, diff: CoherenceStateDiff, chunkIndex: number): GlobalCoherenceState {
   const historyEntry = buildHistoryEntry(diff, chunkIndex);
   const newHistory = [...state.stateHistory, historyEntry];
   
-  // Apply diff to mode-specific state fields
+  // If mode-specific diff is available, use it; otherwise fall back to generic
+  const ms = diff.modeSpecific;
+  
   switch (state.mode) {
     case "logical-consistency": {
       const s = state as LogicalConsistencyState;
-      // Add new propositions, remove resolved ones
-      const newProps = [...s.propositionsAsserted, ...diff.newElements];
-      const filteredProps = newProps.filter(p => !diff.resolvedElements.includes(p) && !diff.abandonedElements.includes(p));
+      if (ms && ms.mode === "logical-consistency") {
+        const d = ms as LogicalConsistencyDiff;
+        return {
+          ...s,
+          stateHistory: newHistory,
+          assertions: [...s.assertions, ...d.new_assertions],
+          negations: [...s.negations, ...d.new_negations],
+          disjoint_pairs: [...s.disjoint_pairs, ...d.new_disjoint_pairs]
+        };
+      }
+      // Fallback to generic
       return {
         ...s,
         stateHistory: newHistory,
-        propositionsAsserted: filteredProps,
-        negationsRuledOut: [...s.negationsRuledOut, ...diff.abandonedElements]
+        assertions: [...s.assertions, ...diff.newElements],
+        negations: [...s.negations, ...diff.abandonedElements]
       };
     }
     
     case "logical-cohesiveness": {
       const s = state as LogicalCohesivenessState;
-      // Move claims from requiring support to established premises when resolved
-      const newClaims = [...s.activeClaimsRequiringSupport, ...diff.newElements];
-      const stillActiveOnes = newClaims.filter(c => !diff.resolvedElements.includes(c) && !diff.abandonedElements.includes(c));
-      const newEstablished = [...s.establishedPremises, ...diff.resolvedElements];
-      // Handle argument position shifts
-      let newPosition = s.argumentPosition;
+      if (ms && ms.mode === "logical-cohesiveness") {
+        const d = ms as LogicalCohesivenessDiff;
+        const newQueue = [...s.support_queue, ...d.new_claims_requiring_support]
+          .filter(c => !d.claims_supported.includes(c));
+        let newStage = s.current_stage;
+        if (d.stage_shift) {
+          newStage = d.stage_shift.to as typeof s.current_stage;
+        }
+        return {
+          ...s,
+          stateHistory: newHistory,
+          thesis: d.thesis_update || s.thesis,
+          support_queue: newQueue,
+          current_stage: newStage,
+          bridge_required: d.bridge_for_next_chunk || s.bridge_required
+        };
+      }
+      // Fallback
+      let newStage = s.current_stage;
       if (diff.levelOrPhaseShift) {
-        newPosition = diff.levelOrPhaseShift.to as "premise" | "development" | "conclusion";
+        newStage = diff.levelOrPhaseShift.to as typeof s.current_stage;
       }
       return {
         ...s,
         stateHistory: newHistory,
-        argumentPosition: newPosition,
-        activeClaimsRequiringSupport: stillActiveOnes,
-        establishedPremises: newEstablished
+        support_queue: [...s.support_queue, ...diff.newElements].filter(c => !diff.resolvedElements.includes(c)),
+        current_stage: newStage
       };
     }
     
     case "scientific-explanatory": {
       const s = state as ScientificExplanatoryState;
-      // Update causal variables
-      const newVars = [...s.activeCausalVariables, ...diff.newElements.filter(e => !s.activeCausalVariables.includes(e))];
-      // Update mechanisms - mark resolved ones
-      const updatedMechs = s.activeMechanisms.map(m => 
-        diff.resolvedElements.some(r => m.mechanism.includes(r)) ? { ...m, status: "resolved" as const } :
-        diff.abandonedElements.some(a => m.mechanism.includes(a)) ? { ...m, status: "abandoned" as const } : m
-      );
-      // Update open threads
-      const updatedThreads = s.openThreads.filter(t => !diff.resolvedElements.some(r => t.claim.includes(r)));
-      // Handle causal level shifts
-      let newLevel = s.causalLevel;
+      if (ms && ms.mode === "scientific-explanatory") {
+        const d = ms as ScientificExplanatoryDiff;
+        const newNodes = [...s.causal_graph_nodes, ...d.new_causal_nodes.filter(n => !s.causal_graph_nodes.includes(n))];
+        const newEdges = [...s.causal_edges, ...d.new_causal_edges];
+        // Add new loops, then REMOVE resolved ones entirely (not just status flip)
+        const existingActiveLoops = s.active_feedback_loops.filter(l => !d.resolved_loops.includes(l.name));
+        const newLoopsToAdd = d.new_feedback_loops.map(l => ({ ...l, status: "active" as const }));
+        const finalActiveLoops = [...existingActiveLoops, ...newLoopsToAdd];
+        const newMechReqs = { ...s.mechanism_requirements, ...d.mechanism_requirements_added };
+        let newLevel = s.level;
+        if (d.level_shift) {
+          newLevel = d.level_shift.to as typeof s.level;
+        }
+        return {
+          ...s,
+          stateHistory: newHistory,
+          causal_graph_nodes: newNodes,
+          causal_edges: newEdges,
+          level: newLevel,
+          active_feedback_loops: finalActiveLoops,
+          mechanism_requirements: newMechReqs
+        };
+      }
+      // Fallback
+      let newLevel = s.level;
       if (diff.levelOrPhaseShift) {
-        newLevel = diff.levelOrPhaseShift.to as "mechanism" | "system" | "policy" | "behavior";
+        newLevel = diff.levelOrPhaseShift.to as typeof s.level;
       }
       return {
         ...s,
         stateHistory: newHistory,
-        activeCausalVariables: newVars,
-        causalLevel: newLevel,
-        activeMechanisms: updatedMechs,
-        openThreads: updatedThreads
+        causal_graph_nodes: [...s.causal_graph_nodes, ...diff.newElements.filter(e => !s.causal_graph_nodes.includes(e))],
+        level: newLevel
       };
     }
     
     case "thematic-psychological": {
       const s = state as ThematicPsychologicalState;
-      // Update themes
-      const newThemes = [...s.activeThemes, ...diff.newElements.filter(e => !s.activeThemes.includes(e))];
-      const filteredThemes = newThemes.filter(t => !diff.resolvedElements.includes(t));
-      // Handle trajectory changes
-      let newTrajectory = s.emotionalTrajectory;
-      if (diff.trajectoryChange) {
-        newTrajectory = diff.trajectoryChange.to as "stable" | "escalating" | "resolving" | "shifting";
+      if (ms && ms.mode === "thematic-psychological") {
+        const d = ms as ThematicPsychologicalDiff;
+        return {
+          ...s,
+          stateHistory: newHistory,
+          dominant_affect: d.affect_change?.to || s.dominant_affect,
+          tempo: (d.tempo_change?.to as typeof s.tempo) || s.tempo,
+          stance: d.stance_change?.to || s.stance
+        };
       }
+      // Fallback
       return {
         ...s,
         stateHistory: newHistory,
-        activeThemes: filteredThemes,
-        emotionalTrajectory: newTrajectory
+        dominant_affect: diff.levelOrPhaseShift?.to || s.dominant_affect,
+        tempo: (diff.trajectoryChange?.to as typeof s.tempo) || s.tempo
       };
     }
     
     case "instructional": {
       const s = state as InstructionalState;
-      // Add new steps as completed, resolve preconditions
-      const newSteps = [...s.stepsAlreadyGiven, ...diff.newElements];
-      const newPreconditions = [...s.preconditionsAssumedSatisfied, ...diff.resolvedElements];
-      // Handle phase shifts
-      let newPhase = s.currentPhase;
-      if (diff.levelOrPhaseShift) {
-        newPhase = diff.levelOrPhaseShift.to as "setup" | "execution" | "verification" | "completion";
+      if (ms && ms.mode === "instructional") {
+        const d = ms as InstructionalDiff;
+        // prereqs_satisfied means those prereqs are now met - REMOVE them from pending prereqs
+        const remainingPrereqs = s.prereqs.filter(p => !d.prereqs_satisfied.includes(p));
+        return {
+          ...s,
+          stateHistory: newHistory,
+          steps_done: [...s.steps_done, ...d.new_steps],
+          prereqs: remainingPrereqs,
+          open_loops: [...s.open_loops.filter(l => !d.loops_closed.includes(l)), ...d.new_open_loops]
+        };
       }
+      // Fallback - resolvedElements = prereqs now satisfied, remove them
       return {
         ...s,
         stateHistory: newHistory,
-        stepsAlreadyGiven: newSteps,
-        preconditionsAssumedSatisfied: newPreconditions,
-        currentPhase: newPhase
+        steps_done: [...s.steps_done, ...diff.newElements],
+        prereqs: s.prereqs.filter(p => !diff.resolvedElements.includes(p)),
+        open_loops: s.open_loops.filter(l => !diff.resolvedElements.includes(l))
       };
     }
     
     case "motivational": {
       const s = state as MotivationalState;
-      // Update claims
-      const newClaims = [...s.activeMotivationalClaims, ...diff.newElements];
-      const filteredClaims = newClaims.filter(c => !diff.resolvedElements.includes(c));
-      // Handle direction and intensity changes
-      let newDirection = s.motivationDirection;
-      let newIntensity = s.intensityTrend;
-      if (diff.levelOrPhaseShift) {
-        newDirection = diff.levelOrPhaseShift.to as "encourage" | "warn" | "pressure" | "reassure";
+      if (ms && ms.mode === "motivational") {
+        const d = ms as MotivationalDiff;
+        return {
+          ...s,
+          stateHistory: newHistory,
+          direction: (d.direction_change?.to as typeof s.direction) || s.direction,
+          intensity: d.intensity_change?.to ?? s.intensity,
+          target: d.target_change || s.target
+        };
       }
+      // Fallback
+      let newDirection = s.direction;
+      if (diff.levelOrPhaseShift) {
+        newDirection = diff.levelOrPhaseShift.to as typeof s.direction;
+      }
+      let newIntensity = s.intensity;
       if (diff.trajectoryChange) {
-        newIntensity = diff.trajectoryChange.to as "increasing" | "stable" | "decreasing";
+        const trend = diff.trajectoryChange.to;
+        if (trend === "increasing") newIntensity = Math.min(5, s.intensity + 1);
+        else if (trend === "decreasing") newIntensity = Math.max(1, s.intensity - 1);
       }
       return {
         ...s,
         stateHistory: newHistory,
-        activeMotivationalClaims: filteredClaims,
-        motivationDirection: newDirection,
-        intensityTrend: newIntensity
+        direction: newDirection,
+        intensity: newIntensity
       };
     }
     
     case "mathematical": {
       const s = state as MathematicalState;
-      // Add new lemmas/assumptions
-      const newAssumptions = [...s.assumptionsInForce, ...diff.newElements.filter(e => !s.assumptionsInForce.includes(e))];
-      const newLemmas = [...s.lemmasEstablished, ...diff.resolvedElements];
-      // Handle proof strategy shifts
-      let newStrategy = s.proofStrategy;
+      if (ms && ms.mode === "mathematical") {
+        const d = ms as MathematicalDiff;
+        return {
+          ...s,
+          stateHistory: newHistory,
+          givens: [...s.givens, ...d.new_givens.filter(g => !s.givens.includes(g))],
+          proved: [...s.proved, ...d.new_proved],
+          goal: d.goal_update || s.goal,
+          proof_method: (d.method_change?.to as typeof s.proof_method) || s.proof_method,
+          dependencies: { ...s.dependencies, ...d.new_dependencies }
+        };
+      }
+      // Fallback
+      let newMethod = s.proof_method;
       if (diff.levelOrPhaseShift) {
-        newStrategy = diff.levelOrPhaseShift.to as "direct" | "contradiction" | "induction" | "construction" | "cases";
+        newMethod = diff.levelOrPhaseShift.to as typeof s.proof_method;
       }
       return {
         ...s,
         stateHistory: newHistory,
-        assumptionsInForce: newAssumptions,
-        lemmasEstablished: newLemmas,
-        proofStrategy: newStrategy,
-        currentProofPosition: `Chunk ${chunkIndex}`
+        givens: [...s.givens, ...diff.newElements.filter(e => !s.givens.includes(e))],
+        proved: [...s.proved, ...diff.resolvedElements],
+        proof_method: newMethod
       };
     }
     
     case "philosophical": {
       const s = state as PhilosophicalState;
-      // Update concepts and threads
-      const newThreads = [...s.activeConceptualThreads, ...diff.newElements.filter(e => !s.activeConceptualThreads.includes(e))];
-      const filteredThreads = newThreads.filter(t => !diff.resolvedElements.includes(t));
-      const newDistinctions = [...s.distinctionsDrawn, ...diff.resolvedElements];
-      // Handle dialectical position shifts
-      let newPosition = s.dialecticalPosition;
-      if (diff.levelOrPhaseShift) {
-        newPosition = diff.levelOrPhaseShift.to;
+      if (ms && ms.mode === "philosophical") {
+        const d = ms as PhilosophicalDiff;
+        // no_equivocation is the trusted vocabulary that must NOT change meaning
+        // equivocation_violations are logged in history but do NOT get added to no_equivocation
+        // New objections go to BOTH objections_raised AND replies_pending (until replied)
+        const updatedRepliesPending = [
+          ...s.dialectic.replies_pending.filter(r => !d.objections_replied.includes(r)),
+          ...d.new_objections // New objections need replies
+        ];
+        return {
+          ...s,
+          stateHistory: d.equivocation_violations.length > 0 
+            ? [...newHistory, `[EQUIVOCATION DETECTED: ${d.equivocation_violations.join(", ")}]`]
+            : newHistory,
+          core_concepts: { ...s.core_concepts, ...d.new_concepts },
+          distinctions: [...s.distinctions, ...d.new_distinctions],
+          dialectic: {
+            objections_raised: [...s.dialectic.objections_raised, ...d.new_objections],
+            replies_pending: updatedRepliesPending
+          },
+          no_equivocation: s.no_equivocation // Keep stable - violations don't get added here
+        };
       }
+      // Fallback - newElements are new objections needing replies
+      const fallbackRepliesPending = [
+        ...s.dialectic.replies_pending.filter(r => !diff.resolvedElements.includes(r)),
+        ...diff.newElements
+      ];
       return {
         ...s,
         stateHistory: newHistory,
-        activeConceptualThreads: filteredThreads,
-        distinctionsDrawn: newDistinctions,
-        dialecticalPosition: newPosition
+        dialectic: {
+          objections_raised: [...s.dialectic.objections_raised, ...diff.newElements],
+          replies_pending: fallbackRepliesPending
+        },
+        no_equivocation: s.no_equivocation
       };
     }
     
     default:
-      return { ...state, stateHistory: newHistory };
+      return { ...(state as BaseCoherenceState & Record<string, unknown>), stateHistory: newHistory } as GlobalCoherenceState;
   }
 }
 
