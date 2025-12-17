@@ -35,6 +35,11 @@ The application employs a monorepo structure, separating client and server compo
     - **Conservative Reconstruction**: "Charitable Interpretation" mode for generating coherent essays articulating a text's unified argument.
 
 ## Recent Changes (December 2024)
+- **Refine Output Feature**: Added ability to refine both Reconstruction output and Final Objection-Proof version with target word count and/or custom instructions (e.g., "Add a Plato quote", "Reduce to 400 words").
+- **Aggressive Mode Toggle**: Made the Conservative/Aggressive fidelity toggle always visible directly under the RECONSTRUCTION button (no longer hidden in a panel).
+- **Full Suite Pipeline Improvements**: Pipeline now outputs ONLY the clean final version (no change log or commentary) for the Objection-Proof output.
+
+### Previous Changes
 - **Full Suite Pipeline (Complete)**: One-click execution of the complete 3-stage pipeline:
   1. **Reconstruction** - Conservative charitable interpretation of the input text
   2. **Objections** - Generates 25 likely objections with compelling counter-arguments

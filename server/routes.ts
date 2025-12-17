@@ -3834,6 +3834,107 @@ ${output}`;
     }
   });
 
+  // Refine Output - Adjust word count and/or apply custom instructions
+  app.post("/api/refine-output", async (req: Request, res: Response) => {
+    try {
+      const { text, targetWordCount, customInstructions } = req.body;
+
+      if (!text) {
+        return res.status(400).json({
+          success: false,
+          message: "Text is required"
+        });
+      }
+
+      if (!targetWordCount && !customInstructions) {
+        return res.status(400).json({
+          success: false,
+          message: "Either target word count or custom instructions are required"
+        });
+      }
+
+      const currentWordCount = text.trim().split(/\s+/).length;
+      console.log(`[REFINE] Current word count: ${currentWordCount}, Target: ${targetWordCount || 'N/A'}`);
+      console.log(`[REFINE] Custom instructions: ${customInstructions ? 'provided' : 'none'}`);
+
+      let instructions = [];
+      if (targetWordCount) {
+        const diff = targetWordCount - currentWordCount;
+        if (diff < 0) {
+          instructions.push(`Reduce the text to approximately ${targetWordCount} words (currently ${currentWordCount} words, need to cut ~${Math.abs(diff)} words). Remove redundancies, tighten prose, and eliminate unnecessary elaboration while preserving all key ideas and arguments.`);
+        } else if (diff > 0) {
+          instructions.push(`Expand the text to approximately ${targetWordCount} words (currently ${currentWordCount} words, need to add ~${diff} words). Add relevant examples, elaboration, or supporting details while maintaining coherence and not padding with filler.`);
+        }
+      }
+      if (customInstructions) {
+        instructions.push(`Additional requirements: ${customInstructions}`);
+      }
+
+      const systemPrompt = `You are an expert editor. Your task is to refine and adjust the provided text according to specific instructions while maintaining its core meaning, argument structure, and quality. Output ONLY the refined text - no commentary, explanations, or meta-discussion.`;
+
+      const userPrompt = `TEXT TO REFINE:
+${text}
+
+INSTRUCTIONS:
+${instructions.join('\n\n')}
+
+Provide the refined text only. No commentary or explanation.`;
+
+      let output = "";
+
+      if (process.env.ANTHROPIC_API_KEY) {
+        const Anthropic = (await import('@anthropic-ai/sdk')).default;
+        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+        const response = await anthropic.messages.create({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 8000,
+          messages: [
+            { role: "user", content: `${systemPrompt}\n\n${userPrompt}` }
+          ]
+        });
+
+        const textContent = response.content.find((block: any) => block.type === 'text');
+        output = textContent ? (textContent as any).text : "";
+      } else if (process.env.OPENAI_API_KEY) {
+        const OpenAI = (await import('openai')).default;
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o",
+          max_tokens: 8000,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ]
+        });
+        
+        output = response.choices[0]?.message?.content || "";
+      } else {
+        return res.status(500).json({
+          success: false,
+          message: "No AI provider configured"
+        });
+      }
+
+      const newWordCount = output.trim().split(/\s+/).length;
+      console.log(`[REFINE] Output word count: ${newWordCount}`);
+
+      res.json({
+        success: true,
+        output: output,
+        wordCount: newWordCount
+      });
+
+    } catch (error: any) {
+      console.error("REFINE error:", error);
+      res.status(500).json({ 
+        success: false,
+        message: error.message || "Refinement failed" 
+      });
+    }
+  });
+
   // Coherence Meter endpoint - Analyze and improve text coherence  
   app.post("/api/coherence-meter", async (req: Request, res: Response) => {
     try {

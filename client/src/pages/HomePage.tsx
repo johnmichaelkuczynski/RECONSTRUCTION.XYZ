@@ -189,6 +189,14 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [fullSuiteAdditionalInfo, setFullSuiteAdditionalInfo] = useState("");
   const [fullSuiteObjectionProofOutput, setFullSuiteObjectionProofOutput] = useState("");
   
+  // Refine/Adjust Output State (word count + custom instructions)
+  const [refineWordCount, setRefineWordCount] = useState<string>("");
+  const [refineInstructions, setRefineInstructions] = useState<string>("");
+  const [refineLoading, setRefineLoading] = useState(false);
+  const [refineFinalWordCount, setRefineFinalWordCount] = useState<string>("");
+  const [refineFinalInstructions, setRefineFinalInstructions] = useState<string>("");
+  const [refineFinalLoading, setRefineFinalLoading] = useState(false);
+  
   // Coherence Meter State
   const [coherenceInputText, setCoherenceInputText] = useState("");
   const [coherenceType, setCoherenceType] = useState<"logical-consistency" | "logical-cohesiveness" | "scientific-explanatory" | "thematic-psychological" | "instructional" | "motivational" | "mathematical" | "philosophical" | "auto-detect">("auto-detect");
@@ -603,6 +611,82 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setValidatorCustomInstructions("");
     setValidatorBatchResults([]);
     setValidatorSelectedModes([]);
+  };
+
+  // Refine reconstruction with word count and/or custom instructions
+  const handleRefineReconstruction = async () => {
+    if (!validatorOutput.trim()) {
+      toast({ title: "No text to refine", variant: "destructive" });
+      return;
+    }
+    
+    setRefineLoading(true);
+    try {
+      const response = await fetch("/api/refine-output", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: validatorOutput,
+          targetWordCount: refineWordCount ? parseInt(refineWordCount) : null,
+          customInstructions: refineInstructions || null,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Refinement failed");
+      }
+      
+      const data = await response.json();
+      if (data.success && data.output) {
+        setValidatorOutput(data.output);
+        setRefineWordCount("");
+        setRefineInstructions("");
+        toast({ title: "Reconstruction refined successfully!" });
+      }
+    } catch (error: any) {
+      toast({ title: "Refinement failed", description: error.message, variant: "destructive" });
+    } finally {
+      setRefineLoading(false);
+    }
+  };
+
+  // Refine final objection-proof version with word count and/or custom instructions
+  const handleRefineFinalVersion = async () => {
+    if (!fullSuiteObjectionProofOutput.trim()) {
+      toast({ title: "No final version to refine", variant: "destructive" });
+      return;
+    }
+    
+    setRefineFinalLoading(true);
+    try {
+      const response = await fetch("/api/refine-output", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: fullSuiteObjectionProofOutput,
+          targetWordCount: refineFinalWordCount ? parseInt(refineFinalWordCount) : null,
+          customInstructions: refineFinalInstructions || null,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Refinement failed");
+      }
+      
+      const data = await response.json();
+      if (data.success && data.output) {
+        setFullSuiteObjectionProofOutput(data.output);
+        setRefineFinalWordCount("");
+        setRefineFinalInstructions("");
+        toast({ title: "Final version refined successfully!" });
+      }
+    } catch (error: any) {
+      toast({ title: "Refinement failed", description: error.message, variant: "destructive" });
+    } finally {
+      setRefineFinalLoading(false);
+    }
   };
 
   // Toggle mode selection for batch processing
@@ -3142,6 +3226,66 @@ Generated on: ${new Date().toLocaleString()}`;
                             {fullSuiteObjectionProofOutput || "(No objection-proof output)"}
                           </pre>
                         </div>
+                        
+                        {/* Refine Final Version Section */}
+                        {fullSuiteObjectionProofOutput && (
+                          <div className="m-3 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-700">
+                            <h4 className="text-xs font-semibold text-purple-800 dark:text-purple-200 mb-2 flex items-center gap-1">
+                              <FileEdit className="w-3 h-3" />
+                              Refine Final Version (Adjust Word Count / Modify)
+                            </h4>
+                            <div className="flex flex-wrap gap-2 items-end">
+                              <div className="flex-1 min-w-[100px] max-w-[140px]">
+                                <label className="block text-xs text-purple-700 dark:text-purple-300 mb-1">
+                                  Target Words
+                                </label>
+                                <input
+                                  type="number"
+                                  value={refineFinalWordCount}
+                                  onChange={(e) => setRefineFinalWordCount(e.target.value)}
+                                  placeholder="e.g., 400"
+                                  className="w-full p-1.5 text-xs border rounded dark:bg-gray-700 dark:border-gray-600"
+                                  data-testid="input-refine-final-word-count"
+                                />
+                              </div>
+                              <div className="flex-[2] min-w-[150px]">
+                                <label className="block text-xs text-purple-700 dark:text-purple-300 mb-1">
+                                  Custom Instructions
+                                </label>
+                                <input
+                                  type="text"
+                                  value={refineFinalInstructions}
+                                  onChange={(e) => setRefineFinalInstructions(e.target.value)}
+                                  placeholder="e.g., Add a Plato quote"
+                                  className="w-full p-1.5 text-xs border rounded dark:bg-gray-700 dark:border-gray-600"
+                                  data-testid="input-refine-final-instructions"
+                                />
+                              </div>
+                              <Button
+                                onClick={handleRefineFinalVersion}
+                                disabled={refineFinalLoading || (!refineFinalWordCount && !refineFinalInstructions)}
+                                size="sm"
+                                className="bg-purple-600 hover:bg-purple-700 text-white text-xs"
+                                data-testid="button-refine-final"
+                              >
+                                {refineFinalLoading ? (
+                                  <>
+                                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                    Refining...
+                                  </>
+                                ) : (
+                                  <>
+                                    <RefreshCw className="w-3 h-3 mr-1" />
+                                    Refine
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                            <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+                              Current: ~{fullSuiteObjectionProofOutput.trim().split(/\s+/).length} words
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -3355,6 +3499,63 @@ Generated on: ${new Date().toLocaleString()}`;
                 <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
                   {validatorOutput}
                 </pre>
+              </div>
+              
+              {/* Refine Reconstruction Section */}
+              <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+                <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3 flex items-center gap-2">
+                  <FileEdit className="w-4 h-4" />
+                  Refine Output (Adjust Word Count / Add Instructions)
+                </h4>
+                <div className="flex flex-wrap gap-3 items-end">
+                  <div className="flex-1 min-w-[120px] max-w-[180px]">
+                    <label className="block text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">
+                      Target Word Count
+                    </label>
+                    <input
+                      type="number"
+                      value={refineWordCount}
+                      onChange={(e) => setRefineWordCount(e.target.value)}
+                      placeholder="e.g., 400"
+                      className="w-full p-2 text-sm border rounded dark:bg-gray-700 dark:border-gray-600"
+                      data-testid="input-refine-word-count"
+                    />
+                  </div>
+                  <div className="flex-[2] min-w-[200px]">
+                    <label className="block text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">
+                      Custom Instructions (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={refineInstructions}
+                      onChange={(e) => setRefineInstructions(e.target.value)}
+                      placeholder="e.g., Add a Plato quote, emphasize the conclusion"
+                      className="w-full p-2 text-sm border rounded dark:bg-gray-700 dark:border-gray-600"
+                      data-testid="input-refine-instructions"
+                    />
+                  </div>
+                  <Button
+                    onClick={handleRefineReconstruction}
+                    disabled={refineLoading || (!refineWordCount && !refineInstructions)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    data-testid="button-refine-reconstruction"
+                  >
+                    {refineLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Refining...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Refine
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                  Current word count: ~{validatorOutput.trim().split(/\s+/).length} words
+                </p>
               </div>
             </div>
           )}
