@@ -28,6 +28,147 @@ export interface GlobalContextObject {
   mathematicalAssumptions: string | null;
 }
 
+// Global Coherence State (GCS) - mode-specific state that evolves across chunks
+// This is NOT a summary - it's a state vector that must be carried forward
+
+// Base interface for all coherence states
+export interface BaseCoherenceState {
+  mode: string;
+  stateHistory: string[]; // Log of state transitions
+}
+
+// Logical Consistency State
+export interface LogicalConsistencyState extends BaseCoherenceState {
+  mode: "logical-consistency";
+  propositionsAsserted: string[];
+  negationsRuledOut: string[];
+  termsWithDefinitions: Record<string, string>;
+}
+
+// Logical Cohesiveness State
+export interface LogicalCohesivenessState extends BaseCoherenceState {
+  mode: "logical-cohesiveness";
+  argumentPosition: "premise" | "development" | "conclusion";
+  activeClaimsRequiringSupport: string[];
+  establishedPremises: string[];
+}
+
+// Scientific/Explanatory State
+export interface ScientificExplanatoryState extends BaseCoherenceState {
+  mode: "scientific-explanatory";
+  activeCausalVariables: string[];
+  causalLevel: "mechanism" | "system" | "policy" | "behavior";
+  feedbackLoopsIntroduced: { name: string; participants: string[]; status: "active" | "resolved" }[];
+  activeMechanisms: { cause: string; effect: string; mechanism: string; status: "active" | "resolved" | "abandoned" }[];
+  openThreads: { claim: string; requiredFollowUp: string }[];
+}
+
+// Thematic/Psychological State
+export interface ThematicPsychologicalState extends BaseCoherenceState {
+  mode: "thematic-psychological";
+  dominantAffect: string;
+  emotionalTrajectory: "stable" | "escalating" | "resolving" | "shifting";
+  activeThemes: string[];
+  toneRegister: string;
+}
+
+// Instructional State
+export interface InstructionalState extends BaseCoherenceState {
+  mode: "instructional";
+  stepsAlreadyGiven: string[];
+  preconditionsAssumedSatisfied: string[];
+  goalState: string;
+  currentPhase: "setup" | "execution" | "verification" | "completion";
+}
+
+// Motivational State
+export interface MotivationalState extends BaseCoherenceState {
+  mode: "motivational";
+  motivationDirection: "encourage" | "warn" | "pressure" | "reassure";
+  intensityTrend: "increasing" | "stable" | "decreasing";
+  activeMotivationalClaims: string[];
+}
+
+// Mathematical State
+export interface MathematicalState extends BaseCoherenceState {
+  mode: "mathematical";
+  assumptionsInForce: string[];
+  proofStrategy: "direct" | "contradiction" | "induction" | "construction" | "cases";
+  lemmasEstablished: string[];
+  currentProofPosition: string;
+}
+
+// Philosophical State
+export interface PhilosophicalState extends BaseCoherenceState {
+  mode: "philosophical";
+  coreConceptsWithRoles: Record<string, string>;
+  distinctionsDrawn: string[];
+  dialecticalPosition: string;
+  activeConceptualThreads: string[];
+}
+
+// Union type for all coherence states
+export type GlobalCoherenceState = 
+  | LogicalConsistencyState
+  | LogicalCohesivenessState
+  | ScientificExplanatoryState
+  | ThematicPsychologicalState
+  | InstructionalState
+  | MotivationalState
+  | MathematicalState
+  | PhilosophicalState;
+
+// State diff for tracking changes between chunks
+export interface CoherenceStateDiff {
+  newElements: string[];
+  resolvedElements: string[];
+  abandonedElements: string[];
+  levelOrPhaseShift: { from: string; to: string } | null;
+  trajectoryChange: { from: string; to: string } | null;
+}
+
+// Legacy interfaces for backward compatibility
+export interface ActiveMechanism {
+  cause: string;
+  effect: string;
+  mechanism: string;
+  status: "active" | "resolved" | "abandoned";
+  introducedInChunk: number;
+}
+
+export interface FeedbackLoop {
+  loopName: string;
+  participants: string[];
+  evidence: string;
+  status: "active" | "resolved";
+  introducedInChunk: number;
+}
+
+export interface OpenThread {
+  claim: string;
+  requiredFollowUp: string;
+  introducedInChunk: number;
+}
+
+export interface LiveCausalState {
+  activeMechanisms: ActiveMechanism[];
+  feedbackLoops: FeedbackLoop[];
+  explanatoryLevel: "mechanism" | "system" | "policy" | "behavior";
+  openThreads: OpenThread[];
+  causalHistory: string[];
+}
+
+export interface StateDiff {
+  newMechanisms: ActiveMechanism[];
+  resolvedMechanisms: string[];
+  abandonedMechanisms: string[];
+  newLoops: FeedbackLoop[];
+  resolvedLoops: string[];
+  newThreads: OpenThread[];
+  resolvedThreads: string[];
+  levelShift: { from: string; to: string } | null;
+}
+
 export interface ChunkCoherenceResult {
   chunkIndex: number;
   status: "preserved" | "weakened" | "shifted";
@@ -48,6 +189,522 @@ export interface GlobalCoherenceAnalysisResult {
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
+
+// Initialize Global Coherence State (GCS) based on mode
+export function initializeGCS(mode: string, gco: GlobalContextObject): GlobalCoherenceState {
+  const baseHistory = [`[Chunk 0] Initial state seeded from GCO`];
+  
+  switch (mode) {
+    case "logical-consistency":
+      return {
+        mode: "logical-consistency",
+        stateHistory: baseHistory,
+        propositionsAsserted: gco.keyConcepts || [],
+        negationsRuledOut: [],
+        termsWithDefinitions: {}
+      };
+    
+    case "logical-cohesiveness":
+      return {
+        mode: "logical-cohesiveness",
+        stateHistory: baseHistory,
+        argumentPosition: "premise",
+        activeClaimsRequiringSupport: gco.argumentDirection ? [gco.argumentDirection] : [],
+        establishedPremises: []
+      };
+    
+    case "scientific-explanatory":
+      return {
+        mode: "scientific-explanatory",
+        stateHistory: baseHistory,
+        activeCausalVariables: gco.keyConcepts || [],
+        causalLevel: detectCausalLevel(gco),
+        feedbackLoopsIntroduced: [],
+        activeMechanisms: gco.centralFramework ? [{
+          cause: "Central framework",
+          effect: gco.centralFramework,
+          mechanism: gco.centralFramework,
+          status: "active"
+        }] : [],
+        openThreads: gco.argumentDirection ? [{
+          claim: gco.argumentDirection,
+          requiredFollowUp: "Must be developed throughout"
+        }] : []
+      };
+    
+    case "thematic-psychological":
+      return {
+        mode: "thematic-psychological",
+        stateHistory: baseHistory,
+        dominantAffect: gco.emotionalTrajectory || "neutral",
+        emotionalTrajectory: "stable",
+        activeThemes: gco.coreTopics || [],
+        toneRegister: "formal"
+      };
+    
+    case "instructional":
+      return {
+        mode: "instructional",
+        stateHistory: baseHistory,
+        stepsAlreadyGiven: [],
+        preconditionsAssumedSatisfied: [],
+        goalState: gco.instructionalGoal || "Complete the task",
+        currentPhase: "setup"
+      };
+    
+    case "motivational":
+      return {
+        mode: "motivational",
+        stateHistory: baseHistory,
+        motivationDirection: "encourage",
+        intensityTrend: "stable",
+        activeMotivationalClaims: []
+      };
+    
+    case "mathematical":
+      return {
+        mode: "mathematical",
+        stateHistory: baseHistory,
+        assumptionsInForce: gco.mathematicalAssumptions ? [gco.mathematicalAssumptions] : [],
+        proofStrategy: "direct",
+        lemmasEstablished: [],
+        currentProofPosition: "beginning"
+      };
+    
+    case "philosophical":
+      return {
+        mode: "philosophical",
+        stateHistory: baseHistory,
+        coreConceptsWithRoles: {},
+        distinctionsDrawn: [],
+        dialecticalPosition: gco.argumentDirection || "exploring",
+        activeConceptualThreads: gco.keyConcepts || []
+      };
+    
+    default:
+      return {
+        mode: "logical-consistency",
+        stateHistory: baseHistory,
+        propositionsAsserted: [],
+        negationsRuledOut: [],
+        termsWithDefinitions: {}
+      };
+  }
+}
+
+function detectCausalLevel(gco: GlobalContextObject): "mechanism" | "system" | "policy" | "behavior" {
+  const conceptsLower = (gco.keyConcepts || []).map(c => c.toLowerCase()).join(" ");
+  if (conceptsLower.includes("policy") || conceptsLower.includes("regulation")) return "policy";
+  if (conceptsLower.includes("system") || conceptsLower.includes("network")) return "system";
+  if (conceptsLower.includes("behavior") || conceptsLower.includes("action")) return "behavior";
+  return "mechanism";
+}
+
+// Serialize GCS for injection into prompts
+export function serializeGCS(state: GlobalCoherenceState): string {
+  const mode = state.mode;
+  let stateDetails = "";
+  
+  switch (mode) {
+    case "logical-consistency": {
+      const s = state as LogicalConsistencyState;
+      stateDetails = `
+- Propositions Asserted: ${s.propositionsAsserted.join(", ") || "None yet"}
+- Negations Ruled Out: ${s.negationsRuledOut.join(", ") || "None yet"}
+- Terms Defined: ${Object.entries(s.termsWithDefinitions).map(([k, v]) => `${k}=${v}`).join(", ") || "None yet"}`;
+      break;
+    }
+    case "logical-cohesiveness": {
+      const s = state as LogicalCohesivenessState;
+      stateDetails = `
+- Argument Position: ${s.argumentPosition.toUpperCase()}
+- Claims Requiring Support: ${s.activeClaimsRequiringSupport.join(", ") || "None"}
+- Established Premises: ${s.establishedPremises.join(", ") || "None yet"}`;
+      break;
+    }
+    case "scientific-explanatory": {
+      const s = state as ScientificExplanatoryState;
+      const activeMechs = s.activeMechanisms.filter(m => m.status === "active");
+      stateDetails = `
+- Causal Level: ${s.causalLevel.toUpperCase()}
+- Active Causal Variables: ${s.activeCausalVariables.join(", ") || "None"}
+- Active Mechanisms (${activeMechs.length}):
+${activeMechs.map(m => `  * ${m.cause} → ${m.effect} via ${m.mechanism}`).join("\n") || "  None yet"}
+- Feedback Loops: ${s.feedbackLoopsIntroduced.filter(l => l.status === "active").map(l => l.name).join(", ") || "None"}
+- Open Threads: ${s.openThreads.map(t => t.claim).join(", ") || "None"}`;
+      break;
+    }
+    case "thematic-psychological": {
+      const s = state as ThematicPsychologicalState;
+      stateDetails = `
+- Dominant Affect: ${s.dominantAffect}
+- Emotional Trajectory: ${s.emotionalTrajectory}
+- Active Themes: ${s.activeThemes.join(", ") || "None"}
+- Tone Register: ${s.toneRegister}`;
+      break;
+    }
+    case "instructional": {
+      const s = state as InstructionalState;
+      stateDetails = `
+- Current Phase: ${s.currentPhase.toUpperCase()}
+- Steps Already Given: ${s.stepsAlreadyGiven.join(", ") || "None yet"}
+- Preconditions Satisfied: ${s.preconditionsAssumedSatisfied.join(", ") || "None"}
+- Goal State: ${s.goalState}`;
+      break;
+    }
+    case "motivational": {
+      const s = state as MotivationalState;
+      stateDetails = `
+- Motivation Direction: ${s.motivationDirection.toUpperCase()}
+- Intensity Trend: ${s.intensityTrend}
+- Active Claims: ${s.activeMotivationalClaims.join(", ") || "None"}`;
+      break;
+    }
+    case "mathematical": {
+      const s = state as MathematicalState;
+      stateDetails = `
+- Proof Strategy: ${s.proofStrategy.toUpperCase()}
+- Assumptions In Force: ${s.assumptionsInForce.join(", ") || "None"}
+- Lemmas Established: ${s.lemmasEstablished.join(", ") || "None yet"}
+- Current Position: ${s.currentProofPosition}`;
+      break;
+    }
+    case "philosophical": {
+      const s = state as PhilosophicalState;
+      stateDetails = `
+- Dialectical Position: ${s.dialecticalPosition}
+- Distinctions Drawn: ${s.distinctionsDrawn.join(", ") || "None yet"}
+- Core Concepts: ${Object.entries(s.coreConceptsWithRoles).map(([k, v]) => `${k}(${v})`).join(", ") || "None defined"}
+- Active Threads: ${s.activeConceptualThreads.join(", ") || "None"}`;
+      break;
+    }
+  }
+  
+  return `
+GLOBAL COHERENCE STATE (must be preserved or deliberately evolved):
+Mode: ${mode.toUpperCase().replace(/-/g, " ")}
+${stateDetails}`;
+}
+
+// Update GCS after processing a chunk - applies diff to mode-specific state fields
+export function updateGCS(state: GlobalCoherenceState, diff: CoherenceStateDiff, chunkIndex: number): GlobalCoherenceState {
+  const historyEntry = buildHistoryEntry(diff, chunkIndex);
+  const newHistory = [...state.stateHistory, historyEntry];
+  
+  // Apply diff to mode-specific state fields
+  switch (state.mode) {
+    case "logical-consistency": {
+      const s = state as LogicalConsistencyState;
+      // Add new propositions, remove resolved ones
+      const newProps = [...s.propositionsAsserted, ...diff.newElements];
+      const filteredProps = newProps.filter(p => !diff.resolvedElements.includes(p) && !diff.abandonedElements.includes(p));
+      return {
+        ...s,
+        stateHistory: newHistory,
+        propositionsAsserted: filteredProps,
+        negationsRuledOut: [...s.negationsRuledOut, ...diff.abandonedElements]
+      };
+    }
+    
+    case "logical-cohesiveness": {
+      const s = state as LogicalCohesivenessState;
+      // Move claims from requiring support to established premises when resolved
+      const newClaims = [...s.activeClaimsRequiringSupport, ...diff.newElements];
+      const stillActiveOnes = newClaims.filter(c => !diff.resolvedElements.includes(c) && !diff.abandonedElements.includes(c));
+      const newEstablished = [...s.establishedPremises, ...diff.resolvedElements];
+      // Handle argument position shifts
+      let newPosition = s.argumentPosition;
+      if (diff.levelOrPhaseShift) {
+        newPosition = diff.levelOrPhaseShift.to as "premise" | "development" | "conclusion";
+      }
+      return {
+        ...s,
+        stateHistory: newHistory,
+        argumentPosition: newPosition,
+        activeClaimsRequiringSupport: stillActiveOnes,
+        establishedPremises: newEstablished
+      };
+    }
+    
+    case "scientific-explanatory": {
+      const s = state as ScientificExplanatoryState;
+      // Update causal variables
+      const newVars = [...s.activeCausalVariables, ...diff.newElements.filter(e => !s.activeCausalVariables.includes(e))];
+      // Update mechanisms - mark resolved ones
+      const updatedMechs = s.activeMechanisms.map(m => 
+        diff.resolvedElements.some(r => m.mechanism.includes(r)) ? { ...m, status: "resolved" as const } :
+        diff.abandonedElements.some(a => m.mechanism.includes(a)) ? { ...m, status: "abandoned" as const } : m
+      );
+      // Update open threads
+      const updatedThreads = s.openThreads.filter(t => !diff.resolvedElements.some(r => t.claim.includes(r)));
+      // Handle causal level shifts
+      let newLevel = s.causalLevel;
+      if (diff.levelOrPhaseShift) {
+        newLevel = diff.levelOrPhaseShift.to as "mechanism" | "system" | "policy" | "behavior";
+      }
+      return {
+        ...s,
+        stateHistory: newHistory,
+        activeCausalVariables: newVars,
+        causalLevel: newLevel,
+        activeMechanisms: updatedMechs,
+        openThreads: updatedThreads
+      };
+    }
+    
+    case "thematic-psychological": {
+      const s = state as ThematicPsychologicalState;
+      // Update themes
+      const newThemes = [...s.activeThemes, ...diff.newElements.filter(e => !s.activeThemes.includes(e))];
+      const filteredThemes = newThemes.filter(t => !diff.resolvedElements.includes(t));
+      // Handle trajectory changes
+      let newTrajectory = s.emotionalTrajectory;
+      if (diff.trajectoryChange) {
+        newTrajectory = diff.trajectoryChange.to as "stable" | "escalating" | "resolving" | "shifting";
+      }
+      return {
+        ...s,
+        stateHistory: newHistory,
+        activeThemes: filteredThemes,
+        emotionalTrajectory: newTrajectory
+      };
+    }
+    
+    case "instructional": {
+      const s = state as InstructionalState;
+      // Add new steps as completed, resolve preconditions
+      const newSteps = [...s.stepsAlreadyGiven, ...diff.newElements];
+      const newPreconditions = [...s.preconditionsAssumedSatisfied, ...diff.resolvedElements];
+      // Handle phase shifts
+      let newPhase = s.currentPhase;
+      if (diff.levelOrPhaseShift) {
+        newPhase = diff.levelOrPhaseShift.to as "setup" | "execution" | "verification" | "completion";
+      }
+      return {
+        ...s,
+        stateHistory: newHistory,
+        stepsAlreadyGiven: newSteps,
+        preconditionsAssumedSatisfied: newPreconditions,
+        currentPhase: newPhase
+      };
+    }
+    
+    case "motivational": {
+      const s = state as MotivationalState;
+      // Update claims
+      const newClaims = [...s.activeMotivationalClaims, ...diff.newElements];
+      const filteredClaims = newClaims.filter(c => !diff.resolvedElements.includes(c));
+      // Handle direction and intensity changes
+      let newDirection = s.motivationDirection;
+      let newIntensity = s.intensityTrend;
+      if (diff.levelOrPhaseShift) {
+        newDirection = diff.levelOrPhaseShift.to as "encourage" | "warn" | "pressure" | "reassure";
+      }
+      if (diff.trajectoryChange) {
+        newIntensity = diff.trajectoryChange.to as "increasing" | "stable" | "decreasing";
+      }
+      return {
+        ...s,
+        stateHistory: newHistory,
+        activeMotivationalClaims: filteredClaims,
+        motivationDirection: newDirection,
+        intensityTrend: newIntensity
+      };
+    }
+    
+    case "mathematical": {
+      const s = state as MathematicalState;
+      // Add new lemmas/assumptions
+      const newAssumptions = [...s.assumptionsInForce, ...diff.newElements.filter(e => !s.assumptionsInForce.includes(e))];
+      const newLemmas = [...s.lemmasEstablished, ...diff.resolvedElements];
+      // Handle proof strategy shifts
+      let newStrategy = s.proofStrategy;
+      if (diff.levelOrPhaseShift) {
+        newStrategy = diff.levelOrPhaseShift.to as "direct" | "contradiction" | "induction" | "construction" | "cases";
+      }
+      return {
+        ...s,
+        stateHistory: newHistory,
+        assumptionsInForce: newAssumptions,
+        lemmasEstablished: newLemmas,
+        proofStrategy: newStrategy,
+        currentProofPosition: `Chunk ${chunkIndex}`
+      };
+    }
+    
+    case "philosophical": {
+      const s = state as PhilosophicalState;
+      // Update concepts and threads
+      const newThreads = [...s.activeConceptualThreads, ...diff.newElements.filter(e => !s.activeConceptualThreads.includes(e))];
+      const filteredThreads = newThreads.filter(t => !diff.resolvedElements.includes(t));
+      const newDistinctions = [...s.distinctionsDrawn, ...diff.resolvedElements];
+      // Handle dialectical position shifts
+      let newPosition = s.dialecticalPosition;
+      if (diff.levelOrPhaseShift) {
+        newPosition = diff.levelOrPhaseShift.to;
+      }
+      return {
+        ...s,
+        stateHistory: newHistory,
+        activeConceptualThreads: filteredThreads,
+        distinctionsDrawn: newDistinctions,
+        dialecticalPosition: newPosition
+      };
+    }
+    
+    default:
+      return { ...state, stateHistory: newHistory };
+  }
+}
+
+function buildHistoryEntry(diff: CoherenceStateDiff, chunkIndex: number): string {
+  const parts: string[] = [];
+  if (diff.newElements.length > 0) parts.push(`+${diff.newElements.join(", ")}`);
+  if (diff.resolvedElements.length > 0) parts.push(`✓${diff.resolvedElements.join(", ")}`);
+  if (diff.abandonedElements.length > 0) parts.push(`✗${diff.abandonedElements.join(", ")}`);
+  if (diff.levelOrPhaseShift) parts.push(`⚠Level: ${diff.levelOrPhaseShift.from}→${diff.levelOrPhaseShift.to}`);
+  if (diff.trajectoryChange) parts.push(`↔Trajectory: ${diff.trajectoryChange.from}→${diff.trajectoryChange.to}`);
+  return `[Chunk ${chunkIndex}] ${parts.length > 0 ? parts.join("; ") : "State preserved"}`;
+}
+
+// Build initial causal state from GCO for scientific/explanatory mode (legacy function)
+export function buildInitialCausalState(gco: GlobalContextObject): LiveCausalState {
+  const initialMechanisms: ActiveMechanism[] = [];
+  const initialThreads: OpenThread[] = [];
+  
+  // Seed mechanisms from central framework if it describes causal relationships
+  if (gco.centralFramework) {
+    initialMechanisms.push({
+      cause: "Central framework",
+      effect: gco.centralFramework,
+      mechanism: gco.centralFramework,
+      status: "active",
+      introducedInChunk: 0
+    });
+  }
+  
+  // Seed open threads from argument direction
+  if (gco.argumentDirection) {
+    initialThreads.push({
+      claim: gco.argumentDirection,
+      requiredFollowUp: "Must be developed and supported throughout",
+      introducedInChunk: 0
+    });
+  }
+  
+  // Detect explanatory level from key concepts
+  let explanatoryLevel: "mechanism" | "system" | "policy" | "behavior" = "mechanism";
+  const conceptsLower = gco.keyConcepts.map(c => c.toLowerCase()).join(" ");
+  if (conceptsLower.includes("policy") || conceptsLower.includes("regulation") || conceptsLower.includes("law")) {
+    explanatoryLevel = "policy";
+  } else if (conceptsLower.includes("system") || conceptsLower.includes("network") || conceptsLower.includes("ecosystem")) {
+    explanatoryLevel = "system";
+  } else if (conceptsLower.includes("behavior") || conceptsLower.includes("action") || conceptsLower.includes("response")) {
+    explanatoryLevel = "behavior";
+  }
+  
+  return {
+    activeMechanisms: initialMechanisms,
+    feedbackLoops: [],
+    explanatoryLevel,
+    openThreads: initialThreads,
+    causalHistory: [`[Chunk 0] Initial state seeded from GCO. Level: ${explanatoryLevel}`]
+  };
+}
+
+// Merge state diff into live state after processing a chunk
+export function mergeState(liveState: LiveCausalState, diff: StateDiff, chunkIndex: number): LiveCausalState {
+  const historyEntries: string[] = [];
+  
+  // Add new mechanisms
+  const updatedMechanisms = [...liveState.activeMechanisms];
+  for (const mech of diff.newMechanisms) {
+    updatedMechanisms.push({ ...mech, introducedInChunk: chunkIndex });
+    historyEntries.push(`+Mechanism: ${mech.mechanism}`);
+  }
+  
+  // Mark resolved mechanisms
+  for (const resolved of diff.resolvedMechanisms) {
+    const idx = updatedMechanisms.findIndex(m => m.mechanism.includes(resolved) && m.status === "active");
+    if (idx >= 0) {
+      updatedMechanisms[idx].status = "resolved";
+      historyEntries.push(`✓Resolved: ${resolved}`);
+    }
+  }
+  
+  // Mark abandoned mechanisms (causal continuity break!)
+  for (const abandoned of diff.abandonedMechanisms) {
+    const idx = updatedMechanisms.findIndex(m => m.mechanism.includes(abandoned) && m.status === "active");
+    if (idx >= 0) {
+      updatedMechanisms[idx].status = "abandoned";
+      historyEntries.push(`✗Abandoned: ${abandoned}`);
+    }
+  }
+  
+  // Add new loops
+  const updatedLoops = [...liveState.feedbackLoops];
+  for (const loop of diff.newLoops) {
+    updatedLoops.push({ ...loop, introducedInChunk: chunkIndex });
+    historyEntries.push(`+Loop: ${loop.loopName}`);
+  }
+  
+  // Mark resolved loops
+  for (const resolved of diff.resolvedLoops) {
+    const idx = updatedLoops.findIndex(l => l.loopName.includes(resolved) && l.status === "active");
+    if (idx >= 0) {
+      updatedLoops[idx].status = "resolved";
+      historyEntries.push(`✓Loop resolved: ${resolved}`);
+    }
+  }
+  
+  // Update threads
+  const updatedThreads = [...liveState.openThreads];
+  for (const thread of diff.newThreads) {
+    updatedThreads.push({ ...thread, introducedInChunk: chunkIndex });
+    historyEntries.push(`+Thread: ${thread.claim}`);
+  }
+  for (const resolved of diff.resolvedThreads) {
+    const idx = updatedThreads.findIndex(t => t.claim.includes(resolved));
+    if (idx >= 0) {
+      updatedThreads.splice(idx, 1);
+      historyEntries.push(`✓Thread resolved: ${resolved}`);
+    }
+  }
+  
+  // Handle level shift
+  let newLevel = liveState.explanatoryLevel;
+  if (diff.levelShift) {
+    newLevel = diff.levelShift.to as "mechanism" | "system" | "policy" | "behavior";
+    historyEntries.push(`⚠Level shift: ${diff.levelShift.from} → ${diff.levelShift.to}`);
+  }
+  
+  return {
+    activeMechanisms: updatedMechanisms,
+    feedbackLoops: updatedLoops,
+    explanatoryLevel: newLevel,
+    openThreads: updatedThreads,
+    causalHistory: [
+      ...liveState.causalHistory,
+      `[Chunk ${chunkIndex}] ${historyEntries.length > 0 ? historyEntries.join("; ") : "No state changes"}`
+    ]
+  };
+}
+
+// Serialize live state for injection into prompts
+function serializeLiveState(state: LiveCausalState): string {
+  const activeMechs = state.activeMechanisms.filter(m => m.status === "active");
+  const activeLoops = state.feedbackLoops.filter(l => l.status === "active");
+  
+  return `
+LIVE CAUSAL STATE (must be preserved or deliberately evolved):
+- Explanatory Level: ${state.explanatoryLevel.toUpperCase()}
+- Active Mechanisms (${activeMechs.length}):
+${activeMechs.map(m => `  * ${m.cause} → ${m.effect} via ${m.mechanism}`).join("\n") || "  None yet"}
+- Active Feedback Loops (${activeLoops.length}):
+${activeLoops.map(l => `  * ${l.loopName}: ${l.participants.join(" ↔ ")}`).join("\n") || "  None yet"}
+- Open Threads requiring follow-up (${state.openThreads.length}):
+${state.openThreads.map(t => `  * "${t.claim}" - needs: ${t.requiredFollowUp}`).join("\n") || "  None"}`;
+}
 
 // STEP 1: Extract Global Context Object (GCO) - lightweight, non-generative
 export async function extractGlobalContextObject(fullText: string): Promise<GlobalContextObject> {
@@ -104,20 +761,35 @@ Respond with ONLY valid JSON, no markdown formatting.`;
   }
 }
 
+// Result type that includes state diff for ALL modes
+export interface ChunkAnalysisWithState {
+  result: ChunkCoherenceResult;
+  stateDiff: CoherenceStateDiff | null;
+}
+
 // STEP 2 & 3: Analyze chunk with GCO injection and mode-specific rules
+// Now accepts and returns GlobalCoherenceState for ALL modes
 export async function analyzeChunkWithGCO(
   chunkText: string, 
   chunkIndex: number,
   gco: GlobalContextObject, 
-  coherenceMode: string
-): Promise<ChunkCoherenceResult> {
+  coherenceMode: string,
+  gcs?: GlobalCoherenceState
+): Promise<ChunkAnalysisWithState> {
   
   const modeRules: Record<string, string> = {
     "logical-consistency": `Check for contradictions between this chunk and the GCO. Ignore argument strength or style. Look for: direct logical conflicts, claims that contradict earlier established facts, inconsistent use of terms.`,
     
     "logical-cohesiveness": `Check whether this chunk advances, supports, or presupposes argumentative steps implied by the GCO. Flag: gaps in reasoning, logical jumps, regressions relative to earlier structure, missing premises.`,
     
-    "scientific-explanatory": `Check whether explanations in this chunk: use the same causal level as the GCO, do not switch from mechanism to correlation or vice versa, preserve explanatory direction across chunks.`,
+    "scientific-explanatory": `CRITICAL: You must evaluate CAUSAL CONTINUITY, not just coherence.
+Check whether this chunk:
+1. CONTINUES active causal mechanisms from previous chunks (or deliberately resolves them)
+2. Does NOT abandon mechanisms without resolution (this is a major failure)
+3. Does NOT reset to re-explain what was already explained
+4. Maintains the same explanatory level (mechanism/system/policy/behavior)
+5. Advances open threads rather than ignoring them
+6. Does NOT switch from mechanism to correlation or vice versa without justification`,
     
     "thematic-psychological": `Check whether tone, affect, and psychological framing continue or intentionally shift relative to the GCO. Flag: abrupt or unjustified affective breaks, tonal inconsistencies.`,
     
@@ -130,15 +802,8 @@ export async function analyzeChunkWithGCO(
     "philosophical": `Check whether core concepts retain the same meaning, scope, and contrast classes as defined or implied in the GCO. Flag: equivocation, category drift, or silent redefinition.`
   };
 
-  const systemPrompt = `You are evaluating a text chunk for cross-chunk coherence. The chunk must be evaluated RELATIVE TO the Global Context Object (GCO), not in isolation.
-
-COHERENCE MODE: ${coherenceMode}
-MODE-SPECIFIC RULE: ${modeRules[coherenceMode] || modeRules["logical-consistency"]}
-
-CRITICAL: Never return "incoherent", "error", or "cannot evaluate". Always provide constructive analysis.`;
-
   const gcoSummary = `
-GLOBAL CONTEXT OBJECT:
+GLOBAL CONTEXT OBJECT (static backdrop):
 - Core Topics: ${gco.coreTopics.join(", ") || "Not specified"}
 - Central Framework: ${gco.centralFramework || "None identified"}
 - Key Concepts: ${gco.keyConcepts.join(", ") || "Not specified"}
@@ -147,9 +812,32 @@ GLOBAL CONTEXT OBJECT:
 - Instructional Goal: ${gco.instructionalGoal || "None identified"}
 - Mathematical Assumptions: ${gco.mathematicalAssumptions || "None identified"}`;
 
-  const userPrompt = `Evaluate this chunk for coherence RELATIVE TO the global context.
+  // Serialize GCS for ALL modes - this is the live evolving state
+  const gcsSummary = gcs ? serializeGCS(gcs) : "";
+
+  const systemPrompt = `You are evaluating a text chunk for STATE CONTINUITY across chunks.
+
+CORE PRINCIPLE: Coherence is NOT agreement or non-contradiction. Coherence is CONTINUITY OF STATE UNDER TRANSFORMATION.
+
+The chunk must be evaluated as a STATE TRANSITION from GCS_n to GCS_n+1:
+- Does this chunk CONTINUE, REFINE, or DELIBERATELY SHIFT the existing coherence state?
+- Or does it UNINTENTIONALLY RESET, DILUTE, or SCRAMBLE the state?
+
+COHERENCE MODE: ${coherenceMode}
+MODE-SPECIFIC RULE: ${modeRules[coherenceMode] || modeRules["logical-consistency"]}
+
+FAILURE DETECTION - Flag coherence degradation when:
+- State is RE-ASSERTED instead of ADVANCED
+- Level/phase/trajectory silently changes
+- Concepts or elements are reused with altered roles
+- Progress stalls via repetition rather than development
+
+CRITICAL: Never return "incoherent", "error", or "cannot evaluate". Always provide constructive analysis.`;
+
+  const userPrompt = `Evaluate this chunk as a STATE TRANSITION.
 
 ${gcoSummary}
+${gcsSummary}
 
 CHUNK ${chunkIndex + 1}:
 ${chunkText}
@@ -157,16 +845,25 @@ ${chunkText}
 Provide analysis in this EXACT JSON format:
 {
   "status": "preserved" | "weakened" | "shifted",
-  "strainLocations": ["specific location 1", "specific location 2"],
-  "repairSuggestions": ["minimal local repair suggestion 1"],
+  "strainLocations": ["specific state continuity break 1", "specific break 2"],
+  "repairSuggestions": ["how to restore state continuity"],
   "score": 1-10,
-  "analysis": "Detailed explanation of coherence status relative to GCO"
+  "analysis": "Detailed explanation of state transition status",
+  "stateDiff": {
+    "newElements": ["new propositions/mechanisms/steps/concepts introduced"],
+    "resolvedElements": ["elements that were properly concluded or addressed"],
+    "abandonedElements": ["elements that were dropped without resolution"],
+    "levelOrPhaseShift": null or {"from": "previous", "to": "current"},
+    "trajectoryChange": null or {"from": "previous", "to": "current"}
+  }
 }
 
-STATUS DEFINITIONS:
-- preserved: Chunk maintains full coherence with GCO
-- weakened: Chunk shows some strain but doesn't break coherence
-- shifted: Chunk introduces significant deviation from GCO
+SCORING FOR STATE CONTINUITY:
+- 9-10: State perfectly preserved or deliberately evolved
+- 7-8: Minor gaps but state model preserved
+- 5-6: Some elements abandoned or level shifted without justification
+- 3-4: Major state discontinuity, resets or abandons core elements
+- 1-2: Complete state break, no connection to previous state
 
 Respond with ONLY valid JSON.`;
 
@@ -183,7 +880,8 @@ Respond with ONLY valid JSON.`;
   try {
     const cleanJson = output.replace(/```json\n?|\n?```/g, '').trim();
     const parsed = JSON.parse(cleanJson);
-    return {
+    
+    const result: ChunkCoherenceResult = {
       chunkIndex,
       status: parsed.status || "preserved",
       strainLocations: parsed.strainLocations || [],
@@ -191,14 +889,31 @@ Respond with ONLY valid JSON.`;
       analysis: parsed.analysis || "Analysis completed",
       score: parsed.score || 7
     };
+    
+    // Extract state diff for ALL modes (unified format)
+    let stateDiff: CoherenceStateDiff | null = null;
+    if (parsed.stateDiff) {
+      stateDiff = {
+        newElements: parsed.stateDiff.newElements || [],
+        resolvedElements: parsed.stateDiff.resolvedElements || [],
+        abandonedElements: parsed.stateDiff.abandonedElements || [],
+        levelOrPhaseShift: parsed.stateDiff.levelOrPhaseShift || null,
+        trajectoryChange: parsed.stateDiff.trajectoryChange || null
+      };
+    }
+    
+    return { result, stateDiff };
   } catch {
     return {
-      chunkIndex,
-      status: "preserved",
-      strainLocations: [],
-      repairSuggestions: [],
-      analysis: output,
-      score: 7
+      result: {
+        chunkIndex,
+        status: "preserved",
+        strainLocations: [],
+        repairSuggestions: [],
+        analysis: output,
+        score: 7
+      },
+      stateDiff: null
     };
   }
 }
@@ -231,13 +946,25 @@ export async function analyzeGlobalCoherence(
     console.warn("GCO extraction returned minimal data - proceeding with limited context");
   }
   
-  // STEP 2 & 3: Analyze each chunk with GCO using validated mode
-  console.log(`Analyzing ${chunks.length} chunks with GCO injection (mode: ${normalizedMode})...`);
+  // STEP 1: Initialize Global Coherence State (GCS) for the selected mode
+  // This applies to ALL modes, not just scientific-explanatory
+  let gcs = initializeGCS(normalizedMode, gco);
+  console.log(`Initialized Global Coherence State for mode: ${normalizedMode}`);
+  
+  // STEP 2 & 3: Analyze each chunk with GCO + GCS injection
+  // Thread GCS through each chunk as state transitions
+  console.log(`Analyzing ${chunks.length} chunks with GCS state tracking (mode: ${normalizedMode})...`);
   const chunkResults: ChunkCoherenceResult[] = [];
   
   for (let i = 0; i < chunks.length; i++) {
-    const result = await analyzeChunkWithGCO(chunks[i], i, gco, normalizedMode);
-    chunkResults.push(result);
+    const analysisResult = await analyzeChunkWithGCO(chunks[i], i, gco, normalizedMode, gcs);
+    chunkResults.push(analysisResult.result);
+    
+    // STEP 3: Update GCS after each chunk (state transition GCS_n → GCS_n+1)
+    if (analysisResult.stateDiff) {
+      gcs = updateGCS(gcs, analysisResult.stateDiff, i + 1);
+      console.log(`Chunk ${i + 1}: Updated GCS state`);
+    }
   }
   
   // Calculate overall score
@@ -257,6 +984,13 @@ export async function analyzeGlobalCoherence(
     shifted: chunkResults.filter(r => r.status === "shifted").length
   };
   
+  // Include state evolution history in the analysis (applies to ALL modes)
+  const stateEvolutionReport = `
+
+STATE EVOLUTION HISTORY:
+${gcs.stateHistory.join("\n")}
+`;
+  
   const aggregatedAnalysis = `
 GLOBAL COHERENCE ANALYSIS (${normalizedMode})
 ============================================
@@ -266,7 +1000,7 @@ GLOBAL CONTEXT OBJECT:
 - Central Framework: ${gco.centralFramework || "None"}
 - Key Concepts: ${gco.keyConcepts.join(", ") || "None identified"}
 - Argument Direction: ${gco.argumentDirection || "None"}
-
+${stateEvolutionReport}
 CHUNK ANALYSIS SUMMARY:
 - Total Chunks: ${chunks.length}
 - Preserved: ${statusCounts.preserved} (${Math.round(statusCounts.preserved/chunks.length*100)}%)
@@ -331,11 +1065,11 @@ export async function rewriteWithGlobalCoherence(
   const modeRewriteRules: Record<string, string> = {
     "logical-consistency": "Fix any contradictions with established facts. Ensure consistent use of terms and remove conflicting claims.",
     "logical-cohesiveness": "Strengthen argumentative connections. Fill gaps in reasoning, add missing premises, and ensure each claim supports the next.",
-    "scientific-explanatory": "Ensure explanations use consistent causal levels. Don't mix mechanism with correlation. Maintain explanatory direction.",
+    "scientific-explanatory": "Maintain CAUSAL CONTINUITY. Continue active mechanisms, advance explanations without resetting, preserve explanatory level.",
     "thematic-psychological": "Smooth tone transitions, maintain affect consistency, and ensure psychological framing continues naturally.",
     "instructional": "Ensure steps are in correct order, no skipped prerequisites, and maintain actionability throughout.",
     "motivational": "Keep emotional direction aligned. Avoid motivational reversals or dilution of urgency/encouragement.",
-    "mathematical": "Ensure proof steps follow from assumptions. Don't invoke unestablished results. Maintain proof direction (forward, backward, contradiction, induction).",
+    "mathematical": "Ensure proof steps follow from assumptions. Don't invoke unestablished results. Maintain proof direction.",
     "philosophical": "Preserve concept meanings throughout. Avoid equivocation, category drift, or silent redefinition of terms."
   };
 
@@ -349,44 +1083,66 @@ GLOBAL CONTEXT OBJECT (MUST BE PRESERVED AND REFERENCED):
 - Instructional Goal: ${gco.instructionalGoal || "None identified"}
 - Mathematical Assumptions: ${gco.mathematicalAssumptions || "None identified"}`;
 
-  // Rewrite each chunk with GCO awareness
-  console.log(`Rewriting ${chunks.length} chunks with GCO preservation (mode: ${normalizedMode})...`);
+  // Initialize Global Coherence State (GCS) for ALL modes
+  let gcs = initializeGCS(normalizedMode, gco);
+  console.log(`Initialized Global Coherence State for rewrite (mode: ${normalizedMode})`);
+
+  // Rewrite each chunk with GCS state tracking for ALL modes
+  console.log(`Rewriting ${chunks.length} chunks with GCS state preservation (mode: ${normalizedMode})...`);
   const rewrittenChunks: string[] = [];
   const allChanges: string[] = [];
   
   for (let i = 0; i < chunks.length; i++) {
-    const systemPrompt = `You are rewriting text to improve ${normalizedMode} coherence while preserving global coherence across chunks.
+    // Serialize GCS for injection into prompt (applies to ALL modes)
+    const gcsSummary = serializeGCS(gcs);
+    
+    const systemPrompt = `You are rewriting text to maintain STATE CONTINUITY across chunks.
+
+CORE PRINCIPLE: Coherence is CONTINUITY OF STATE UNDER TRANSFORMATION.
+Each chunk must be rewritten as a state transition from GCS_n to GCS_n+1.
 
 ${aggressivenessInstructions[aggressiveness]}
 
-MODE-SPECIFIC REWRITE RULE: ${modeRewriteRules[normalizedMode]}
+COHERENCE MODE: ${normalizedMode}
+MODE-SPECIFIC RULE: ${modeRewriteRules[normalizedMode]}
 
 CRITICAL RULES:
-1. Maintain consistency with the Global Context Object - REFERENCE IT IN YOUR REWRITE
-2. Preserve cross-chunk coherence - this chunk must flow naturally from previous content
-3. Use terms consistently as defined in the GCO
-4. Maintain the same argument direction and emotional trajectory
-5. Apply mode-specific improvements based on the coherence type`;
+1. CONTINUE state elements from the GCS - do NOT abandon them
+2. ADVANCE the state - do NOT reset or re-establish what was already established
+3. ADDRESS open threads/claims that need follow-up
+4. Each chunk must INHERIT and EVOLVE the coherence state`;
 
-    const userPrompt = `Rewrite this chunk to improve ${normalizedMode} coherence.
+    const userPrompt = `Rewrite this chunk to maintain STATE CONTINUITY.
 
 ${gcoSummary}
+${gcsSummary}
 
 ${i > 0 ? `PREVIOUS CHUNK ENDED WITH: "${rewrittenChunks[i-1].slice(-200)}..."` : "This is the first chunk."}
 
 CHUNK ${i + 1} OF ${chunks.length}:
 ${chunks[i]}
 
+REWRITE REQUIREMENTS FOR STATE CONTINUITY:
+1. Continue all active elements listed in the GCS
+2. Address open threads/claims that need follow-up
+3. Do NOT reset or re-establish what was already established
+4. Maintain the current level/phase/trajectory
+5. If introducing new elements, they must connect to existing ones
+
 Provide:
-1. REWRITTEN_TEXT: The improved version (preserve approximate word count)
-2. CHANGES: Brief list of coherence improvements made, referencing how they align with the GCO
+1. REWRITTEN_TEXT: The improved version maintaining state continuity
+2. CHANGES: How you preserved/advanced the state
+3. STATE_UPDATE: JSON describing any state changes
 
 Format your response as:
 REWRITTEN_TEXT:
 [your rewritten text here]
 
 CHANGES:
-[bullet points of changes]`;
+[bullet points of changes]
+
+STATE_UPDATE:
+{"newElements": [], "resolvedElements": [], "abandonedElements": [], "levelOrPhaseShift": null, "trajectoryChange": null}`;
 
     const message = await anthropic.messages.create({
       model: "claude-3-7-sonnet-20250219",
@@ -400,11 +1156,29 @@ CHANGES:
     
     // Parse rewritten text and changes
     const textMatch = output.match(/REWRITTEN_TEXT:\s*([\s\S]*?)(?=CHANGES:|$)/i);
-    const changesMatch = output.match(/CHANGES:\s*([\s\S]*?)$/i);
+    const changesMatch = output.match(/CHANGES:\s*([\s\S]*?)(?=STATE_UPDATE:|$)/i);
     
     rewrittenChunks.push(textMatch ? textMatch[1].trim() : chunks[i]);
     if (changesMatch) {
       allChanges.push(`Chunk ${i + 1}: ${changesMatch[1].trim()}`);
+    }
+    
+    // Parse and merge state updates for ALL modes (unified GCS system)
+    const stateMatch = output.match(/STATE_UPDATE:\s*(\{[\s\S]*?\})/i);
+    if (stateMatch) {
+      try {
+        const stateUpdate = JSON.parse(stateMatch[1]);
+        const diff: CoherenceStateDiff = {
+          newElements: stateUpdate.newElements || [],
+          resolvedElements: stateUpdate.resolvedElements || [],
+          abandonedElements: stateUpdate.abandonedElements || [],
+          levelOrPhaseShift: stateUpdate.levelOrPhaseShift || null,
+          trajectoryChange: stateUpdate.trajectoryChange || null
+        };
+        gcs = updateGCS(gcs, diff, i + 1);
+      } catch {
+        // Ignore parse errors for state update
+      }
     }
   }
 

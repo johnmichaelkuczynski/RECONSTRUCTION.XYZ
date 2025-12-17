@@ -35,11 +35,26 @@ The application employs a monorepo structure, separating client and server compo
     - **Conservative Reconstruction**: "Charitable Interpretation" mode for generating coherent essays articulating a text's unified argument.
 
 ## Recent Changes (December 2024)
+- **Global Coherence State (GCS) System**: Complete architectural overhaul of coherence tracking:
+  - **Core Principle**: Coherence is NOT agreement or non-contradiction. Coherence is CONTINUITY OF STATE UNDER TRANSFORMATION.
+  - **Problem Solved**: Previously, chunking caused silent coherence degradation because coherence was evaluated locally. Now, every coherence function tracks evolving state across chunks.
+  - **Mode-Specific State Tracking**: Each of 8 coherence modes has its own state dimensions:
+    - **Logical Consistency**: Propositions asserted, negations ruled out, terms with definitions
+    - **Logical Cohesiveness**: Argument position (premise/development/conclusion), claims requiring support, established premises
+    - **Scientific/Explanatory**: Active causal variables, causal level (mechanism/system/policy/behavior), feedback loops, active mechanisms, open threads
+    - **Thematic/Psychological**: Dominant affect, emotional trajectory, active themes, tone register
+    - **Instructional**: Steps already given, preconditions satisfied, goal state, current phase
+    - **Motivational**: Motivation direction (encourage/warn/pressure/reassure), intensity trend, active claims
+    - **Mathematical**: Assumptions in force, proof strategy, lemmas established, current position
+    - **Philosophical**: Core concepts with roles, distinctions drawn, dialectical position, active threads
+  - **State Transitions**: Each chunk is processed as GCS_n → GCS_n+1, not evaluated in isolation
+  - **Failure Detection**: Flags degradation when state is re-asserted instead of advanced, level silently changes, concepts reused with altered roles, or progress stalls via repetition
+  - **State History**: Logs all state transitions for debugging and transparency
 - **Global Coherence Preservation Protocol**: Implemented for Coherence Meter to handle long texts (>1000 words, up to 5000 words):
   - Extracts Global Context Object (GCO) capturing: core topics, central framework, key concepts, argument direction, emotional trajectory, instructional goal, mathematical assumptions
-  - Injects GCO into each chunk analysis/rewrite for cross-chunk coherence
-  - Mode-specific rules for 8 coherence types (logical-consistency, logical-cohesiveness, scientific-explanatory, thematic-psychological, instructional, motivational, mathematical, philosophical)
-  - Chunk status tracking: preserved, weakened, or shifted relative to GCO
+  - Injects GCO + live state into each chunk analysis/rewrite for cross-chunk coherence
+  - Mode-specific rules for 8 coherence types
+  - Chunk status tracking: preserved, weakened, or shifted relative to state
   - New `/api/coherence-global` endpoint for long-text processing
 - **Refine Output Feature**: Added ability to refine both Reconstruction output and Final Objection-Proof version with target word count and/or custom instructions (e.g., "Add a Plato quote", "Reduce to 400 words").
 - **Aggressive Mode Default**: Changed "Aggressive" to be the default mode for Reconstruction (and other functions with that toggle). Toggle is always visible directly under the RECONSTRUCTION button.
