@@ -210,7 +210,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [coherenceRewrite, setCoherenceRewrite] = useState<string>("");
   const [coherenceChanges, setCoherenceChanges] = useState<string>("");
   const [coherenceLoading, setCoherenceLoading] = useState(false);
-  const [coherenceMode, setCoherenceMode] = useState<"analyze" | "rewrite" | null>(null);
+  const [coherenceMode, setCoherenceMode] = useState<"analyze" | "rewrite" | "analyze-and-rewrite" | null>(null);
   const [coherenceScore, setCoherenceScore] = useState<number | null>(null);
   const [coherenceAssessment, setCoherenceAssessment] = useState<"PASS" | "WEAK" | "FAIL" | null>(null);
   const [coherenceAggressiveness, setCoherenceAggressiveness] = useState<"conservative" | "moderate" | "aggressive">("aggressive");
@@ -1288,6 +1288,145 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       });
     } finally {
       setCoherenceLoading(false);
+    }
+  };
+
+  // Combined: Analyze + Rewrite in sequence
+  const handleCoherenceAnalyzeAndRewrite = async () => {
+    const wordCount = coherenceInputText.trim().split(/\s+/).length;
+    
+    if (!coherenceInputText.trim()) {
+      toast({
+        title: "No Input Text",
+        description: "Please enter text to analyze and rewrite",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    if (wordCount > 5000) {
+      toast({
+        title: "Text Too Long",
+        description: `Your text has ${wordCount} words. Maximum is 5000 words.`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setCoherenceLoading(true);
+    setCoherenceMode("analyze-and-rewrite");
+    setCoherenceAnalysis("");
+    setCoherenceScore(null);
+    setCoherenceAssessment(null);
+    setDetectedCoherenceType(null);
+    setCoherenceRewrite("");
+    setCoherenceChanges("");
+    setCoherenceCorrectionsApplied([]);
+    setCoherenceRewriteAccuracyScore(null);
+
+    try {
+      const isLongText = wordCount > 1000;
+      const endpoint = isLongText ? '/api/coherence-global' : '/api/coherence-meter';
+      
+      // STEP 1: Run Analysis
+      setCoherenceStageProgress("Stage 1/2: Analyzing coherence...");
+      toast({
+        title: "Step 1: Analyzing Coherence",
+        description: isLongText ? `Analyzing ${wordCount} words with Global Coherence Preservation...` : "Running coherence analysis...",
+      });
+      
+      const analyzeResponse = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: coherenceInputText,
+          coherenceType,
+          mode: "analyze"
+        }),
+      });
+
+      if (!analyzeResponse.ok) {
+        const errorData = await analyzeResponse.json();
+        throw new Error(errorData.message || 'Analysis failed');
+      }
+
+      const analyzeData = await analyzeResponse.json();
+      if (analyzeData.success) {
+        setCoherenceAnalysis(analyzeData.analysis);
+        setCoherenceScore(analyzeData.score);
+        setCoherenceAssessment(analyzeData.assessment);
+        
+        if (analyzeData.isScientificExplanatory) {
+          setCoherenceIsScientific(true);
+          setCoherenceIsMathematical(false);
+          setCoherenceLogicalScore(analyzeData.logicalConsistency);
+          setCoherenceScientificScore(analyzeData.scientificAccuracy);
+        } else if (analyzeData.isMathematical) {
+          setCoherenceIsMathematical(true);
+          setCoherenceIsScientific(false);
+          setMathValidityAnalysis(analyzeData.validityAnalysis);
+          setMathValidityScore(analyzeData.validityScore);
+          setMathValidityVerdict(analyzeData.validityVerdict);
+        } else {
+          setCoherenceIsMathematical(false);
+          setCoherenceIsScientific(false);
+        }
+        
+        if (analyzeData.wasAutoDetected && analyzeData.detectedCoherenceType) {
+          setDetectedCoherenceType(analyzeData.detectedCoherenceType);
+        }
+      }
+
+      // STEP 2: Run Rewrite
+      setCoherenceStageProgress("Stage 2/2: Rewriting to maximize coherence...");
+      toast({
+        title: "Step 2: Rewriting",
+        description: "Generating improved version...",
+      });
+      
+      const rewriteResponse = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: coherenceInputText,
+          coherenceType,
+          mode: "rewrite",
+          aggressiveness: coherenceAggressiveness
+        }),
+      });
+
+      if (!rewriteResponse.ok) {
+        const errorData = await rewriteResponse.json();
+        throw new Error(errorData.message || 'Rewrite failed');
+      }
+
+      const rewriteData = await rewriteResponse.json();
+      if (rewriteData.success) {
+        setCoherenceRewrite(rewriteData.rewrite);
+        setCoherenceChanges(rewriteData.changes);
+        
+        if (rewriteData.isScientificExplanatory) {
+          setCoherenceCorrectionsApplied(rewriteData.correctionsApplied || []);
+          setCoherenceRewriteAccuracyScore(rewriteData.scientificAccuracyScore || null);
+        }
+      }
+
+      setCoherenceStageProgress("");
+      toast({
+        title: "Analysis + Rewrite Complete!",
+        description: `Score: ${analyzeData.score}/10. Both analysis and improved version are ready.`,
+      });
+      
+    } catch (error: any) {
+      console.error('Analyze and rewrite error:', error);
+      toast({
+        title: "Operation Failed",
+        description: error.message || "An error occurred during analyze and rewrite.",
+        variant: "destructive",
+      });
+    } finally {
+      setCoherenceLoading(false);
+      setCoherenceStageProgress("");
     }
   };
 
@@ -4870,6 +5009,25 @@ Generated on: ${new Date().toLocaleString()}`;
               </Button>
 
               <Button
+                onClick={handleCoherenceAnalyzeAndRewrite}
+                disabled={coherenceLoading}
+                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-8 py-6 text-lg flex-1 min-w-[200px]"
+                data-testid="button-analyze-and-rewrite-coherence"
+              >
+                {coherenceLoading && coherenceMode === "analyze-and-rewrite" ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-5 h-5 mr-2" />
+                    ANALYZE + REWRITE
+                  </>
+                )}
+              </Button>
+
+              <Button
                 onClick={handleCoherenceClear}
                 variant="outline"
                 className="border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
@@ -4897,7 +5055,7 @@ Generated on: ${new Date().toLocaleString()}`;
           )}
 
           {/* Analysis Output - show for coherenceAnalysis OR mathValidityAnalysis (cogency mode) */}
-          {coherenceMode === "analyze" && (coherenceAnalysis || mathValidityAnalysis) && (
+          {(coherenceMode === "analyze" || coherenceMode === "analyze-and-rewrite") && (coherenceAnalysis || mathValidityAnalysis) && (
             <div className="mt-8 space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-100">
@@ -5234,7 +5392,7 @@ Generated on: ${new Date().toLocaleString()}`;
           )}
 
           {/* Rewrite Output */}
-          {coherenceMode === "rewrite" && coherenceRewrite && (
+          {(coherenceMode === "rewrite" || coherenceMode === "analyze-and-rewrite") && coherenceRewrite && (
             <div className="mt-8 space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-3 flex-wrap">
