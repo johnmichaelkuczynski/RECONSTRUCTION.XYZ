@@ -193,7 +193,7 @@ function Navigation() {
     <nav className="bg-primary text-primary-foreground py-4">
       <div className="container mx-auto flex justify-between items-center">
         <div className="flex items-center gap-6">
-          <div className="font-bold text-xl">Cognitive Analysis Platform</div>
+          <div className="font-bold text-xl">TEXT MD</div>
           <a 
             href="mailto:contact@zhisystems.ai" 
             className="flex items-center gap-2 hover:underline text-sm"
