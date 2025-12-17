@@ -197,6 +197,12 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [refineFinalInstructions, setRefineFinalInstructions] = useState<string>("");
   const [refineFinalLoading, setRefineFinalLoading] = useState(false);
   
+  // Objection-Proof Refine State (standalone section)
+  const [objectionProofRefineWordCount, setObjectionProofRefineWordCount] = useState("");
+  const [objectionProofRefineInstructions, setObjectionProofRefineInstructions] = useState("");
+  const [objectionProofRefinedOutput, setObjectionProofRefinedOutput] = useState("");
+  const [objectionProofRefineLoading, setObjectionProofRefineLoading] = useState(false);
+  
   // Coherence Meter State
   const [coherenceInputText, setCoherenceInputText] = useState("");
   const [coherenceType, setCoherenceType] = useState<"logical-consistency" | "logical-cohesiveness" | "scientific-explanatory" | "thematic-psychological" | "instructional" | "motivational" | "mathematical" | "philosophical" | "auto-detect">("auto-detect");
@@ -686,6 +692,42 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       toast({ title: "Refinement failed", description: error.message, variant: "destructive" });
     } finally {
       setRefineFinalLoading(false);
+    }
+  };
+
+  // Refine standalone objection-proof output with word count and/or custom instructions
+  const handleRefineObjectionProof = async () => {
+    if (!objectionProofOutput.trim()) {
+      toast({ title: "No objection-proof text to refine", variant: "destructive" });
+      return;
+    }
+    
+    setObjectionProofRefineLoading(true);
+    try {
+      const response = await fetch("/api/refine-output", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: objectionProofOutput,
+          targetWordCount: objectionProofRefineWordCount ? parseInt(objectionProofRefineWordCount) : null,
+          customInstructions: objectionProofRefineInstructions || null,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Refinement failed");
+      }
+      
+      const data = await response.json();
+      if (data.success && data.output) {
+        setObjectionProofRefinedOutput(data.output);
+        toast({ title: "Refined version generated!" });
+      }
+    } catch (error: any) {
+      toast({ title: "Refinement failed", description: error.message, variant: "destructive" });
+    } finally {
+      setObjectionProofRefineLoading(false);
     }
   };
 
@@ -4123,6 +4165,112 @@ Generated on: ${new Date().toLocaleString()}`;
                       {objectionProofOutput}
                     </pre>
                   </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    Word count: ~{objectionProofOutput.trim().split(/\s+/).length} words
+                  </p>
+                </div>
+              )}
+
+              {/* Refine Objection-Proof Output Box */}
+              {objectionProofOutput && (
+                <div className="mt-6 bg-gradient-to-r from-purple-50 to-fuchsia-50 dark:from-purple-900/20 dark:to-fuchsia-900/20 p-6 rounded-lg border-2 border-purple-300 dark:border-purple-700">
+                  <h4 className="text-lg font-semibold text-purple-900 dark:text-purple-100 mb-4 flex items-center gap-2">
+                    <FileEdit className="w-5 h-5 text-purple-600" />
+                    Refine Objection-Proof Version
+                  </h4>
+                  <p className="text-sm text-purple-700 dark:text-purple-300 mb-4">
+                    Adjust word count and/or add custom instructions to modify the output above. The refined version will appear in a new box below.
+                  </p>
+                  
+                  <div className="flex flex-wrap gap-4 items-end mb-4">
+                    <div className="flex-1 min-w-[140px] max-w-[200px]">
+                      <label className="block text-sm font-medium text-purple-800 dark:text-purple-200 mb-1">
+                        Target Word Count
+                      </label>
+                      <input
+                        type="number"
+                        value={objectionProofRefineWordCount}
+                        onChange={(e) => setObjectionProofRefineWordCount(e.target.value)}
+                        placeholder="e.g., 500"
+                        className="w-full p-2 text-sm border rounded dark:bg-gray-700 dark:border-gray-600"
+                        data-testid="input-objection-proof-refine-word-count"
+                      />
+                    </div>
+                    <div className="flex-[2] min-w-[250px]">
+                      <label className="block text-sm font-medium text-purple-800 dark:text-purple-200 mb-1">
+                        Custom Instructions (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={objectionProofRefineInstructions}
+                        onChange={(e) => setObjectionProofRefineInstructions(e.target.value)}
+                        placeholder="e.g., Add a Plato quote, emphasize the conclusion, make more formal"
+                        className="w-full p-2 text-sm border rounded dark:bg-gray-700 dark:border-gray-600"
+                        data-testid="input-objection-proof-refine-instructions"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleRefineObjectionProof}
+                      disabled={objectionProofRefineLoading || (!objectionProofRefineWordCount && !objectionProofRefineInstructions)}
+                      className="bg-purple-600 hover:bg-purple-700 text-white"
+                      data-testid="button-refine-objection-proof"
+                    >
+                      {objectionProofRefineLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Refining...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2" />
+                          Generate Refined Version
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  {/* Refined Output Display */}
+                  {objectionProofRefinedOutput && (
+                    <div className="mt-4 bg-white dark:bg-gray-800 p-4 rounded-lg border-2 border-purple-400 dark:border-purple-600">
+                      <div className="flex items-center justify-between mb-3">
+                        <h5 className="text-md font-semibold text-purple-900 dark:text-purple-100 flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-purple-600" />
+                          Refined Version
+                          <Badge variant="outline" className="ml-2 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+                            {objectionProofRefinedOutput.trim().split(/\s+/).length} words
+                          </Badge>
+                        </h5>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDownloadText(objectionProofRefinedOutput, 'refined-objection-proof.txt')}
+                            data-testid="button-download-refined-objection-proof"
+                          >
+                            <Download className="w-4 h-4" />
+                          </Button>
+                          <CopyButton text={objectionProofRefinedOutput} />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setObjectionProofRefinedOutput("");
+                              setObjectionProofRefineWordCount("");
+                              setObjectionProofRefineInstructions("");
+                            }}
+                            data-testid="button-clear-refined-objection-proof"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[600px] overflow-y-auto">
+                        <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
+                          {objectionProofRefinedOutput}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
