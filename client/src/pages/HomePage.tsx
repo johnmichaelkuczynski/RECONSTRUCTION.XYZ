@@ -865,6 +865,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           originalText: reconstructionOutput,
           objectionsOutput: objectionsData.output,
           customInstructions: validatorCustomInstructions || "",
+          finalVersionOnly: true,
         }),
       });
 
