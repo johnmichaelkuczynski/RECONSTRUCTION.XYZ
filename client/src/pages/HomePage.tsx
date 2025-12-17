@@ -219,7 +219,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [coherenceScientificScore, setCoherenceScientificScore] = useState<{score: number; assessment: string; analysis: string; inaccuracies: string[]} | null>(null);
   const [coherenceCorrectionsApplied, setCoherenceCorrectionsApplied] = useState<string[]>([]);
   const [coherenceRewriteAccuracyScore, setCoherenceRewriteAccuracyScore] = useState<number | null>(null);
-  const [coherenceProcessingMode, setCoherenceProcessingMode] = useState<"simple" | "outline-guided">("simple");
+  const [coherenceProcessingMode, setCoherenceProcessingMode] = useState<"simple" | "outline-guided">("outline-guided");
   const [mathProofCorrectedProof, setMathProofCorrectedProof] = useState<string>("");
   const [mathProofTheoremStatus, setMathProofTheoremStatus] = useState<"TRUE" | "FALSE" | "PARTIALLY_TRUE" | null>(null);
   const [mathProofOriginalTheorem, setMathProofOriginalTheorem] = useState<string>("");
