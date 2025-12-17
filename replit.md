@@ -35,6 +35,10 @@ The application employs a monorepo structure, separating client and server compo
     - **Conservative Reconstruction**: "Charitable Interpretation" mode for generating coherent essays articulating a text's unified argument.
 
 ## Recent Changes (December 2024)
+- **Exemplar-Driven GCS Semantic Fixes**: Fixed critical state mutation semantics:
+  - **Scientific-Explanatory**: Resolved feedback loops are now REMOVED from active list (not just status flip), allowing later reactivation
+  - **Instructional**: Satisfied prerequisites are now REMOVED from prereqs list (not added), properly clearing completed requirements
+  - **Philosophical**: Equivocation violations logged to history but NOT added to trusted vocabulary; new objections now populate replies_pending for proper dialectic tracking
 - **Global Coherence State (GCS) System**: Complete architectural overhaul of coherence tracking:
   - **Core Principle**: Coherence is NOT agreement or non-contradiction. Coherence is CONTINUITY OF STATE UNDER TRANSFORMATION.
   - **Problem Solved**: Previously, chunking caused silent coherence degradation because coherence was evaluated locally. Now, every coherence function tracks evolving state across chunks.
