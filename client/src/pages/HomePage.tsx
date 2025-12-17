@@ -3197,8 +3197,7 @@ Generated on: ${new Date().toLocaleString()}`;
           <div className="mb-6">
             <Button
               onClick={() => {
-                setShowValidatorCustomization(prev => validatorMode === "reconstruction" ? !prev : true);
-                setValidatorMode("reconstruction");
+                handleValidatorProcess("reconstruction");
               }}
               className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
                 validatorMode === "reconstruction" 
@@ -3212,6 +3211,35 @@ Generated on: ${new Date().toLocaleString()}`;
               <span className="font-bold text-lg">RECONSTRUCTION</span>
               <span className="text-xs mt-1 text-center opacity-80">Clean up logic</span>
             </Button>
+            
+            {/* Aggressive Toggle - Always Visible */}
+            <div className="flex items-center justify-center gap-4 mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-700">
+              <span className="text-sm font-medium text-amber-800 dark:text-amber-200">Mode:</span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant={validatorFidelityLevel === "conservative" ? "default" : "outline"}
+                  onClick={() => setValidatorFidelityLevel("conservative")}
+                  className={validatorFidelityLevel === "conservative" 
+                    ? "bg-amber-600 hover:bg-amber-700 text-white" 
+                    : "border-amber-300 text-amber-700 dark:text-amber-300"}
+                  data-testid="button-fidelity-conservative"
+                >
+                  Conservative
+                </Button>
+                <Button
+                  size="sm"
+                  variant={validatorFidelityLevel === "aggressive" ? "default" : "outline"}
+                  onClick={() => setValidatorFidelityLevel("aggressive")}
+                  className={validatorFidelityLevel === "aggressive" 
+                    ? "bg-red-600 hover:bg-red-700 text-white" 
+                    : "border-amber-300 text-amber-700 dark:text-amber-300"}
+                  data-testid="button-fidelity-aggressive"
+                >
+                  Aggressive
+                </Button>
+              </div>
+            </div>
           </div>
 
           {/* Clear All Button */}
@@ -3267,69 +3295,6 @@ Generated on: ${new Date().toLocaleString()}`;
             </p>
           </div>
 
-          {/* Customization Panel */}
-          {showValidatorCustomization && validatorMode && (
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border-2 border-gray-200 dark:border-gray-700 mb-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <FileEdit className="w-5 h-5" />
-                Customization Options - RECONSTRUCTION
-              </h3>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Target Domain</label>
-                  <input
-                    type="text"
-                    value={validatorTargetDomain}
-                    onChange={(e) => setValidatorTargetDomain(e.target.value)}
-                    placeholder="e.g., cognitive science, information theory, computational model"
-                    className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
-                    data-testid="input-target-domain"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Fidelity Level</label>
-                  <Select value={validatorFidelityLevel} onValueChange={(value: "conservative" | "aggressive") => setValidatorFidelityLevel(value)}>
-                    <SelectTrigger data-testid="select-fidelity-level">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="conservative">Conservative (Stay close to original)</SelectItem>
-                      <SelectItem value="aggressive">Aggressive (Maximize clarity)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex gap-3 mt-6">
-                <Button
-                  onClick={() => handleValidatorProcess(validatorMode)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                  disabled={validatorLoading}
-                  data-testid="button-generate-validator"
-                >
-                  {validatorLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Generate
-                    </>
-                  )}
-                </Button>
-                <Button
-                  onClick={() => setShowValidatorCustomization(false)}
-                  variant="outline"
-                  data-testid="button-hide-customization"
-                >
-                  Hide Options
-                </Button>
-              </div>
-            </div>
-          )}
 
           {/* Output Display */}
           {validatorOutput && (
