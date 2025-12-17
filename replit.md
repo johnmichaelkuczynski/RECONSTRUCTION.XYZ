@@ -23,7 +23,7 @@ The application employs a monorepo structure, separating client and server compo
     - **Multi-Model Intelligence Evaluation**: A 4-phase system assessing 17 cognitive dimensions, supporting genre-aware analysis.
     - **Intelligent Rewrite Function (MAXINTEL)**: Recursively optimizes text for intelligence scores, with custom instructions and external knowledge integration.
     - **GPT Bypass Humanizer**: Transforms AI-generated text to bypass AI detection.
-    - **Coherence Meter**: Offers simple chunking and outline-guided processing with specialized modes:
+    - **Coherence Meter**: Supports up to 5000-word inputs with Global Coherence Preservation Protocol for long texts (>1000 words). Includes specialized modes:
       - **Mathematical Proof System** (Four distinct modes):
         1. **COHERENCE** - Evaluates structural coherence ONLY (logical flow, notation consistency, step justification, structural clarity). Does NOT evaluate whether the theorem is true. A well-structured proof of a false theorem can score high.
         2. **COGENCY** - Evaluates whether the theorem is TRUE and whether the proof is mathematically valid. Includes claim truth analysis, inference validity, boundary conditions, and soundness subscores. Shows counterexamples and flaws.
@@ -35,6 +35,12 @@ The application employs a monorepo structure, separating client and server compo
     - **Conservative Reconstruction**: "Charitable Interpretation" mode for generating coherent essays articulating a text's unified argument.
 
 ## Recent Changes (December 2024)
+- **Global Coherence Preservation Protocol**: Implemented for Coherence Meter to handle long texts (>1000 words, up to 5000 words):
+  - Extracts Global Context Object (GCO) capturing: core topics, central framework, key concepts, argument direction, emotional trajectory, instructional goal, mathematical assumptions
+  - Injects GCO into each chunk analysis/rewrite for cross-chunk coherence
+  - Mode-specific rules for 8 coherence types (logical-consistency, logical-cohesiveness, scientific-explanatory, thematic-psychological, instructional, motivational, mathematical, philosophical)
+  - Chunk status tracking: preserved, weakened, or shifted relative to GCO
+  - New `/api/coherence-global` endpoint for long-text processing
 - **Refine Output Feature**: Added ability to refine both Reconstruction output and Final Objection-Proof version with target word count and/or custom instructions (e.g., "Add a Plato quote", "Reduce to 400 words").
 - **Aggressive Mode Default**: Changed "Aggressive" to be the default mode for Reconstruction (and other functions with that toggle). Toggle is always visible directly under the RECONSTRUCTION button.
 - **Full Suite Pipeline Improvements**: Pipeline now outputs ONLY the clean final version (no change log or commentary) for the Objection-Proof output.

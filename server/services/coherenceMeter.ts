@@ -207,27 +207,36 @@ Respond with ONLY valid JSON.`;
 export async function analyzeGlobalCoherence(
   fullText: string,
   coherenceMode: string,
-  chunkSize: number = 1000
+  wordsPerChunk: number = 400
 ): Promise<GlobalCoherenceAnalysisResult> {
   
-  // Split into chunks (~1000 words each)
+  // Validate coherence mode
+  const validModes = ["logical-consistency", "logical-cohesiveness", "scientific-explanatory", "thematic-psychological", "instructional", "motivational", "mathematical", "philosophical"];
+  const normalizedMode = validModes.includes(coherenceMode) ? coherenceMode : "logical-consistency";
+  
+  // Split into chunks (~400 words each for API context limits)
   const words = fullText.split(/\s+/);
   const chunks: string[] = [];
   
-  for (let i = 0; i < words.length; i += chunkSize) {
-    chunks.push(words.slice(i, i + chunkSize).join(' '));
+  for (let i = 0; i < words.length; i += wordsPerChunk) {
+    chunks.push(words.slice(i, i + wordsPerChunk).join(' '));
   }
 
   // STEP 1: Extract Global Context Object
   console.log("Extracting Global Context Object...");
   const gco = await extractGlobalContextObject(fullText);
   
-  // STEP 2 & 3: Analyze each chunk with GCO
-  console.log(`Analyzing ${chunks.length} chunks with GCO injection...`);
+  // Validate GCO was extracted successfully
+  if (!gco.coreTopics.length && !gco.centralFramework && !gco.keyConcepts.length) {
+    console.warn("GCO extraction returned minimal data - proceeding with limited context");
+  }
+  
+  // STEP 2 & 3: Analyze each chunk with GCO using validated mode
+  console.log(`Analyzing ${chunks.length} chunks with GCO injection (mode: ${normalizedMode})...`);
   const chunkResults: ChunkCoherenceResult[] = [];
   
   for (let i = 0; i < chunks.length; i++) {
-    const result = await analyzeChunkWithGCO(chunks[i], i, gco, coherenceMode);
+    const result = await analyzeChunkWithGCO(chunks[i], i, gco, normalizedMode);
     chunkResults.push(result);
   }
   
@@ -249,7 +258,7 @@ export async function analyzeGlobalCoherence(
   };
   
   const aggregatedAnalysis = `
-GLOBAL COHERENCE ANALYSIS (${coherenceMode})
+GLOBAL COHERENCE ANALYSIS (${normalizedMode})
 ============================================
 
 GLOBAL CONTEXT OBJECT:
@@ -288,20 +297,29 @@ export async function rewriteWithGlobalCoherence(
   fullText: string,
   coherenceMode: string,
   aggressiveness: "conservative" | "moderate" | "aggressive" = "moderate",
-  chunkSize: number = 1000
+  wordsPerChunk: number = 400
 ): Promise<{ rewrittenText: string; gco: GlobalContextObject; changes: string }> {
   
-  // Split into chunks
+  // Validate coherence mode
+  const validModes = ["logical-consistency", "logical-cohesiveness", "scientific-explanatory", "thematic-psychological", "instructional", "motivational", "mathematical", "philosophical"];
+  const normalizedMode = validModes.includes(coherenceMode) ? coherenceMode : "logical-consistency";
+  
+  // Split into chunks (~400 words each for API context limits)
   const words = fullText.split(/\s+/);
   const chunks: string[] = [];
   
-  for (let i = 0; i < words.length; i += chunkSize) {
-    chunks.push(words.slice(i, i + chunkSize).join(' '));
+  for (let i = 0; i < words.length; i += wordsPerChunk) {
+    chunks.push(words.slice(i, i + wordsPerChunk).join(' '));
   }
 
   // Extract GCO first
   console.log("Extracting Global Context Object for rewrite...");
   const gco = await extractGlobalContextObject(fullText);
+  
+  // Validate GCO was extracted successfully
+  if (!gco.coreTopics.length && !gco.centralFramework && !gco.keyConcepts.length) {
+    console.warn("GCO extraction returned minimal data - proceeding with limited context");
+  }
   
   const aggressivenessInstructions = {
     conservative: "Make minimal changes. Only fix clear coherence breaks. Preserve author voice completely.",
@@ -309,32 +327,48 @@ export async function rewriteWithGlobalCoherence(
     aggressive: "Substantially improve coherence. Reorganize if needed. Strengthen logical connections throughout."
   };
 
+  // Mode-specific rewrite rules matching the analysis rules
+  const modeRewriteRules: Record<string, string> = {
+    "logical-consistency": "Fix any contradictions with established facts. Ensure consistent use of terms and remove conflicting claims.",
+    "logical-cohesiveness": "Strengthen argumentative connections. Fill gaps in reasoning, add missing premises, and ensure each claim supports the next.",
+    "scientific-explanatory": "Ensure explanations use consistent causal levels. Don't mix mechanism with correlation. Maintain explanatory direction.",
+    "thematic-psychological": "Smooth tone transitions, maintain affect consistency, and ensure psychological framing continues naturally.",
+    "instructional": "Ensure steps are in correct order, no skipped prerequisites, and maintain actionability throughout.",
+    "motivational": "Keep emotional direction aligned. Avoid motivational reversals or dilution of urgency/encouragement.",
+    "mathematical": "Ensure proof steps follow from assumptions. Don't invoke unestablished results. Maintain proof direction (forward, backward, contradiction, induction).",
+    "philosophical": "Preserve concept meanings throughout. Avoid equivocation, category drift, or silent redefinition of terms."
+  };
+
   const gcoSummary = `
-GLOBAL CONTEXT OBJECT (MUST BE PRESERVED):
+GLOBAL CONTEXT OBJECT (MUST BE PRESERVED AND REFERENCED):
 - Core Topics: ${gco.coreTopics.join(", ") || "Not specified"}
 - Central Framework: ${gco.centralFramework || "None identified"}
 - Key Concepts: ${gco.keyConcepts.join(", ") || "Not specified"}
 - Argument Direction: ${gco.argumentDirection || "None identified"}
 - Emotional Trajectory: ${gco.emotionalTrajectory || "None identified"}
-- Instructional Goal: ${gco.instructionalGoal || "None identified"}`;
+- Instructional Goal: ${gco.instructionalGoal || "None identified"}
+- Mathematical Assumptions: ${gco.mathematicalAssumptions || "None identified"}`;
 
   // Rewrite each chunk with GCO awareness
-  console.log(`Rewriting ${chunks.length} chunks with GCO preservation...`);
+  console.log(`Rewriting ${chunks.length} chunks with GCO preservation (mode: ${normalizedMode})...`);
   const rewrittenChunks: string[] = [];
   const allChanges: string[] = [];
   
   for (let i = 0; i < chunks.length; i++) {
-    const systemPrompt = `You are rewriting text to improve ${coherenceMode} coherence while preserving global coherence across chunks.
+    const systemPrompt = `You are rewriting text to improve ${normalizedMode} coherence while preserving global coherence across chunks.
 
 ${aggressivenessInstructions[aggressiveness]}
 
+MODE-SPECIFIC REWRITE RULE: ${modeRewriteRules[normalizedMode]}
+
 CRITICAL RULES:
-1. Maintain consistency with the Global Context Object
+1. Maintain consistency with the Global Context Object - REFERENCE IT IN YOUR REWRITE
 2. Preserve cross-chunk coherence - this chunk must flow naturally from previous content
 3. Use terms consistently as defined in the GCO
-4. Maintain the same argument direction and emotional trajectory`;
+4. Maintain the same argument direction and emotional trajectory
+5. Apply mode-specific improvements based on the coherence type`;
 
-    const userPrompt = `Rewrite this chunk to improve ${coherenceMode} coherence.
+    const userPrompt = `Rewrite this chunk to improve ${normalizedMode} coherence.
 
 ${gcoSummary}
 
@@ -345,7 +379,7 @@ ${chunks[i]}
 
 Provide:
 1. REWRITTEN_TEXT: The improved version (preserve approximate word count)
-2. CHANGES: Brief list of coherence improvements made
+2. CHANGES: Brief list of coherence improvements made, referencing how they align with the GCO
 
 Format your response as:
 REWRITTEN_TEXT:
