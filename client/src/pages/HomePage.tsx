@@ -4969,22 +4969,22 @@ Generated on: ${new Date().toLocaleString()}`;
             </div>
           ) : (
             /* STANDARD BUTTONS FOR NON-MATHEMATICAL TYPES */
-            <div className="flex flex-wrap gap-4 mb-6">
+            <div className="flex flex-wrap gap-2 mb-6">
               <Button
                 onClick={handleCoherenceAnalyze}
                 disabled={coherenceLoading}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-6 text-lg flex-1 min-w-[200px]"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-sm"
                 data-testid="button-analyze-coherence"
               >
                 {coherenceLoading && coherenceMode === "analyze" ? (
                   <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
                     Analyzing...
                   </>
                 ) : (
                   <>
-                    <BarChart3 className="w-5 h-5 mr-2" />
-                    ANALYZE COHERENCE
+                    <BarChart3 className="w-4 h-4 mr-1" />
+                    ANALYZE
                   </>
                 )}
               </Button>
@@ -4992,18 +4992,18 @@ Generated on: ${new Date().toLocaleString()}`;
               <Button
                 onClick={handleCoherenceRewrite}
                 disabled={coherenceLoading}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-6 text-lg flex-1 min-w-[200px]"
+                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 text-sm"
                 data-testid="button-rewrite-coherence"
               >
                 {coherenceLoading && coherenceMode === "rewrite" ? (
                   <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
                     Rewriting...
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-5 h-5 mr-2" />
-                    REWRITE TO MAX COHERENCE
+                    <Sparkles className="w-4 h-4 mr-1" />
+                    REWRITE TO MAX
                   </>
                 )}
               </Button>
@@ -5011,18 +5011,18 @@ Generated on: ${new Date().toLocaleString()}`;
               <Button
                 onClick={handleCoherenceAnalyzeAndRewrite}
                 disabled={coherenceLoading}
-                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-8 py-6 text-lg flex-1 min-w-[200px]"
+                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-4 py-2 text-sm"
                 data-testid="button-analyze-and-rewrite-coherence"
               >
                 {coherenceLoading && coherenceMode === "analyze-and-rewrite" ? (
                   <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
                     Processing...
                   </>
                 ) : (
                   <>
-                    <Zap className="w-5 h-5 mr-2" />
-                    ANALYZE AND REWRITE TO MAXIMUM COHERENCE
+                    <Zap className="w-4 h-4 mr-1" />
+                    ANALYZE + REWRITE TO MAX
                   </>
                 )}
               </Button>
@@ -5030,10 +5030,11 @@ Generated on: ${new Date().toLocaleString()}`;
               <Button
                 onClick={handleCoherenceClear}
                 variant="outline"
+                size="sm"
                 className="border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
                 data-testid="button-clear-coherence"
               >
-                <Trash2 className="w-4 h-4 mr-2" />
+                <Trash2 className="w-4 h-4 mr-1" />
                 Clear All
               </Button>
             </div>
