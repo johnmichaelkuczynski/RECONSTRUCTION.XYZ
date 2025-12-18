@@ -1788,6 +1788,141 @@ Provide concise bullet points of changes made to improve internal coherence.`;
   };
 }
 
+export interface ReconstructionResult {
+  reconstructedText: string;
+  changes: string;
+  wasReconstructed: boolean;
+  adjacentMaterialAdded: string;
+  originalLimitationsIdentified: string;
+}
+
+export async function reconstructToMaxCoherence(
+  text: string,
+  coherenceType: string = "logical-consistency"
+): Promise<ReconstructionResult> {
+  
+  // Stage 1: Attempt aggressive rewrite first
+  const initialRewrite = await rewriteForCoherence(text, "aggressive");
+  
+  // Stage 2: Evaluate if the rewrite achieves max coherence
+  const evaluationPrompt = `Evaluate this text for maximum coherence. Score it 1-10 and identify any STRUCTURAL LIMITATIONS that prevent it from achieving 9-10/10 coherence.
+
+CRITICAL: We're evaluating INTERNAL COHERENCE (consistency, clarity, hierarchical structure) - NOT truth, accuracy, or accessibility.
+
+TEXT:
+${initialRewrite.rewrittenText}
+
+Respond in EXACTLY this format:
+COHERENCE_SCORE: [1-10]
+CAN_ACHIEVE_MAX: [YES/NO]
+STRUCTURAL_LIMITATIONS: [List the fundamental issues that prevent maximum coherence, if any. These are issues that can't be fixed by rewriting - they require adding new material or restructuring the core argument.]
+MISSING_ELEMENTS: [What conceptual/argumentative elements would need to be added to achieve max coherence?]`;
+
+  const evalMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 2000,
+    temperature: 0.3,
+    messages: [{ role: "user", content: evaluationPrompt }]
+  });
+
+  const evalOutput = evalMessage.content[0].type === 'text' ? evalMessage.content[0].text : '';
+  
+  const scoreMatch = evalOutput.match(/COHERENCE_SCORE:\s*(\d+)/i);
+  const canAchieveMatch = evalOutput.match(/CAN_ACHIEVE_MAX:\s*(YES|NO)/i);
+  const limitationsMatch = evalOutput.match(/STRUCTURAL_LIMITATIONS:\s*([\s\S]*?)(?=MISSING_ELEMENTS:|$)/i);
+  const missingMatch = evalOutput.match(/MISSING_ELEMENTS:\s*([\s\S]*?)$/i);
+  
+  const score = scoreMatch ? parseInt(scoreMatch[1]) : 7;
+  const canAchieveMax = canAchieveMatch ? canAchieveMatch[1].toUpperCase() === 'YES' : false;
+  const limitations = limitationsMatch ? limitationsMatch[1].trim() : '';
+  const missingElements = missingMatch ? missingMatch[1].trim() : '';
+  
+  // If already at max coherence (9+) or can achieve it, return the rewrite
+  if (score >= 9 || canAchieveMax) {
+    return {
+      reconstructedText: initialRewrite.rewrittenText,
+      changes: initialRewrite.changes,
+      wasReconstructed: false,
+      adjacentMaterialAdded: "None needed - input permitted maximum coherence.",
+      originalLimitationsIdentified: "None - the original text could be rewritten to achieve maximum coherence."
+    };
+  }
+  
+  // Stage 3: Reconstruct with thematically-adjacent material
+  const reconstructionPrompt = `You are a RECONSTRUCTION SPECIALIST. The user's original text has fundamental structural limitations that prevent maximum coherence even after aggressive rewriting.
+
+ORIGINAL TEXT:
+${text}
+
+AFTER AGGRESSIVE REWRITE:
+${initialRewrite.rewrittenText}
+
+IDENTIFIED LIMITATIONS:
+${limitations}
+
+MISSING ELEMENTS NEEDED FOR MAX COHERENCE:
+${missingElements}
+
+YOUR TASK:
+Create a RECONSTRUCTED version that achieves 9-10/10 coherence by:
+
+1. PRESERVE the core thesis, intent, and thematic direction of the original
+2. ADD thematically-adjacent material that fills the identified gaps
+3. IMPORT related concepts, arguments, or frameworks that strengthen the core thesis
+4. BUILD a complete, hierarchically-structured argument around the original's central idea
+5. ENSURE the final product reads as a unified, maximally coherent piece
+
+THEMATIC ADJACENCY RULES:
+- Stay as close to the original topic as possible
+- If the original discusses X, you may bring in related aspects of X
+- You may add supporting arguments, historical context, philosophical underpinnings
+- You may add distinctions, qualifications, and anticipations of objections
+- Do NOT change the fundamental position or thesis - EXTEND and STRENGTHEN it
+- The reconstructed text should feel like what the author WOULD have written if they had more expertise
+
+OUTPUT:
+Produce ONLY the reconstructed text. No headers, labels, commentary, and NO MARKDOWN FORMATTING. Plain prose only.`;
+
+  const reconstructMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 10000,
+    temperature: 0.7,
+    messages: [{ role: "user", content: reconstructionPrompt }]
+  });
+
+  const reconstructedText = stripMarkdown(reconstructMessage.content[0].type === 'text' ? reconstructMessage.content[0].text : '');
+
+  // Stage 4: Analyze what was added
+  const analysisPrompt = `Compare the ORIGINAL text to the RECONSTRUCTED text and explain:
+1. What thematically-adjacent material was added
+2. How the reconstruction preserves the original's intent while achieving maximum coherence
+
+ORIGINAL:
+${text}
+
+RECONSTRUCTED:
+${reconstructedText}
+
+Provide a concise summary of the reconstruction changes.`;
+
+  const analysisMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 2000,
+    temperature: 0.3,
+    messages: [{ role: "user", content: analysisPrompt }]
+  });
+
+  const analysisOutput = analysisMessage.content[0].type === 'text' ? analysisMessage.content[0].text : '';
+
+  return {
+    reconstructedText,
+    changes: analysisOutput,
+    wasReconstructed: true,
+    adjacentMaterialAdded: `The original had structural limitations preventing maximum coherence. Thematically-adjacent material was synthesized to create a complete, maximally coherent version that preserves the original's core thesis and direction.`,
+    originalLimitationsIdentified: limitations
+  };
+}
+
 export interface ScientificExplanatoryResult {
   overallScore: number;
   overallAssessment: "PASS" | "WEAK" | "FAIL";

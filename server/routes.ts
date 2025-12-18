@@ -3947,7 +3947,7 @@ Provide the refined text only. No commentary or explanation.`;
         });
       }
 
-      const validModes = ["analyze", "rewrite", "math-coherence", "math-cogency", "math-max-coherence", "math-maximize-truth"];
+      const validModes = ["analyze", "rewrite", "rewrite-max", "reconstruct", "math-coherence", "math-cogency", "math-max-coherence", "math-maximize-truth"];
       if (!validModes.includes(mode)) {
         return res.status(400).json({
           success: false,
@@ -3960,6 +3960,7 @@ Provide the refined text only. No commentary or explanation.`;
       const { 
         analyzeCoherence, 
         rewriteForCoherence, 
+        reconstructToMaxCoherence,
         analyzeMathProofValidity, 
         analyzeMathCoherence,
         rewriteMathMaxCoherence,
@@ -4022,6 +4023,31 @@ Provide the refined text only. No commentary or explanation.`;
           proofStrategy: result.proofStrategy,
           keyCorrections: result.keyCorrections,
           validityScore: result.validityScore
+        });
+      }
+      // RECONSTRUCT TO MAX COHERENCE - adds thematically-adjacent material if needed
+      else if (mode === "reconstruct") {
+        const result = await reconstructToMaxCoherence(text, coherenceType);
+        
+        res.json({
+          success: true,
+          isReconstruction: true,
+          rewrite: result.reconstructedText,
+          changes: result.changes,
+          wasReconstructed: result.wasReconstructed,
+          adjacentMaterialAdded: result.adjacentMaterialAdded,
+          originalLimitationsIdentified: result.originalLimitationsIdentified
+        });
+      }
+      // REWRITE TO MAX - aggressive rewrite aiming for 9-10/10
+      else if (mode === "rewrite-max") {
+        const result = await rewriteForCoherence(text, "aggressive");
+        
+        res.json({
+          success: true,
+          rewrite: result.rewrittenText,
+          changes: result.changes,
+          isMaxRewrite: true
         });
       }
       else if (mode === "analyze") {

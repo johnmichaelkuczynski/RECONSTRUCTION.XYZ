@@ -1430,6 +1430,249 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     }
   };
 
+  // REWRITE TO MAX COHERENCE - aggressive rewrite aiming for 9-10/10
+  const handleCoherenceRewriteMax = async () => {
+    const wordCount = coherenceInputText.trim().split(/\s+/).length;
+    
+    if (!coherenceInputText.trim()) {
+      toast({ title: "No Input Text", description: "Please enter text to rewrite", variant: "destructive" });
+      return;
+    }
+    if (wordCount > 5000) {
+      toast({ title: "Text Too Long", description: `Your text has ${wordCount} words. Maximum is 5000 words.`, variant: "destructive" });
+      return;
+    }
+
+    setCoherenceLoading(true);
+    setCoherenceMode("rewrite");
+    setCoherenceRewrite("");
+    setCoherenceChanges("");
+
+    try {
+      const isLongText = wordCount > 1000;
+      // Both endpoints support aggressive mode - use it for max coherence
+      const endpoint = isLongText ? '/api/coherence-global' : '/api/coherence-meter';
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: coherenceInputText,
+          coherenceType,
+          mode: "rewrite",
+          aggressiveness: "aggressive"  // Always aggressive for max coherence
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Rewrite failed');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        setCoherenceRewrite(data.rewrite);
+        setCoherenceChanges(data.changes);
+        toast({ title: "Max Coherence Rewrite Complete!", description: "Text has been aggressively rewritten for maximum coherence." });
+      }
+    } catch (error: any) {
+      toast({ title: "Rewrite Failed", description: error.message || "An error occurred.", variant: "destructive" });
+    } finally {
+      setCoherenceLoading(false);
+    }
+  };
+
+  // RECONSTRUCT TO MAX COHERENCE - adds thematically adjacent material if needed
+  const handleCoherenceReconstruct = async () => {
+    const wordCount = coherenceInputText.trim().split(/\s+/).length;
+    
+    if (!coherenceInputText.trim()) {
+      toast({ title: "No Input Text", description: "Please enter text to reconstruct", variant: "destructive" });
+      return;
+    }
+    if (wordCount > 5000) {
+      toast({ title: "Text Too Long", description: `Your text has ${wordCount} words. Maximum is 5000 words.`, variant: "destructive" });
+      return;
+    }
+
+    setCoherenceLoading(true);
+    setCoherenceMode("rewrite");
+    setCoherenceRewrite("");
+    setCoherenceChanges("");
+
+    try {
+      toast({ title: "Reconstructing...", description: "Finding thematically-adjacent material if needed..." });
+      
+      const response = await fetch('/api/coherence-meter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: coherenceInputText,
+          coherenceType,
+          mode: "reconstruct"
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Reconstruction failed');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        setCoherenceRewrite(data.rewrite);
+        setCoherenceChanges(data.changes);
+        const reconstructionMsg = data.wasReconstructed 
+          ? "Text reconstructed with thematically-adjacent material." 
+          : "Original permitted max coherence; no reconstruction needed.";
+        toast({ title: "Reconstruction Complete!", description: reconstructionMsg });
+      }
+    } catch (error: any) {
+      toast({ title: "Reconstruction Failed", description: error.message || "An error occurred.", variant: "destructive" });
+    } finally {
+      setCoherenceLoading(false);
+    }
+  };
+
+  // ANALYZE + REWRITE TO MAX - analyze then aggressive rewrite
+  const handleCoherenceAnalyzeAndRewriteMax = async () => {
+    const wordCount = coherenceInputText.trim().split(/\s+/).length;
+    
+    if (!coherenceInputText.trim()) {
+      toast({ title: "No Input Text", description: "Please enter text to analyze and rewrite", variant: "destructive" });
+      return;
+    }
+    if (wordCount > 5000) {
+      toast({ title: "Text Too Long", description: `Your text has ${wordCount} words. Maximum is 5000 words.`, variant: "destructive" });
+      return;
+    }
+
+    setCoherenceLoading(true);
+    setCoherenceMode("analyze-and-rewrite");
+    setCoherenceAnalysis("");
+    setCoherenceScore(null);
+    setCoherenceAssessment(null);
+    setCoherenceRewrite("");
+    setCoherenceChanges("");
+    setCoherenceStageProgress("Stage 1/2: Analyzing coherence...");
+
+    try {
+      const isLongText = wordCount > 1000;
+      const endpoint = isLongText ? '/api/coherence-global' : '/api/coherence-meter';
+      
+      // Step 1: Analyze
+      const analyzeResponse = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: coherenceInputText, coherenceType, mode: "analyze" }),
+      });
+      
+      if (!analyzeResponse.ok) throw new Error('Analysis failed');
+      const analyzeData = await analyzeResponse.json();
+      
+      if (analyzeData.success) {
+        setCoherenceAnalysis(analyzeData.analysis);
+        setCoherenceScore(analyzeData.score);
+        setCoherenceAssessment(analyzeData.assessment);
+      }
+
+      // Step 2: Rewrite Max - always use aggressive mode for maximum coherence
+      setCoherenceStageProgress("Stage 2/2: Rewriting to maximum coherence...");
+      const rewriteResponse = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: coherenceInputText, coherenceType, mode: "rewrite", aggressiveness: "aggressive" }),
+      });
+
+      if (!rewriteResponse.ok) throw new Error('Rewrite failed');
+      const rewriteData = await rewriteResponse.json();
+      
+      if (rewriteData.success) {
+        setCoherenceRewrite(rewriteData.rewrite);
+        setCoherenceChanges(rewriteData.changes);
+      }
+
+      toast({ title: "Analysis + Max Rewrite Complete!", description: `Score: ${analyzeData.score}/10. Both analysis and maximally coherent version ready.` });
+    } catch (error: any) {
+      toast({ title: "Operation Failed", description: error.message || "An error occurred.", variant: "destructive" });
+    } finally {
+      setCoherenceLoading(false);
+      setCoherenceStageProgress("");
+    }
+  };
+
+  // ANALYZE + RECONSTRUCT TO MAX - analyze then reconstruct with adjacent material
+  const handleCoherenceAnalyzeAndReconstruct = async () => {
+    const wordCount = coherenceInputText.trim().split(/\s+/).length;
+    
+    if (!coherenceInputText.trim()) {
+      toast({ title: "No Input Text", description: "Please enter text to analyze and reconstruct", variant: "destructive" });
+      return;
+    }
+    if (wordCount > 5000) {
+      toast({ title: "Text Too Long", description: `Your text has ${wordCount} words. Maximum is 5000 words.`, variant: "destructive" });
+      return;
+    }
+
+    setCoherenceLoading(true);
+    setCoherenceMode("analyze-and-rewrite");
+    setCoherenceAnalysis("");
+    setCoherenceScore(null);
+    setCoherenceAssessment(null);
+    setCoherenceRewrite("");
+    setCoherenceChanges("");
+    setCoherenceStageProgress("Stage 1/2: Analyzing coherence...");
+
+    try {
+      const isLongText = wordCount > 1000;
+      const analyzeEndpoint = isLongText ? '/api/coherence-global' : '/api/coherence-meter';
+      
+      // Step 1: Analyze
+      const analyzeResponse = await fetch(analyzeEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: coherenceInputText, coherenceType, mode: "analyze" }),
+      });
+      
+      if (!analyzeResponse.ok) throw new Error('Analysis failed');
+      const analyzeData = await analyzeResponse.json();
+      
+      if (analyzeData.success) {
+        setCoherenceAnalysis(analyzeData.analysis);
+        setCoherenceScore(analyzeData.score);
+        setCoherenceAssessment(analyzeData.assessment);
+      }
+
+      // Step 2: Reconstruct
+      setCoherenceStageProgress("Stage 2/2: Reconstructing to maximum coherence...");
+      toast({ title: "Reconstructing...", description: "Finding thematically-adjacent material if needed..." });
+      
+      const reconstructResponse = await fetch('/api/coherence-meter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: coherenceInputText, coherenceType, mode: "reconstruct" }),
+      });
+
+      if (!reconstructResponse.ok) throw new Error('Reconstruction failed');
+      const reconstructData = await reconstructResponse.json();
+      
+      if (reconstructData.success) {
+        setCoherenceRewrite(reconstructData.rewrite);
+        setCoherenceChanges(reconstructData.changes);
+      }
+
+      const reconstructionMsg = reconstructData.wasReconstructed 
+        ? "Reconstructed with thematically-adjacent material." 
+        : "No reconstruction needed.";
+      toast({ title: "Analysis + Reconstruction Complete!", description: `Score: ${analyzeData.score}/10. ${reconstructionMsg}` });
+    } catch (error: any) {
+      toast({ title: "Operation Failed", description: error.message || "An error occurred.", variant: "destructive" });
+    } finally {
+      setCoherenceLoading(false);
+      setCoherenceStageProgress("");
+    }
+  };
+
   // MATH COHERENCE - analyze structural coherence only
   const handleMathCoherence = async () => {
     if (!coherenceInputText.trim()) {
@@ -4968,74 +5211,123 @@ Generated on: ${new Date().toLocaleString()}`;
               </div>
             </div>
           ) : (
-            /* STANDARD BUTTONS FOR NON-MATHEMATICAL TYPES */
+            /* STANDARD BUTTONS FOR NON-MATHEMATICAL TYPES - 7 BUTTONS */
             <div className="flex flex-wrap gap-2 mb-6">
+              {/* 1. ANALYZE */}
               <Button
                 onClick={handleCoherenceAnalyze}
                 disabled={coherenceLoading}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-sm"
+                size="sm"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs"
                 data-testid="button-analyze-coherence"
               >
                 {coherenceLoading && coherenceMode === "analyze" ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                    Analyzing...
-                  </>
+                  <><Loader2 className="w-3 h-3 mr-1 animate-spin" />...</>
                 ) : (
-                  <>
-                    <BarChart3 className="w-4 h-4 mr-1" />
-                    ANALYZE
-                  </>
+                  <><BarChart3 className="w-3 h-3 mr-1" />ANALYZE</>
                 )}
               </Button>
 
+              {/* 2. REWRITE */}
               <Button
                 onClick={handleCoherenceRewrite}
                 disabled={coherenceLoading}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 text-sm"
+                size="sm"
+                className="bg-purple-500 hover:bg-purple-600 text-white text-xs"
                 data-testid="button-rewrite-coherence"
               >
                 {coherenceLoading && coherenceMode === "rewrite" ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                    Rewriting...
-                  </>
+                  <><Loader2 className="w-3 h-3 mr-1 animate-spin" />...</>
                 ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 mr-1" />
-                    REWRITE TO MAX
-                  </>
+                  <><Sparkles className="w-3 h-3 mr-1" />REWRITE</>
                 )}
               </Button>
 
+              {/* 3. REWRITE TO MAX */}
+              <Button
+                onClick={handleCoherenceRewriteMax}
+                disabled={coherenceLoading}
+                size="sm"
+                className="bg-purple-600 hover:bg-purple-700 text-white text-xs"
+                data-testid="button-rewrite-max-coherence"
+              >
+                {coherenceLoading ? (
+                  <><Loader2 className="w-3 h-3 mr-1 animate-spin" />...</>
+                ) : (
+                  <><Sparkles className="w-3 h-3 mr-1" />REWRITE TO MAX</>
+                )}
+              </Button>
+
+              {/* 4. RECONSTRUCT TO MAX */}
+              <Button
+                onClick={handleCoherenceReconstruct}
+                disabled={coherenceLoading}
+                size="sm"
+                className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-xs"
+                data-testid="button-reconstruct-coherence"
+              >
+                {coherenceLoading ? (
+                  <><Loader2 className="w-3 h-3 mr-1 animate-spin" />...</>
+                ) : (
+                  <><Zap className="w-3 h-3 mr-1" />RECONSTRUCT TO MAX</>
+                )}
+              </Button>
+
+              {/* 5. ANALYZE + REWRITE */}
               <Button
                 onClick={handleCoherenceAnalyzeAndRewrite}
                 disabled={coherenceLoading}
-                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-4 py-2 text-sm"
+                size="sm"
+                className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white text-xs"
                 data-testid="button-analyze-and-rewrite-coherence"
               >
                 {coherenceLoading && coherenceMode === "analyze-and-rewrite" ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                    Processing...
-                  </>
+                  <><Loader2 className="w-3 h-3 mr-1 animate-spin" />...</>
                 ) : (
-                  <>
-                    <Zap className="w-4 h-4 mr-1" />
-                    ANALYZE + REWRITE TO MAX
-                  </>
+                  <><Zap className="w-3 h-3 mr-1" />ANALYZE + REWRITE</>
                 )}
               </Button>
 
+              {/* 6. ANALYZE + REWRITE TO MAX */}
+              <Button
+                onClick={handleCoherenceAnalyzeAndRewriteMax}
+                disabled={coherenceLoading}
+                size="sm"
+                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-xs"
+                data-testid="button-analyze-and-rewrite-max-coherence"
+              >
+                {coherenceLoading ? (
+                  <><Loader2 className="w-3 h-3 mr-1 animate-spin" />...</>
+                ) : (
+                  <><Zap className="w-3 h-3 mr-1" />ANALYZE + REWRITE MAX</>
+                )}
+              </Button>
+
+              {/* 7. ANALYZE + RECONSTRUCT TO MAX */}
+              <Button
+                onClick={handleCoherenceAnalyzeAndReconstruct}
+                disabled={coherenceLoading}
+                size="sm"
+                className="bg-gradient-to-r from-indigo-600 to-fuchsia-600 hover:from-indigo-700 hover:to-fuchsia-700 text-white text-xs"
+                data-testid="button-analyze-and-reconstruct-coherence"
+              >
+                {coherenceLoading ? (
+                  <><Loader2 className="w-3 h-3 mr-1 animate-spin" />...</>
+                ) : (
+                  <><Zap className="w-3 h-3 mr-1" />ANALYZE + RECONSTRUCT MAX</>
+                )}
+              </Button>
+
+              {/* CLEAR BUTTON */}
               <Button
                 onClick={handleCoherenceClear}
                 variant="outline"
                 size="sm"
-                className="border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+                className="border-gray-300 text-xs"
                 data-testid="button-clear-coherence"
               >
-                <Trash2 className="w-4 h-4 mr-1" />
-                Clear All
+                <Trash2 className="w-3 h-3 mr-1" />
+                Clear
               </Button>
             </div>
           )}
