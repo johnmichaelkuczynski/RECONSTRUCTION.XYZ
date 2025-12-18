@@ -1801,101 +1801,182 @@ export async function reconstructToMaxCoherence(
   coherenceType: string = "logical-consistency"
 ): Promise<ReconstructionResult> {
   
-  // Stage 1: Attempt aggressive rewrite first
-  const initialRewrite = await rewriteForCoherence(text, "aggressive");
-  
-  // Stage 2: Evaluate if the rewrite achieves max coherence
-  const evaluationPrompt = `Evaluate this text for maximum coherence. Score it 1-10 and identify any STRUCTURAL LIMITATIONS that prevent it from achieving 9-10/10 coherence.
+  // STAGE 1: THESIS EXTRACTION
+  // Identify what the author is TRYING to say, even from incoherent rambling
+  const thesisExtractionPrompt = `You are a philosophical archaeologist. Your task is to excavate the CORE THESIS and CONCEPTUAL TERRITORY from potentially incoherent text.
 
-CRITICAL: We're evaluating INTERNAL COHERENCE (consistency, clarity, hierarchical structure) - NOT truth, accuracy, or accessibility.
-
-TEXT:
-${initialRewrite.rewrittenText}
-
-Respond in EXACTLY this format:
-COHERENCE_SCORE: [1-10]
-CAN_ACHIEVE_MAX: [YES/NO]
-STRUCTURAL_LIMITATIONS: [List the fundamental issues that prevent maximum coherence, if any. These are issues that can't be fixed by rewriting - they require adding new material or restructuring the core argument.]
-MISSING_ELEMENTS: [What conceptual/argumentative elements would need to be added to achieve max coherence?]`;
-
-  const evalMessage = await anthropic.messages.create({
-    model: "claude-3-7-sonnet-20250219",
-    max_tokens: 2000,
-    temperature: 0.3,
-    messages: [{ role: "user", content: evaluationPrompt }]
-  });
-
-  const evalOutput = evalMessage.content[0].type === 'text' ? evalMessage.content[0].text : '';
-  
-  const scoreMatch = evalOutput.match(/COHERENCE_SCORE:\s*(\d+)/i);
-  const canAchieveMatch = evalOutput.match(/CAN_ACHIEVE_MAX:\s*(YES|NO)/i);
-  const limitationsMatch = evalOutput.match(/STRUCTURAL_LIMITATIONS:\s*([\s\S]*?)(?=MISSING_ELEMENTS:|$)/i);
-  const missingMatch = evalOutput.match(/MISSING_ELEMENTS:\s*([\s\S]*?)$/i);
-  
-  const score = scoreMatch ? parseInt(scoreMatch[1]) : 7;
-  const canAchieveMax = canAchieveMatch ? canAchieveMatch[1].toUpperCase() === 'YES' : false;
-  const limitations = limitationsMatch ? limitationsMatch[1].trim() : '';
-  const missingElements = missingMatch ? missingMatch[1].trim() : '';
-  
-  // If already at max coherence (9+) or can achieve it, return the rewrite
-  if (score >= 9 || canAchieveMax) {
-    return {
-      reconstructedText: initialRewrite.rewrittenText,
-      changes: initialRewrite.changes,
-      wasReconstructed: false,
-      adjacentMaterialAdded: "None needed - input permitted maximum coherence.",
-      originalLimitationsIdentified: "None - the original text could be rewritten to achieve maximum coherence."
-    };
-  }
-  
-  // Stage 3: Reconstruct with thematically-adjacent material
-  const reconstructionPrompt = `You are a RECONSTRUCTION SPECIALIST. The user's original text has fundamental structural limitations that prevent maximum coherence even after aggressive rewriting.
-
-ORIGINAL TEXT:
-${text}
-
-AFTER AGGRESSIVE REWRITE:
-${initialRewrite.rewrittenText}
-
-IDENTIFIED LIMITATIONS:
-${limitations}
-
-MISSING ELEMENTS NEEDED FOR MAX COHERENCE:
-${missingElements}
+The input may be:
+- Rambling, disorganized thoughts
+- Half-formed ideas expressed poorly
+- Confused but gesturing toward a real insight
+- A diamond buried in rough ore
 
 YOUR TASK:
-Create a RECONSTRUCTED version that achieves 9-10/10 coherence by:
+1. Identify the CORE THESIS the author seems to be reaching for
+2. Identify the CONCEPTUAL TERRITORY they're operating in (epistemology? ontology? philosophy of language? ethics?)
+3. Identify KEY DISTINCTIONS they seem to be trying to make
+4. Identify what PROBLEM or QUESTION they're grappling with
 
-1. PRESERVE the core thesis, intent, and thematic direction of the original
-2. ADD thematically-adjacent material that fills the identified gaps
-3. IMPORT related concepts, arguments, or frameworks that strengthen the core thesis
-4. BUILD a complete, hierarchically-structured argument around the original's central idea
-5. ENSURE the final product reads as a unified, maximally coherent piece
+INPUT TEXT:
+${text}
 
-THEMATIC ADJACENCY RULES:
-- Stay as close to the original topic as possible
-- If the original discusses X, you may bring in related aspects of X
-- You may add supporting arguments, historical context, philosophical underpinnings
-- You may add distinctions, qualifications, and anticipations of objections
-- Do NOT change the fundamental position or thesis - EXTEND and STRENGTHEN it
-- The reconstructed text should feel like what the author WOULD have written if they had more expertise
+Respond in EXACTLY this format:
 
-OUTPUT:
-Produce ONLY the reconstructed text. No headers, labels, commentary, and NO MARKDOWN FORMATTING. Plain prose only.`;
+CORE_THESIS: [State what the author appears to be arguing, even if poorly expressed. This should be a single clear statement of their apparent position.]
 
-  const reconstructMessage = await anthropic.messages.create({
+CONCEPTUAL_TERRITORY: [What domain of thought is this? What are the relevant philosophical/scientific/logical frameworks?]
+
+KEY_DISTINCTIONS: [What distinctions is the author trying to draw? List 2-4 key contrasts they seem to be gesturing at.]
+
+CENTRAL_PROBLEM: [What question or problem is driving their thinking?]
+
+AUTHOR_INTENT: [In 1-2 sentences, what does this person WANT to communicate? What insight are they reaching for?]`;
+
+  const thesisMessage = await anthropic.messages.create({
     model: "claude-3-7-sonnet-20250219",
-    max_tokens: 10000,
-    temperature: 0.7,
-    messages: [{ role: "user", content: reconstructionPrompt }]
+    max_tokens: 2000,
+    temperature: 0.4,
+    messages: [{ role: "user", content: thesisExtractionPrompt }]
   });
 
-  const reconstructedText = stripMarkdown(reconstructMessage.content[0].type === 'text' ? reconstructMessage.content[0].text : '');
+  const thesisOutput = thesisMessage.content[0].type === 'text' ? thesisMessage.content[0].text : '';
+  
+  const coreThesisMatch = thesisOutput.match(/CORE_THESIS:\s*([\s\S]*?)(?=CONCEPTUAL_TERRITORY:|$)/i);
+  const territoryMatch = thesisOutput.match(/CONCEPTUAL_TERRITORY:\s*([\s\S]*?)(?=KEY_DISTINCTIONS:|$)/i);
+  const distinctionsMatch = thesisOutput.match(/KEY_DISTINCTIONS:\s*([\s\S]*?)(?=CENTRAL_PROBLEM:|$)/i);
+  const problemMatch = thesisOutput.match(/CENTRAL_PROBLEM:\s*([\s\S]*?)(?=AUTHOR_INTENT:|$)/i);
+  const intentMatch = thesisOutput.match(/AUTHOR_INTENT:\s*([\s\S]*?)$/i);
 
-  // Stage 4: Analyze what was added
-  const analysisPrompt = `Compare the ORIGINAL text to the RECONSTRUCTED text and explain:
-1. What thematically-adjacent material was added
-2. How the reconstruction preserves the original's intent while achieving maximum coherence
+  const coreThesis = coreThesisMatch ? coreThesisMatch[1].trim() : 'Unable to extract thesis';
+  const territory = territoryMatch ? territoryMatch[1].trim() : 'General philosophy';
+  const distinctions = distinctionsMatch ? distinctionsMatch[1].trim() : '';
+  const problem = problemMatch ? problemMatch[1].trim() : '';
+  const intent = intentMatch ? intentMatch[1].trim() : '';
+
+  // STAGE 2: GAP DIAGNOSIS
+  // Identify what argumentative pillars are missing to make this a coherent essay
+  const gapDiagnosisPrompt = `Given the following extracted thesis and conceptual territory, identify what argumentative elements are MISSING that would be needed to construct a maximally coherent essay.
+
+EXTRACTED CORE THESIS: ${coreThesis}
+
+CONCEPTUAL TERRITORY: ${territory}
+
+KEY DISTINCTIONS ATTEMPTED: ${distinctions}
+
+CENTRAL PROBLEM: ${problem}
+
+What is needed to turn this into a 9-10/10 coherent essay? Identify:
+
+1. MISSING_DEFINITIONS: What key terms need to be precisely defined?
+2. MISSING_EXAMPLES: What concrete examples would illustrate the distinctions?
+3. MISSING_ARGUMENTS: What logical steps are needed to support the thesis?
+4. MISSING_FRAMEWORKS: What conceptual frameworks would organize the argument?
+5. MISSING_QUALIFICATIONS: What objections or edge cases need to be addressed?
+
+Respond in the exact format above, with each category followed by 2-4 specific items.`;
+
+  const gapMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 2000,
+    temperature: 0.4,
+    messages: [{ role: "user", content: gapDiagnosisPrompt }]
+  });
+
+  const gapOutput = gapMessage.content[0].type === 'text' ? gapMessage.content[0].text : '';
+
+  // STAGE 3: SYNTHESIS OF THEMATICALLY-ADJACENT MATERIAL
+  // Generate the actual supporting content
+  const synthesisPrompt = `You are generating THEMATICALLY-ADJACENT MATERIAL to fill the gaps identified in an argumentative reconstruction.
+
+CORE THESIS TO SUPPORT: ${coreThesis}
+
+CONCEPTUAL TERRITORY: ${territory}
+
+DISTINCTIONS TO ARTICULATE: ${distinctions}
+
+CENTRAL PROBLEM BEING ADDRESSED: ${problem}
+
+GAPS TO FILL:
+${gapOutput}
+
+YOUR TASK:
+Generate the following supporting material that stays THEMATICALLY ADJACENT to the core thesis:
+
+1. PRECISE DEFINITIONS for key terms (2-3 definitions with clear criteria)
+2. CONCRETE EXAMPLES that illustrate each major distinction (2-4 examples using everyday or mathematical/logical cases)
+3. SUPPORTING ARGUMENTS that logically connect to the thesis (2-3 argument chains)
+4. A STRUCTURAL FRAMEWORK for organizing the essay (a clear progression from opening to conclusion)
+
+RULES FOR THEMATIC ADJACENCY:
+- All examples must illuminate the same conceptual territory as the original thesis
+- All definitions must be relevant to the distinctions being drawn
+- All arguments must support or qualify the core position
+- The material should feel like what a domain expert would naturally add
+- Use analogies from logic, mathematics, language, or everyday life as appropriate
+
+Output the material in clear sections. Do not produce the final essay yet - just the raw material.`;
+
+  const synthesisMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 4000,
+    temperature: 0.6,
+    messages: [{ role: "user", content: synthesisPrompt }]
+  });
+
+  const synthesizedMaterial = synthesisMessage.content[0].type === 'text' ? synthesisMessage.content[0].text : '';
+
+  // STAGE 4: COMPOSE FINAL RECONSTRUCTION
+  // Assemble everything into a maximally coherent essay
+  const compositionPrompt = `You are composing the FINAL RECONSTRUCTION - a maximally coherent essay that articulates what the original author was trying to say, but couldn't express clearly.
+
+ORIGINAL INPUT (incoherent/poorly expressed):
+${text}
+
+EXTRACTED CORE THESIS:
+${coreThesis}
+
+AUTHOR'S APPARENT INTENT:
+${intent}
+
+SYNTHESIZED SUPPORTING MATERIAL:
+${synthesizedMaterial}
+
+YOUR TASK:
+Compose a MAXIMALLY COHERENT essay (aim for 9-10/10 coherence) that:
+
+1. OPENS with a clear statement establishing the conceptual territory and central question
+2. INTRODUCES the key distinctions with precise definitions
+3. PROVIDES concrete examples that illuminate each distinction
+4. BUILDS the argument step by step with clear logical progression
+5. ADDRESSES potential objections or edge cases
+6. CONCLUDES by synthesizing the thesis in its strongest form
+
+CRITICAL REQUIREMENTS:
+- The essay must PRESERVE the original author's thesis and direction
+- The essay must ADD substantial thematically-adjacent material (examples, definitions, arguments)
+- The essay must achieve MAXIMUM COHERENCE through clear structure and logical flow
+- Output PLAIN TEXT ONLY - no markdown formatting, no headers, no bullet points
+- Write in clear, academic prose
+- The result should read as a unified, polished philosophical essay
+- Do NOT include any meta-commentary about the reconstruction process
+
+OUTPUT:
+Write ONLY the final essay. No preamble, no explanation, no labels. Just the essay in plain prose.`;
+
+  const compositionMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 10000,
+    temperature: 0.5,
+    messages: [{ role: "user", content: compositionPrompt }]
+  });
+
+  const reconstructedText = stripMarkdown(compositionMessage.content[0].type === 'text' ? compositionMessage.content[0].text : '');
+
+  // STAGE 5: ANALYZE RECONSTRUCTION
+  const analysisPrompt = `Compare the ORIGINAL text to the RECONSTRUCTED text and provide a concise summary of:
+1. The core thesis that was preserved
+2. What thematically-adjacent material was synthesized
+3. The key transformations made to achieve maximum coherence
 
 ORIGINAL:
 ${text}
@@ -1903,11 +1984,11 @@ ${text}
 RECONSTRUCTED:
 ${reconstructedText}
 
-Provide a concise summary of the reconstruction changes.`;
+Provide a concise summary (4-6 sentences) of how the reconstruction transforms incoherent input into a maximally coherent essay while preserving the author's core intent.`;
 
   const analysisMessage = await anthropic.messages.create({
     model: "claude-3-7-sonnet-20250219",
-    max_tokens: 2000,
+    max_tokens: 1500,
     temperature: 0.3,
     messages: [{ role: "user", content: analysisPrompt }]
   });
@@ -1918,8 +1999,8 @@ Provide a concise summary of the reconstruction changes.`;
     reconstructedText,
     changes: analysisOutput,
     wasReconstructed: true,
-    adjacentMaterialAdded: `The original had structural limitations preventing maximum coherence. Thematically-adjacent material was synthesized to create a complete, maximally coherent version that preserves the original's core thesis and direction.`,
-    originalLimitationsIdentified: limitations
+    adjacentMaterialAdded: `Synthesized: definitions, concrete examples, supporting arguments, and structural framework. Core thesis "${coreThesis.substring(0, 100)}..." was preserved and articulated with maximum coherence.`,
+    originalLimitationsIdentified: `The original text was ${text.length < 200 ? 'fragmentary' : 'disorganized'} and lacked: precise definitions, concrete examples, clear logical structure, and explicit argumentation. These were synthesized from thematically-adjacent material.`
   };
 }
 
