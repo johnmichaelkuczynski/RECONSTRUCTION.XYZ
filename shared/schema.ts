@@ -483,3 +483,24 @@ export interface ChunkEvaluationResult {
   repairs: { location: string; suggestion: string }[];
   state_update: Partial<CoherenceState>;
 }
+
+// System instructions and prompts storage
+export const systemInstructions = pgTable("system_instructions", {
+  id: serial("id").primaryKey(),
+  category: text("category").notNull(), // e.g., "development_guidelines", "coherence_prompts", "ui_patterns", "universal_design"
+  title: text("title").notNull(),
+  content: text("content").notNull(), // Full instruction/prompt text
+  subcategory: text("subcategory"), // Optional: "condense_pathway", "synthesize_pathway", etc.
+  version: text("version").default("1.0"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertSystemInstructionSchema = createInsertSchema(systemInstructions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertSystemInstruction = z.infer<typeof insertSystemInstructionSchema>;
+export type SystemInstruction = typeof systemInstructions.$inferSelect;
