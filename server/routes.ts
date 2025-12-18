@@ -4197,6 +4197,42 @@ Respond with ONLY the coherence type (e.g., "logical-consistency" or "scientific
     }
   });
 
+  // Content Analysis - Evaluates richness, substantiveness, and salvageability
+  app.post("/api/content-analysis", async (req: Request, res: Response) => {
+    try {
+      const { text } = req.body;
+
+      if (!text) {
+        return res.status(400).json({
+          success: false,
+          message: "Text is required"
+        });
+      }
+
+      console.log(`Content Analysis - Text length: ${text.length}`);
+
+      const { analyzeContent } = await import('./services/coherenceMeter');
+      const result = await analyzeContent(text);
+
+      res.json({
+        success: true,
+        richnessScore: result.richnessScore,
+        richnessAssessment: result.richnessAssessment,
+        substantivenessGap: result.substantivenessGap,
+        salvageability: result.salvageability,
+        breakdown: result.breakdown,
+        fullAnalysis: result.fullAnalysis
+      });
+
+    } catch (error: any) {
+      console.error("Content Analysis error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Content analysis failed"
+      });
+    }
+  });
+
   // Global Coherence Analysis - Uses GCO for cross-chunk coherence preservation
   app.post("/api/coherence-global", async (req: Request, res: Response) => {
     try {

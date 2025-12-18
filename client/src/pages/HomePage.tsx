@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, ShieldCheck, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target, ChevronUp, ChevronDown, MessageSquareWarning, Circle, ArrowRight, Settings } from "lucide-react";
+import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, ShieldCheck, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target, ChevronUp, ChevronDown, MessageSquareWarning, Circle, ArrowRight, Settings, ScanText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { analyzeDocument, compareDocuments, checkForAI } from "@/lib/analysis";
 import { AnalysisMode, DocumentInput as DocumentInputType, AIDetectionResult, DocumentAnalysis, DocumentComparison } from "@/lib/types";
@@ -252,6 +252,31 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [coherenceStageProgress, setCoherenceStageProgress] = useState<string>("");
   const [detectedCoherenceType, setDetectedCoherenceType] = useState<string | null>(null);
   
+  // Content Analysis State
+  const [contentAnalysisResult, setContentAnalysisResult] = useState<{
+    richnessScore: number;
+    richnessAssessment: "RICH" | "MODERATE" | "SPARSE";
+    substantivenessGap: {
+      needsAddition: boolean;
+      whatToAdd: string[];
+      percentageGap: number;
+    };
+    salvageability: {
+      status: "SALVAGEABLE" | "NEEDS_AUGMENTATION" | "NEEDS_REPLACEMENT";
+      recommendation: string;
+      salvageableElements: string[];
+      problematicElements: string[];
+    };
+    breakdown: {
+      concreteExamples: { count: number; quality: string };
+      specificDetails: { count: number; quality: string };
+      uniqueInsights: { count: number; quality: string };
+      vagueness: { level: string; instances: string[] };
+      repetition: { level: string; instances: string[] };
+    };
+    fullAnalysis: string;
+  } | null>(null);
+  const [contentAnalysisLoading, setContentAnalysisLoading] = useState(false);
   
   // Load writing samples and style presets on component mount
   useEffect(() => {
@@ -2118,6 +2143,60 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setMathProofKeyCorrections([]);
     setMathProofValidityScore(null);
     setMathProofIsCorrected(false);
+    setContentAnalysisResult(null);
+  };
+
+  // Content Analysis Handler - Evaluates richness, substantiveness, salvageability
+  const handleContentAnalysis = async () => {
+    if (!coherenceInputText.trim()) {
+      toast({
+        title: "Input Required",
+        description: "Please enter text to analyze.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setContentAnalysisLoading(true);
+    setContentAnalysisResult(null);
+
+    try {
+      const response = await fetch('/api/content-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: coherenceInputText }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Content analysis failed");
+      }
+
+      setContentAnalysisResult({
+        richnessScore: data.richnessScore,
+        richnessAssessment: data.richnessAssessment,
+        substantivenessGap: data.substantivenessGap,
+        salvageability: data.salvageability,
+        breakdown: data.breakdown,
+        fullAnalysis: data.fullAnalysis,
+      });
+
+      toast({
+        title: "Content Analysis Complete!",
+        description: `Richness: ${data.richnessScore}/10 (${data.richnessAssessment}) | ${data.salvageability.status}`,
+      });
+
+    } catch (error: any) {
+      console.error("Content Analysis error:", error);
+      toast({
+        title: "Content Analysis Failed",
+        description: error.message || "An error occurred during content analysis.",
+        variant: "destructive",
+      });
+    } finally {
+      setContentAnalysisLoading(false);
+    }
   };
 
 
@@ -5534,6 +5613,21 @@ Generated on: ${new Date().toLocaleString()}`;
                 )}
               </Button>
 
+              {/* 8. CONTENT ANALYSIS - Evaluates richness, substantiveness, salvageability */}
+              <Button
+                onClick={handleContentAnalysis}
+                disabled={contentAnalysisLoading || coherenceLoading}
+                size="sm"
+                className="bg-amber-600 hover:bg-amber-700 text-white text-xs"
+                data-testid="button-content-analysis"
+              >
+                {contentAnalysisLoading ? (
+                  <><Loader2 className="w-3 h-3 mr-1 animate-spin" />...</>
+                ) : (
+                  <><ScanText className="w-3 h-3 mr-1" />CONTENT ANALYSIS</>
+                )}
+              </Button>
+
               {/* CLEAR BUTTON */}
               <Button
                 onClick={handleCoherenceClear}
@@ -5560,6 +5654,172 @@ Generated on: ${new Date().toLocaleString()}`;
                   {coherenceStageProgress}
                 </pre>
               </div>
+            </div>
+          )}
+
+          {/* Content Analysis Results */}
+          {contentAnalysisResult && (
+            <div className="mt-8 bg-amber-50 dark:bg-amber-900/20 p-6 rounded-lg border border-amber-300 dark:border-amber-700">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <h3 className="text-xl font-bold text-amber-900 dark:text-amber-100 flex items-center gap-2">
+                  <ScanText className="w-5 h-5" />
+                  Content Analysis
+                </h3>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Badge className={`text-sm px-3 py-1 ${
+                    contentAnalysisResult.richnessAssessment === "RICH" ? "bg-emerald-600" :
+                    contentAnalysisResult.richnessAssessment === "MODERATE" ? "bg-amber-500" :
+                    "bg-red-500"
+                  }`}>
+                    Richness: {contentAnalysisResult.richnessScore}/10 ({contentAnalysisResult.richnessAssessment})
+                  </Badge>
+                  <Badge className={`text-sm px-3 py-1 ${
+                    contentAnalysisResult.salvageability.status === "SALVAGEABLE" ? "bg-emerald-600" :
+                    contentAnalysisResult.salvageability.status === "NEEDS_AUGMENTATION" ? "bg-amber-500" :
+                    "bg-red-500"
+                  }`}>
+                    {contentAnalysisResult.salvageability.status.replace(/_/g, " ")}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                {/* Content Breakdown */}
+                <div className="bg-white dark:bg-gray-800 p-4 rounded border border-amber-200 dark:border-amber-700">
+                  <h4 className="font-semibold text-amber-800 dark:text-amber-200 mb-3">Content Breakdown</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span>Concrete Examples:</span>
+                      <span className={`font-medium ${
+                        contentAnalysisResult.breakdown.concreteExamples.quality === "HIGH" ? "text-emerald-600" :
+                        contentAnalysisResult.breakdown.concreteExamples.quality === "MEDIUM" ? "text-amber-600" :
+                        contentAnalysisResult.breakdown.concreteExamples.quality === "LOW" ? "text-orange-600" :
+                        "text-red-600"
+                      }`}>
+                        {contentAnalysisResult.breakdown.concreteExamples.count} ({contentAnalysisResult.breakdown.concreteExamples.quality})
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Specific Details:</span>
+                      <span className={`font-medium ${
+                        contentAnalysisResult.breakdown.specificDetails.quality === "HIGH" ? "text-emerald-600" :
+                        contentAnalysisResult.breakdown.specificDetails.quality === "MEDIUM" ? "text-amber-600" :
+                        contentAnalysisResult.breakdown.specificDetails.quality === "LOW" ? "text-orange-600" :
+                        "text-red-600"
+                      }`}>
+                        {contentAnalysisResult.breakdown.specificDetails.count} ({contentAnalysisResult.breakdown.specificDetails.quality})
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Unique Insights:</span>
+                      <span className={`font-medium ${
+                        contentAnalysisResult.breakdown.uniqueInsights.quality === "HIGH" ? "text-emerald-600" :
+                        contentAnalysisResult.breakdown.uniqueInsights.quality === "MEDIUM" ? "text-amber-600" :
+                        contentAnalysisResult.breakdown.uniqueInsights.quality === "LOW" ? "text-orange-600" :
+                        "text-red-600"
+                      }`}>
+                        {contentAnalysisResult.breakdown.uniqueInsights.count} ({contentAnalysisResult.breakdown.uniqueInsights.quality})
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Vagueness Level:</span>
+                      <span className={`font-medium ${
+                        contentAnalysisResult.breakdown.vagueness.level === "LOW" ? "text-emerald-600" :
+                        contentAnalysisResult.breakdown.vagueness.level === "MEDIUM" ? "text-amber-600" :
+                        "text-red-600"
+                      }`}>
+                        {contentAnalysisResult.breakdown.vagueness.level}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Repetition Level:</span>
+                      <span className={`font-medium ${
+                        contentAnalysisResult.breakdown.repetition.level === "LOW" ? "text-emerald-600" :
+                        contentAnalysisResult.breakdown.repetition.level === "MEDIUM" ? "text-amber-600" :
+                        "text-red-600"
+                      }`}>
+                        {contentAnalysisResult.breakdown.repetition.level}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Substantiveness Gap */}
+                <div className="bg-white dark:bg-gray-800 p-4 rounded border border-amber-200 dark:border-amber-700">
+                  <h4 className="font-semibold text-amber-800 dark:text-amber-200 mb-3">Substantiveness Gap</h4>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span>Needs Content Addition:</span>
+                      <Badge className={contentAnalysisResult.substantivenessGap.needsAddition ? "bg-amber-500" : "bg-emerald-600"}>
+                        {contentAnalysisResult.substantivenessGap.needsAddition ? "YES" : "NO"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Gap Percentage:</span>
+                      <span className={`font-bold ${
+                        contentAnalysisResult.substantivenessGap.percentageGap <= 25 ? "text-emerald-600" :
+                        contentAnalysisResult.substantivenessGap.percentageGap <= 50 ? "text-amber-600" :
+                        "text-red-600"
+                      }`}>
+                        {contentAnalysisResult.substantivenessGap.percentageGap}%
+                      </span>
+                    </div>
+                    {contentAnalysisResult.substantivenessGap.whatToAdd.length > 0 && (
+                      <div>
+                        <p className="font-medium mb-1">What to Add:</p>
+                        <ul className="list-disc list-inside text-gray-600 dark:text-gray-400 space-y-1">
+                          {contentAnalysisResult.substantivenessGap.whatToAdd.slice(0, 4).map((item, i) => (
+                            <li key={i} className="text-xs">{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Salvageability Details */}
+              <div className="bg-white dark:bg-gray-800 p-4 rounded border border-amber-200 dark:border-amber-700 mb-4">
+                <h4 className="font-semibold text-amber-800 dark:text-amber-200 mb-3">Salvageability Assessment</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {contentAnalysisResult.salvageability.salvageableElements.length > 0 && (
+                    <div>
+                      <p className="font-medium text-emerald-700 dark:text-emerald-400 mb-1 text-sm">Salvageable Elements:</p>
+                      <ul className="list-disc list-inside text-gray-600 dark:text-gray-400 space-y-1">
+                        {contentAnalysisResult.salvageability.salvageableElements.slice(0, 3).map((item, i) => (
+                          <li key={i} className="text-xs">{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {contentAnalysisResult.salvageability.problematicElements.length > 0 && (
+                    <div>
+                      <p className="font-medium text-red-700 dark:text-red-400 mb-1 text-sm">Problematic Elements:</p>
+                      <ul className="list-disc list-inside text-gray-600 dark:text-gray-400 space-y-1">
+                        {contentAnalysisResult.salvageability.problematicElements.slice(0, 3).map((item, i) => (
+                          <li key={i} className="text-xs">{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3 p-3 bg-amber-100 dark:bg-amber-900/30 rounded">
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Recommendation:</p>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">{contentAnalysisResult.salvageability.recommendation}</p>
+                </div>
+              </div>
+
+              {/* Expandable Full Analysis */}
+              <details className="group">
+                <summary className="cursor-pointer text-sm font-medium text-amber-700 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-200">
+                  View Full Analysis
+                </summary>
+                <div className="mt-3 bg-white dark:bg-gray-900 p-4 rounded border border-amber-200 dark:border-amber-700 max-h-64 overflow-y-auto">
+                  <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200 font-sans">
+                    {contentAnalysisResult.fullAnalysis}
+                  </pre>
+                </div>
+              </details>
             </div>
           )}
 

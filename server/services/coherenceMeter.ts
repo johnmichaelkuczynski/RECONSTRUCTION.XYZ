@@ -36,6 +36,40 @@ export interface CoherenceRewriteResult {
   changes: string;
 }
 
+// Content Analysis Result - evaluates content richness, substantiveness, and salvageability
+export interface ContentAnalysisResult {
+  // Overall content richness score (1-10)
+  richnessScore: number;
+  richnessAssessment: "RICH" | "MODERATE" | "SPARSE";
+  
+  // Substantiveness evaluation
+  substantivenessGap: {
+    needsAddition: boolean;
+    whatToAdd: string[];
+    percentageGap: number; // How much content needs to be added (0-100%)
+  };
+  
+  // Salvageability assessment
+  salvageability: {
+    status: "SALVAGEABLE" | "NEEDS_AUGMENTATION" | "NEEDS_REPLACEMENT";
+    recommendation: string;
+    salvageableElements: string[];
+    problematicElements: string[];
+  };
+  
+  // Detailed breakdown
+  breakdown: {
+    concreteExamples: { count: number; quality: "HIGH" | "MEDIUM" | "LOW" | "NONE" };
+    specificDetails: { count: number; quality: "HIGH" | "MEDIUM" | "LOW" | "NONE" };
+    uniqueInsights: { count: number; quality: "HIGH" | "MEDIUM" | "LOW" | "NONE" };
+    vagueness: { level: "HIGH" | "MEDIUM" | "LOW"; instances: string[] };
+    repetition: { level: "HIGH" | "MEDIUM" | "LOW"; instances: string[] };
+  };
+  
+  // Full analysis text
+  fullAnalysis: string;
+}
+
 // Global Context Object for cross-chunk coherence preservation
 export interface GlobalContextObject {
   coreTopics: string[];
@@ -1565,6 +1599,174 @@ CALIBRATION EXAMPLES:
   };
 }
 
+// CONTENT ANALYSIS: Evaluates richness, substantiveness, and salvageability of input
+export async function analyzeContent(text: string): Promise<ContentAnalysisResult> {
+  const systemPrompt = `You are a content analyst specializing in evaluating the SUBSTANTIVENESS and RICHNESS of text content.
+
+Your job is to assess:
+1. CONTENT RICHNESS: How much genuine substance does this text contain?
+2. SUBSTANTIVENESS GAP: What would need to be added to make this text substantive and valuable?
+3. SALVAGEABILITY: Can the existing content be improved, or does it need to be replaced with related but distinct content?
+
+RICHNESS INDICATORS (HIGH SCORE):
+- Concrete, specific examples that illustrate points
+- Particular details, facts, data, or evidence
+- Original insights or novel perspectives
+- Clear, defined concepts with substantive meaning
+- Arguments that advance understanding
+
+POVERTY INDICATORS (LOW SCORE):
+- Vague generalizations without specifics
+- Abstract claims without concrete grounding
+- Buzzwords or jargon without substance
+- Repetitive statements that don't add information
+- Placeholder language that could apply to anything
+
+SALVAGEABILITY CRITERIA:
+- SALVAGEABLE: Core ideas are sound; needs polishing/expansion
+- NEEDS_AUGMENTATION: Some good content, but significant gaps need filling
+- NEEDS_REPLACEMENT: Content is fundamentally empty or confused; better to start with related but distinct material`;
+
+  const userPrompt = `Analyze this text for CONTENT RICHNESS and SUBSTANTIVENESS:
+
+TEXT:
+${text}
+
+Provide analysis in this EXACT format:
+
+RICHNESS SCORE: [X]/10
+[1-3 = SPARSE (mostly empty/vague), 4-6 = MODERATE (some substance but gaps), 7-10 = RICH (substantial content)]
+
+CONCRETE EXAMPLES: [COUNT] examples, Quality: [HIGH/MEDIUM/LOW/NONE]
+[List any concrete examples found, or note their absence]
+
+SPECIFIC DETAILS: [COUNT] details, Quality: [HIGH/MEDIUM/LOW/NONE]
+[List any specific facts, data, evidence found]
+
+UNIQUE INSIGHTS: [COUNT] insights, Quality: [HIGH/MEDIUM/LOW/NONE]
+[List any original or novel perspectives]
+
+VAGUENESS LEVEL: [HIGH/MEDIUM/LOW]
+[List specific vague phrases or generalizations found]
+
+REPETITION LEVEL: [HIGH/MEDIUM/LOW]
+[List any repetitive or redundant content]
+
+SUBSTANTIVENESS GAP:
+- NEEDS ADDITION: [YES/NO]
+- PERCENTAGE GAP: [X]% (how much new content needed: 0% = complete, 100% = empty shell)
+- WHAT TO ADD:
+  1. [Specific type of content needed]
+  2. [Specific type of content needed]
+  3. [etc.]
+
+SALVAGEABILITY STATUS: [SALVAGEABLE/NEEDS_AUGMENTATION/NEEDS_REPLACEMENT]
+SALVAGEABLE ELEMENTS:
+- [Element that can be kept/improved]
+PROBLEMATIC ELEMENTS:
+- [Element that is empty/confused]
+RECOMMENDATION:
+[What should be done with this content]
+
+DETAILED ANALYSIS:
+[Full explanation of content quality assessment]`;
+
+  const message = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 4096,
+    temperature: 0.3,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }]
+  });
+
+  const output = message.content[0].type === 'text' ? message.content[0].text : '';
+
+  // Parse the structured output
+  const richnessMatch = output.match(/RICHNESS SCORE:\s*(\d+(?:\.\d+)?)\/10/i);
+  const richnessScore = richnessMatch ? parseFloat(richnessMatch[1]) : 5;
+  const richnessAssessment: "RICH" | "MODERATE" | "SPARSE" = 
+    richnessScore >= 7 ? "RICH" : richnessScore >= 4 ? "MODERATE" : "SPARSE";
+
+  // Parse examples
+  const examplesMatch = output.match(/CONCRETE EXAMPLES:\s*(\d+)\s*examples?,\s*Quality:\s*(HIGH|MEDIUM|LOW|NONE)/i);
+  const examplesCount = examplesMatch ? parseInt(examplesMatch[1]) : 0;
+  const examplesQuality = (examplesMatch ? examplesMatch[2].toUpperCase() : "NONE") as "HIGH" | "MEDIUM" | "LOW" | "NONE";
+
+  // Parse details
+  const detailsMatch = output.match(/SPECIFIC DETAILS:\s*(\d+)\s*details?,\s*Quality:\s*(HIGH|MEDIUM|LOW|NONE)/i);
+  const detailsCount = detailsMatch ? parseInt(detailsMatch[1]) : 0;
+  const detailsQuality = (detailsMatch ? detailsMatch[2].toUpperCase() : "NONE") as "HIGH" | "MEDIUM" | "LOW" | "NONE";
+
+  // Parse insights
+  const insightsMatch = output.match(/UNIQUE INSIGHTS:\s*(\d+)\s*insights?,\s*Quality:\s*(HIGH|MEDIUM|LOW|NONE)/i);
+  const insightsCount = insightsMatch ? parseInt(insightsMatch[1]) : 0;
+  const insightsQuality = (insightsMatch ? insightsMatch[2].toUpperCase() : "NONE") as "HIGH" | "MEDIUM" | "LOW" | "NONE";
+
+  // Parse vagueness
+  const vaguenessMatch = output.match(/VAGUENESS LEVEL:\s*(HIGH|MEDIUM|LOW)/i);
+  const vaguenessLevel = (vaguenessMatch ? vaguenessMatch[1].toUpperCase() : "MEDIUM") as "HIGH" | "MEDIUM" | "LOW";
+  const vaguenessSection = output.match(/VAGUENESS LEVEL:.*?\n([\s\S]*?)(?=REPETITION LEVEL:|$)/i);
+  const vaguenessInstances = vaguenessSection ? 
+    vaguenessSection[1].split('\n').filter(line => line.trim().startsWith('-') || line.trim().startsWith('•')).map(line => line.replace(/^[-•]\s*/, '').trim()).filter(Boolean).slice(0, 5) : [];
+
+  // Parse repetition
+  const repetitionMatch = output.match(/REPETITION LEVEL:\s*(HIGH|MEDIUM|LOW)/i);
+  const repetitionLevel = (repetitionMatch ? repetitionMatch[1].toUpperCase() : "LOW") as "HIGH" | "MEDIUM" | "LOW";
+  const repetitionSection = output.match(/REPETITION LEVEL:.*?\n([\s\S]*?)(?=SUBSTANTIVENESS GAP:|$)/i);
+  const repetitionInstances = repetitionSection ?
+    repetitionSection[1].split('\n').filter(line => line.trim().startsWith('-') || line.trim().startsWith('•')).map(line => line.replace(/^[-•]\s*/, '').trim()).filter(Boolean).slice(0, 5) : [];
+
+  // Parse substantiveness gap
+  const needsAdditionMatch = output.match(/NEEDS ADDITION:\s*(YES|NO)/i);
+  const needsAddition = needsAdditionMatch ? needsAdditionMatch[1].toUpperCase() === "YES" : true;
+  
+  const percentageGapMatch = output.match(/PERCENTAGE GAP:\s*(\d+)%/i);
+  const percentageGap = percentageGapMatch ? parseInt(percentageGapMatch[1]) : 50;
+
+  const whatToAddSection = output.match(/WHAT TO ADD:\s*([\s\S]*?)(?=SALVAGEABILITY STATUS:|$)/i);
+  const whatToAdd = whatToAddSection ?
+    whatToAddSection[1].split('\n').filter(line => line.trim().match(/^\d+\.|^[-•]/)).map(line => line.replace(/^\d+\.\s*|^[-•]\s*/, '').trim()).filter(Boolean) : [];
+
+  // Parse salvageability
+  const salvageabilityMatch = output.match(/SALVAGEABILITY STATUS:\s*(SALVAGEABLE|NEEDS_AUGMENTATION|NEEDS_REPLACEMENT)/i);
+  const salvageabilityStatus = (salvageabilityMatch ? salvageabilityMatch[1].toUpperCase().replace(/ /g, '_') : "NEEDS_AUGMENTATION") as "SALVAGEABLE" | "NEEDS_AUGMENTATION" | "NEEDS_REPLACEMENT";
+
+  const salvageableSection = output.match(/SALVAGEABLE ELEMENTS:\s*([\s\S]*?)(?=PROBLEMATIC ELEMENTS:|$)/i);
+  const salvageableElements = salvageableSection ?
+    salvageableSection[1].split('\n').filter(line => line.trim().startsWith('-') || line.trim().startsWith('•')).map(line => line.replace(/^[-•]\s*/, '').trim()).filter(Boolean) : [];
+
+  const problematicSection = output.match(/PROBLEMATIC ELEMENTS:\s*([\s\S]*?)(?=RECOMMENDATION:|$)/i);
+  const problematicElements = problematicSection ?
+    problematicSection[1].split('\n').filter(line => line.trim().startsWith('-') || line.trim().startsWith('•')).map(line => line.replace(/^[-•]\s*/, '').trim()).filter(Boolean) : [];
+
+  const recommendationMatch = output.match(/RECOMMENDATION:\s*([\s\S]*?)(?=DETAILED ANALYSIS:|$)/i);
+  const recommendation = recommendationMatch ? recommendationMatch[1].trim() : "Analyze and augment content as needed.";
+
+  return {
+    richnessScore,
+    richnessAssessment,
+    substantivenessGap: {
+      needsAddition,
+      whatToAdd,
+      percentageGap
+    },
+    salvageability: {
+      status: salvageabilityStatus,
+      recommendation,
+      salvageableElements,
+      problematicElements
+    },
+    breakdown: {
+      concreteExamples: { count: examplesCount, quality: examplesQuality },
+      specificDetails: { count: detailsCount, quality: detailsQuality },
+      uniqueInsights: { count: insightsCount, quality: insightsQuality },
+      vagueness: { level: vaguenessLevel, instances: vaguenessInstances },
+      repetition: { level: repetitionLevel, instances: repetitionInstances }
+    },
+    fullAnalysis: output
+  };
+}
+
 export interface MathProofValidityResult {
   score: number;
   verdict: "VALID" | "FLAWED" | "INVALID";
@@ -1803,10 +2005,15 @@ export async function reconstructToMaxCoherence(
   
   const inputWordCount = text.trim().split(/\s+/).length;
   
+  // FIRST: Run content analysis to understand what the input lacks
+  // This informs the synthesis process to produce substantively better output
+  const contentAnalysis = await analyzeContent(text);
+  
   // RECONSTRUCT ALWAYS SYNTHESIZES: Turn input (abstract, fragmented, or concise) into a COMPLETE ESSAY
   // This is a "turn to gold" operation: create a self-contained philosophical work
+  // Pass content analysis to guide what substantive improvements are needed
   
-  return await synthesizeIntoCompleteEssay(text, inputWordCount);
+  return await synthesizeIntoCompleteEssay(text, inputWordCount, contentAnalysis);
 }
 
 // CONDENSE PATHWAY: For coherent input that has noise - CUT, never add
@@ -1922,10 +2129,84 @@ Output ONLY the shortened text. No commentary. No explanation.`;
 // SYNTHESIZE INTO COMPLETE ESSAY: Transform ANY input (abstract, fragmented, concise) into a self-contained essay
 // This is "turn to gold" operation - create an excellent, comprehensive philosophical work
 // CRITICAL: The LLM must GENERATE FRESH SUBSTANTIVE CONTENT not in the original
+// NOW ENHANCED: Uses content analysis to identify specific gaps and target improvements
 async function synthesizeIntoCompleteEssay(
   text: string,
-  inputWordCount: number
+  inputWordCount: number,
+  contentAnalysis?: ContentAnalysisResult
 ): Promise<ReconstructionResult> {
+  
+  // Build comprehensive content gap context from content analysis (if available)
+  // This context will be injected into EACH synthesis stage to ensure targeted improvements
+  let contentGapContext = "";
+  let exampleDirective = "";
+  let contentDirective = "";
+  
+  if (contentAnalysis) {
+    const gaps: string[] = [];
+    const exampleGaps: string[] = [];
+    const contentGaps: string[] = [];
+    
+    // Extract ALL relevant signals from content analysis
+    
+    // Examples quality
+    if (contentAnalysis.breakdown.concreteExamples.quality === "NONE") {
+      gaps.push("ZERO CONCRETE EXAMPLES - must generate at least 4-5 specific, illustrative examples");
+      exampleGaps.push("The original has NO examples. You MUST generate 4-5 novel, specific examples.");
+    } else if (contentAnalysis.breakdown.concreteExamples.quality === "LOW") {
+      gaps.push("POOR EXAMPLES - existing examples are vague or generic, need specific concrete ones");
+      exampleGaps.push("The original has weak/generic examples. Generate SPECIFIC, CONCRETE alternatives.");
+    }
+    
+    // Specificity
+    if (contentAnalysis.breakdown.specificDetails.quality === "NONE" || contentAnalysis.breakdown.specificDetails.quality === "LOW") {
+      gaps.push("LACKS SPECIFICS - replace abstract claims with precise, detailed assertions");
+      contentGaps.push("Add specific details: names, numbers, mechanisms, distinctions.");
+    }
+    
+    // Unique insights
+    if (contentAnalysis.breakdown.uniqueInsights.quality === "NONE") {
+      gaps.push("NO UNIQUE INSIGHTS - add novel perspectives, distinctions, or observations");
+      contentGaps.push("Generate genuinely novel insights not present in the original.");
+    } else if (contentAnalysis.breakdown.uniqueInsights.quality === "LOW") {
+      gaps.push("WEAK INSIGHTS - deepen with more sophisticated philosophical analysis");
+    }
+    
+    // Vagueness
+    if (contentAnalysis.breakdown.vagueness.level === "HIGH") {
+      gaps.push("HIGH VAGUENESS - replace generalizations with concrete, verifiable claims");
+      if (contentAnalysis.breakdown.vagueness.problematicPhrases && contentAnalysis.breakdown.vagueness.problematicPhrases.length > 0) {
+        gaps.push(`Vague phrases to eliminate: "${contentAnalysis.breakdown.vagueness.problematicPhrases.slice(0, 3).join('", "')}"`);
+      }
+    }
+    
+    // Salvageability assessment
+    if (contentAnalysis.salvageability.status === "NEEDS_REPLACEMENT") {
+      gaps.push("CONTENT NEEDS REPLACEMENT - original too weak to salvage, generate fresh material");
+      exampleGaps.push("Original content is unusable - create entirely fresh illustrations.");
+      contentGaps.push("Generate ALL new substantive content - do not rely on original.");
+    } else if (contentAnalysis.salvageability.status === "NEEDS_AUGMENTATION") {
+      gaps.push("NEEDS SUBSTANTIAL AUGMENTATION - original has core idea but needs major expansion");
+    }
+    
+    // What to add from substantiveness gap
+    if (contentAnalysis.substantivenessGap.whatToAdd.length > 0) {
+      contentGaps.push(...contentAnalysis.substantivenessGap.whatToAdd.slice(0, 4));
+    }
+    
+    // Build targeted directives for each synthesis stage
+    if (gaps.length > 0) {
+      contentGapContext = `\n\nCONTENT ANALYSIS FINDINGS (Richness: ${contentAnalysis.richnessScore}/10, ${contentAnalysis.salvageability.status}):\n${gaps.map((g, i) => `${i + 1}. ${g}`).join("\n")}\n\nCRITICAL: Address EACH of these gaps with substantive content.`;
+    }
+    
+    if (exampleGaps.length > 0) {
+      exampleDirective = `\n\nEXAMPLE GENERATION PRIORITY:\n${exampleGaps.join("\n")}\n\nYour examples must directly address these deficiencies.`;
+    }
+    
+    if (contentGaps.length > 0) {
+      contentDirective = `\n\nCONTENT GENERATION PRIORITY:\n${contentGaps.map((g, i) => `${i + 1}. ${g}`).join("\n")}\n\nYour substantive additions must address these specific gaps.`;
+    }
+  }
   
   // STAGE 1: EXTRACT THE CORE POSITION
   const extractionPrompt = `You are analyzing this text to identify the CORE PHILOSOPHICAL POSITION or INSIGHT it contains.
@@ -1953,10 +2234,12 @@ Be clear and concise.`;
 
   // STAGE 2A: GENERATE FRESH, ORIGINAL EXAMPLES THAT ILLUSTRATE THE POSITION
   // Examples are CRITICAL - they must be novel, specific, and demonstrate why the position is correct
+  // Now includes targeted directives from content analysis
   const examplesPrompt = `You have identified a core philosophical position. Now generate FRESH, ORIGINAL EXAMPLES that ILLUSTRATE this position.
 
 CORE POSITION:
 ${extractedPosition}
+${exampleDirective}
 
 YOUR TASK:
 Generate 4-5 specific, original examples that make this position CLEAR and COMPELLING. These examples should:
@@ -1987,6 +2270,7 @@ Examples should be specific enough that a reader thinks "Oh, I see - this is EXA
 
   // STAGE 2B: GENERATE FRESH SUBSTANTIVE CONTENT NOT IN THE ORIGINAL
   // This is the KEY to preventing bloating - explicitly ask for new information that DEVELOPS the position
+  // Now includes targeted directives from content analysis
   const freshContentPrompt = `You have extracted a core philosophical position and generated fresh examples. Now generate additional SUBSTANTIVE CONTENT that develops and deepens this position.
 
 CORE POSITION:
@@ -1997,6 +2281,7 @@ ${freshExamples}
 
 ORIGINAL INPUT (what was given):
 ${text}
+${contentDirective}
 
 YOUR TASK:
 Generate ADDITIONAL FRESH SUBSTANTIVE MATERIAL (beyond the examples) that develops the position:
@@ -2027,6 +2312,7 @@ Output as a structured list with clear headers for each section.`;
 
   // STAGE 3: SYNTHESIZE INTO A COMPREHENSIVE PHILOSOPHICAL ESSAY
   // NOW combine the core position WITH the fresh substantive content AND examples
+  // Include content gap context from content analysis to ensure targeted improvements
   const essayPrompt = `You are creating a COMPLETE PHILOSOPHICAL ESSAY that develops and defends a position using fresh, substantive material and original examples.
 
 CORE POSITION:
@@ -2040,6 +2326,7 @@ ${freshContent}
 
 ORIGINAL INPUT (for minimal reference only):
 ${text}
+${contentGapContext}
 
 YOUR TASK:
 Create a comprehensive, self-contained philosophical essay that WEAVES TOGETHER the fresh examples and substantive content:
@@ -2123,12 +2410,35 @@ OUTPUT: Write ONLY the expanded essay. Plain prose, no markdown.`;
 
   const growthPercent = ((essayWordCount - inputWordCount) / inputWordCount * 100).toFixed(1);
 
+  // Build detailed limitations from content analysis
+  let limitationsDescription = `The original was concise/abstract.`;
+  if (contentAnalysis) {
+    const issues: string[] = [];
+    if (contentAnalysis.richnessAssessment === "SPARSE") {
+      issues.push("sparse content (richness score: " + contentAnalysis.richnessScore + "/10)");
+    }
+    if (contentAnalysis.breakdown.concreteExamples.quality === "NONE" || contentAnalysis.breakdown.concreteExamples.quality === "LOW") {
+      issues.push("lacked concrete examples");
+    }
+    if (contentAnalysis.breakdown.vagueness.level === "HIGH") {
+      issues.push("high vagueness");
+    }
+    if (contentAnalysis.salvageability.status === "NEEDS_REPLACEMENT") {
+      issues.push("content needed significant replacement");
+    } else if (contentAnalysis.salvageability.status === "NEEDS_AUGMENTATION") {
+      issues.push("content needed substantial augmentation");
+    }
+    if (issues.length > 0) {
+      limitationsDescription = `Content analysis revealed: ${issues.join(", ")}.`;
+    }
+  }
+
   return {
     reconstructedText: essay,
-    changes: `Reconstructed from input (${inputWordCount} words) into a complete philosophical essay (${essayWordCount} words, +${growthPercent}%). Generated fresh substantive content: examples, counterarguments, implications, distinctions, and comparisons not in the original.`,
+    changes: `Reconstructed from input (${inputWordCount} words) into a complete philosophical essay (${essayWordCount} words, +${growthPercent}%). Generated fresh substantive content: examples, counterarguments, implications, distinctions, and comparisons not in the original.${contentAnalysis ? ` Content analysis informed targeted improvements (original richness: ${contentAnalysis.richnessScore}/10).` : ''}`,
     wasReconstructed: true,
     adjacentMaterialAdded: `Added fresh philosophical material: concrete examples and thought experiments, comprehensive objection analysis with responses, logical implications and consequences, critical distinctions that deepen understanding, comparisons to alternative positions, and historical context. All expansions are substantive developments of the core position, not padding.`,
-    originalLimitationsIdentified: `The original was concise/abstract. Reconstructed by: (1) extracting the core position, (2) generating fresh substantive content (examples, objections, implications, distinctions), (3) integrating all material into a comprehensive essay. The result is richer philosophically, not just longer.`
+    originalLimitationsIdentified: `${limitationsDescription} Reconstructed by: (1) analyzing content gaps, (2) extracting the core position, (3) generating fresh substantive content targeted at identified gaps, (4) integrating all material into a comprehensive essay. The result is richer philosophically, not just longer.`
   };
 }
 
