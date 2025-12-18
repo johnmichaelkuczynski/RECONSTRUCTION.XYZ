@@ -197,6 +197,16 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [refineFinalInstructions, setRefineFinalInstructions] = useState<string>("");
   const [refineFinalLoading, setRefineFinalLoading] = useState(false);
   
+  // Refine Reconstruction output
+  const [refineReconstructionWordCount, setRefineReconstructionWordCount] = useState<string>("");
+  const [refineReconstructionInstructions, setRefineReconstructionInstructions] = useState<string>("");
+  const [refineReconstructionLoading, setRefineReconstructionLoading] = useState(false);
+  
+  // Refine Coherence rewrite output
+  const [refineCoherenceWordCount, setRefineCoherenceWordCount] = useState<string>("");
+  const [refineCoherenceInstructions, setRefineCoherenceInstructions] = useState<string>("");
+  const [refineCoherenceLoading, setRefineCoherenceLoading] = useState(false);
+  
   // Objection-Proof Refine State (standalone section)
   const [objectionProofRefineWordCount, setObjectionProofRefineWordCount] = useState("");
   const [objectionProofRefineInstructions, setObjectionProofRefineInstructions] = useState("");
@@ -728,6 +738,94 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       toast({ title: "Refinement failed", description: error.message, variant: "destructive" });
     } finally {
       setObjectionProofRefineLoading(false);
+    }
+  };
+
+  // Refine Full Suite Reconstruction output with word count and/or custom instructions
+  const handleRefineReconstructionBatch = async () => {
+    const reconstructionOutput = validatorBatchResults.filter(r => r.success)[0]?.output;
+    if (!reconstructionOutput?.trim()) {
+      toast({ title: "No reconstruction output to refine", variant: "destructive" });
+      return;
+    }
+    
+    setRefineReconstructionLoading(true);
+    try {
+      const response = await fetch("/api/refine-output", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: reconstructionOutput,
+          targetWordCount: refineReconstructionWordCount ? parseInt(refineReconstructionWordCount) : null,
+          customInstructions: refineReconstructionInstructions || null,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Refinement failed");
+      }
+      
+      const data = await response.json();
+      if (data.success && data.output) {
+        // Update the batch results with the refined output
+        setValidatorBatchResults(prev => prev.map(r => 
+          r.success && r.mode === "reconstruction" 
+            ? { ...r, output: data.output }
+            : r
+        ));
+        setRefineReconstructionWordCount("");
+        setRefineReconstructionInstructions("");
+        toast({ title: "Reconstruction refined successfully!" });
+      }
+    } catch (error: any) {
+      toast({ title: "Refinement failed", description: error.message, variant: "destructive" });
+    } finally {
+      setRefineReconstructionLoading(false);
+    }
+  };
+
+  // Refine Coherence rewrite output with word count and/or custom instructions
+  const handleRefineCoherence = async () => {
+    const coherenceOutput = rewriteResultData?.rewrittenText || rewriteResult;
+    if (!coherenceOutput?.trim()) {
+      toast({ title: "No coherence output to refine", variant: "destructive" });
+      return;
+    }
+    
+    setRefineCoherenceLoading(true);
+    try {
+      const response = await fetch("/api/refine-output", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: coherenceOutput,
+          targetWordCount: refineCoherenceWordCount ? parseInt(refineCoherenceWordCount) : null,
+          customInstructions: refineCoherenceInstructions || null,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Refinement failed");
+      }
+      
+      const data = await response.json();
+      if (data.success && data.output) {
+        // Update the coherence result with refined output
+        if (rewriteResultData) {
+          setRewriteResultData((prev: any) => ({ ...prev, rewrittenText: data.output }));
+        } else {
+          setRewriteResult(data.output);
+        }
+        setRefineCoherenceWordCount("");
+        setRefineCoherenceInstructions("");
+        toast({ title: "Coherence output refined successfully!" });
+      }
+    } catch (error: any) {
+      toast({ title: "Refinement failed", description: error.message, variant: "destructive" });
+    } finally {
+      setRefineCoherenceLoading(false);
     }
   };
 
@@ -3327,6 +3425,64 @@ Generated on: ${new Date().toLocaleString()}`;
                 <div className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-800 max-h-60 overflow-y-auto">
                   <p className="whitespace-pre-wrap">{rewriteResultData.rewrittenText}</p>
                 </div>
+                
+                {/* Refine Coherence Output Section */}
+                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+                  <h4 className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-2 flex items-center gap-1">
+                    <FileEdit className="w-3 h-3" />
+                    Re-Rewrite (Adjust Word Count / Modify)
+                  </h4>
+                  <div className="flex flex-wrap gap-2 items-end">
+                    <div className="flex-1 min-w-[100px] max-w-[140px]">
+                      <label className="block text-xs text-blue-700 dark:text-blue-300 mb-1">
+                        Target Words
+                      </label>
+                      <input
+                        type="number"
+                        value={refineCoherenceWordCount}
+                        onChange={(e) => setRefineCoherenceWordCount(e.target.value)}
+                        placeholder="e.g., 500"
+                        className="w-full p-1.5 text-xs border rounded dark:bg-gray-700 dark:border-gray-600"
+                        data-testid="input-refine-coherence-word-count"
+                      />
+                    </div>
+                    <div className="flex-[2] min-w-[150px]">
+                      <label className="block text-xs text-blue-700 dark:text-blue-300 mb-1">
+                        Custom Instructions
+                      </label>
+                      <input
+                        type="text"
+                        value={refineCoherenceInstructions}
+                        onChange={(e) => setRefineCoherenceInstructions(e.target.value)}
+                        placeholder="e.g., Simpler language, more examples"
+                        className="w-full p-1.5 text-xs border rounded dark:bg-gray-700 dark:border-gray-600"
+                        data-testid="input-refine-coherence-instructions"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleRefineCoherence}
+                      disabled={refineCoherenceLoading || (!refineCoherenceWordCount && !refineCoherenceInstructions)}
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
+                      data-testid="button-refine-coherence"
+                    >
+                      {refineCoherenceLoading ? (
+                        <>
+                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                          Re-Rewriting...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-3 h-3 mr-1" />
+                          Re-Rewrite
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                    Current: ~{rewriteResultData.rewrittenText?.trim().split(/\s+/).length || 0} words
+                  </p>
+                </div>
               </div>
 
               {/* Original Text for comparison */}
@@ -3607,6 +3763,66 @@ Generated on: ${new Date().toLocaleString()}`;
                             {validatorBatchResults.filter(r => r.success)[0]?.output || "(No reconstruction output)"}
                           </pre>
                         </div>
+                        
+                        {/* Refine Reconstruction Section */}
+                        {validatorBatchResults.filter(r => r.success)[0]?.output && (
+                          <div className="m-3 p-3 bg-emerald-100 dark:bg-emerald-800/30 rounded-lg border border-emerald-300 dark:border-emerald-600">
+                            <h4 className="text-xs font-semibold text-emerald-800 dark:text-emerald-200 mb-2 flex items-center gap-1">
+                              <FileEdit className="w-3 h-3" />
+                              Re-Rewrite (Adjust Word Count / Modify)
+                            </h4>
+                            <div className="flex flex-wrap gap-2 items-end">
+                              <div className="flex-1 min-w-[100px] max-w-[140px]">
+                                <label className="block text-xs text-emerald-700 dark:text-emerald-300 mb-1">
+                                  Target Words
+                                </label>
+                                <input
+                                  type="number"
+                                  value={refineReconstructionWordCount}
+                                  onChange={(e) => setRefineReconstructionWordCount(e.target.value)}
+                                  placeholder="e.g., 800"
+                                  className="w-full p-1.5 text-xs border rounded dark:bg-gray-700 dark:border-gray-600"
+                                  data-testid="input-refine-reconstruction-word-count"
+                                />
+                              </div>
+                              <div className="flex-[2] min-w-[150px]">
+                                <label className="block text-xs text-emerald-700 dark:text-emerald-300 mb-1">
+                                  Custom Instructions
+                                </label>
+                                <input
+                                  type="text"
+                                  value={refineReconstructionInstructions}
+                                  onChange={(e) => setRefineReconstructionInstructions(e.target.value)}
+                                  placeholder="e.g., More examples, shorter sentences"
+                                  className="w-full p-1.5 text-xs border rounded dark:bg-gray-700 dark:border-gray-600"
+                                  data-testid="input-refine-reconstruction-instructions"
+                                />
+                              </div>
+                              <Button
+                                onClick={handleRefineReconstructionBatch}
+                                disabled={refineReconstructionLoading || (!refineReconstructionWordCount && !refineReconstructionInstructions)}
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                                data-testid="button-refine-reconstruction"
+                              >
+                                {refineReconstructionLoading ? (
+                                  <>
+                                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                    Re-Rewriting...
+                                  </>
+                                ) : (
+                                  <>
+                                    <RefreshCw className="w-3 h-3 mr-1" />
+                                    Re-Rewrite
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
+                              Current: ~{(validatorBatchResults.filter(r => r.success)[0]?.output || "").trim().split(/\s+/).length} words
+                            </p>
+                          </div>
+                        )}
                       </div>
 
                       {/* Section 2: Objections */}
