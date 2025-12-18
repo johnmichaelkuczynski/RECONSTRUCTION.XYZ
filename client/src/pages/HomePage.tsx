@@ -256,6 +256,12 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [contentAnalysisResult, setContentAnalysisResult] = useState<{
     richnessScore: number;
     richnessAssessment: "RICH" | "MODERATE" | "SPARSE";
+    pivotalPoints?: {
+      claims: string[];
+      terminology: string[];
+      relationships: string[];
+      mustDevelop: string[];
+    };
     substantivenessGap: {
       needsAddition: boolean;
       whatToAdd: string[];
@@ -5808,6 +5814,72 @@ Generated on: ${new Date().toLocaleString()}`;
                   <p className="text-sm text-amber-700 dark:text-amber-300">{contentAnalysisResult.salvageability.recommendation}</p>
                 </div>
               </div>
+
+              {/* PIVOTAL POINTS - Crown Jewels That Must Be Preserved */}
+              {contentAnalysisResult.pivotalPoints && (
+                contentAnalysisResult.pivotalPoints.claims.length > 0 || 
+                contentAnalysisResult.pivotalPoints.terminology.length > 0 ||
+                contentAnalysisResult.pivotalPoints.relationships.length > 0 ||
+                contentAnalysisResult.pivotalPoints.mustDevelop.length > 0
+              ) && (
+                <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded border-2 border-purple-400 dark:border-purple-600 mb-4">
+                  <h4 className="font-bold text-purple-900 dark:text-purple-100 mb-3 flex items-center gap-2">
+                    <span className="text-lg">PIVOTAL POINTS</span>
+                    <Badge className="bg-purple-600 text-xs">DO NOT EXCLUDE</Badge>
+                  </h4>
+                  <p className="text-sm text-purple-700 dark:text-purple-300 mb-4 italic">
+                    These are the crown jewels of this text. Any reconstruction MUST preserve and develop these.
+                  </p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {contentAnalysisResult.pivotalPoints.claims.length > 0 && (
+                      <div className="bg-white dark:bg-gray-800 p-3 rounded border border-purple-300 dark:border-purple-700">
+                        <p className="font-semibold text-purple-800 dark:text-purple-200 mb-2 text-sm">Pivotal Claims (Preserve Verbatim):</p>
+                        <ul className="space-y-1">
+                          {contentAnalysisResult.pivotalPoints.claims.map((claim, i) => (
+                            <li key={i} className="text-xs text-gray-700 dark:text-gray-300 bg-purple-100 dark:bg-purple-900/30 p-2 rounded">
+                              "{claim}"
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {contentAnalysisResult.pivotalPoints.terminology.length > 0 && (
+                      <div className="bg-white dark:bg-gray-800 p-3 rounded border border-purple-300 dark:border-purple-700">
+                        <p className="font-semibold text-purple-800 dark:text-purple-200 mb-2 text-sm">Pivotal Terminology (Must Use):</p>
+                        <div className="flex flex-wrap gap-1">
+                          {contentAnalysisResult.pivotalPoints.terminology.map((term, i) => (
+                            <Badge key={i} className="bg-purple-500 text-xs">{term}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {contentAnalysisResult.pivotalPoints.relationships.length > 0 && (
+                      <div className="bg-white dark:bg-gray-800 p-3 rounded border border-purple-300 dark:border-purple-700">
+                        <p className="font-semibold text-purple-800 dark:text-purple-200 mb-2 text-sm">Pivotal Relationships (Must Explain):</p>
+                        <ul className="space-y-1">
+                          {contentAnalysisResult.pivotalPoints.relationships.map((rel, i) => (
+                            <li key={i} className="text-xs text-gray-700 dark:text-gray-300">- {rel}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {contentAnalysisResult.pivotalPoints.mustDevelop.length > 0 && (
+                      <div className="bg-white dark:bg-gray-800 p-3 rounded border border-purple-300 dark:border-purple-700">
+                        <p className="font-semibold text-purple-800 dark:text-purple-200 mb-2 text-sm">Must Develop in Output:</p>
+                        <ul className="space-y-1">
+                          {contentAnalysisResult.pivotalPoints.mustDevelop.map((dev, i) => (
+                            <li key={i} className="text-xs text-gray-700 dark:text-gray-300">- {dev}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Expandable Full Analysis */}
               <details className="group">

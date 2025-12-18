@@ -42,6 +42,15 @@ export interface ContentAnalysisResult {
   richnessScore: number;
   richnessAssessment: "RICH" | "MODERATE" | "SPARSE";
   
+  // PIVOTAL POINTS: Critical claims/insights that MUST be preserved and developed
+  // These are the "crown jewels" of the input - exclude them at your peril
+  pivotalPoints: {
+    claims: string[];          // Specific theorems, claims, or insights that are central
+    terminology: string[];     // Technical terms that must be used precisely
+    relationships: string[];   // Key relationships (e.g., "strengthens Gödel", "extends X")
+    mustDevelop: string[];     // What the output MUST explain/develop about these points
+  };
+  
   // Substantiveness evaluation
   substantivenessGap: {
     needsAddition: boolean;
@@ -1637,6 +1646,31 @@ Provide analysis in this EXACT format:
 RICHNESS SCORE: [X]/10
 [1-3 = SPARSE (mostly empty/vague), 4-6 = MODERATE (some substance but gaps), 7-10 = RICH (substantial content)]
 
+=== PIVOTAL POINTS (CRITICAL - DO NOT EXCLUDE FROM OUTPUT) ===
+These are the "crown jewels" of the input - the specific claims, theorems, or insights that are CENTRAL to the text's argument. Any reconstruction MUST preserve and develop these.
+
+PIVOTAL CLAIMS:
+[List the specific theorems, central claims, or key insights that define this text's contribution. Quote them exactly if they are precise. Example: "the class of recursive truth-preserving deductive logics is not recursively enumerable"]
+- [Pivotal claim 1]
+- [Pivotal claim 2]
+
+PIVOTAL TERMINOLOGY:
+[List technical terms that have precise meaning and MUST be used in any output. Do not allow vague substitutes.]
+- [Term 1]
+- [Term 2]
+
+PIVOTAL RELATIONSHIPS:
+[List key relationships the text establishes - e.g., "strengthens Gödel", "extends X", "refutes Y"]
+- [Relationship 1]
+- [Relationship 2]
+
+MUST DEVELOP IN OUTPUT:
+[What any reconstruction MUST explain or develop about these pivotal points]
+- [Development requirement 1]
+- [Development requirement 2]
+
+=== END PIVOTAL POINTS ===
+
 CONCRETE EXAMPLES: [COUNT] examples, Quality: [HIGH/MEDIUM/LOW/NONE]
 [List any concrete examples found, or note their absence]
 
@@ -1686,6 +1720,23 @@ DETAILED ANALYSIS:
   const richnessScore = richnessMatch ? parseFloat(richnessMatch[1]) : 5;
   const richnessAssessment: "RICH" | "MODERATE" | "SPARSE" = 
     richnessScore >= 7 ? "RICH" : richnessScore >= 4 ? "MODERATE" : "SPARSE";
+
+  // Parse PIVOTAL POINTS - the crown jewels that must be preserved
+  const pivotalClaimsSection = output.match(/PIVOTAL CLAIMS:\s*([\s\S]*?)(?=PIVOTAL TERMINOLOGY:|$)/i);
+  const pivotalClaims = pivotalClaimsSection ?
+    pivotalClaimsSection[1].split('\n').filter(line => line.trim().startsWith('-') || line.trim().startsWith('•')).map(line => line.replace(/^[-•]\s*/, '').trim()).filter(Boolean) : [];
+
+  const pivotalTerminologySection = output.match(/PIVOTAL TERMINOLOGY:\s*([\s\S]*?)(?=PIVOTAL RELATIONSHIPS:|$)/i);
+  const pivotalTerminology = pivotalTerminologySection ?
+    pivotalTerminologySection[1].split('\n').filter(line => line.trim().startsWith('-') || line.trim().startsWith('•')).map(line => line.replace(/^[-•]\s*/, '').trim()).filter(Boolean) : [];
+
+  const pivotalRelationshipsSection = output.match(/PIVOTAL RELATIONSHIPS:\s*([\s\S]*?)(?=MUST DEVELOP IN OUTPUT:|$)/i);
+  const pivotalRelationships = pivotalRelationshipsSection ?
+    pivotalRelationshipsSection[1].split('\n').filter(line => line.trim().startsWith('-') || line.trim().startsWith('•')).map(line => line.replace(/^[-•]\s*/, '').trim()).filter(Boolean) : [];
+
+  const mustDevelopSection = output.match(/MUST DEVELOP IN OUTPUT:\s*([\s\S]*?)(?===+ END PIVOTAL POINTS|CONCRETE EXAMPLES:|$)/i);
+  const mustDevelop = mustDevelopSection ?
+    mustDevelopSection[1].split('\n').filter(line => line.trim().startsWith('-') || line.trim().startsWith('•')).map(line => line.replace(/^[-•]\s*/, '').trim()).filter(Boolean) : [];
 
   // Parse examples
   const examplesMatch = output.match(/CONCRETE EXAMPLES:\s*(\d+)\s*examples?,\s*Quality:\s*(HIGH|MEDIUM|LOW|NONE)/i);
@@ -1745,6 +1796,12 @@ DETAILED ANALYSIS:
   return {
     richnessScore,
     richnessAssessment,
+    pivotalPoints: {
+      claims: pivotalClaims,
+      terminology: pivotalTerminology,
+      relationships: pivotalRelationships,
+      mustDevelop
+    },
     substantivenessGap: {
       needsAddition,
       whatToAdd,
@@ -2156,8 +2213,35 @@ async function synthesizeIntoCompleteEssay(
     const hasSpecificDetails = contentAnalysis.breakdown.specificDetails.quality === "HIGH" || contentAnalysis.breakdown.specificDetails.quality === "MEDIUM";
     const hasUniqueInsights = contentAnalysis.breakdown.uniqueInsights.quality === "HIGH" || contentAnalysis.breakdown.uniqueInsights.quality === "MEDIUM";
     
-    if (isHighQuality || (hasSpecificDetails && hasUniqueInsights)) {
+    // Also check if there are pivotal points identified - if so, preservation is critical
+    // Must check ALL 4 pivotal point categories, not just claims/terminology
+    const hasPivotalPoints = contentAnalysis.pivotalPoints && 
+      (contentAnalysis.pivotalPoints.claims.length > 0 || 
+       contentAnalysis.pivotalPoints.terminology.length > 0 ||
+       contentAnalysis.pivotalPoints.relationships.length > 0 ||
+       contentAnalysis.pivotalPoints.mustDevelop.length > 0);
+    
+    if (isHighQuality || (hasSpecificDetails && hasUniqueInsights) || hasPivotalPoints) {
       preservationMode = true;
+      
+      // Build the pivotal points section if available
+      let pivotalPointsSection = "";
+      if (contentAnalysis.pivotalPoints) {
+        const pp = contentAnalysis.pivotalPoints;
+        if (pp.claims.length > 0) {
+          pivotalPointsSection += `\n\nPIVOTAL CLAIMS (MUST PRESERVE VERBATIM):\n${pp.claims.map(c => `- "${c}"`).join("\n")}`;
+        }
+        if (pp.terminology.length > 0) {
+          pivotalPointsSection += `\n\nPIVOTAL TERMINOLOGY (MUST USE EXACTLY):\n${pp.terminology.map(t => `- ${t}`).join("\n")}`;
+        }
+        if (pp.relationships.length > 0) {
+          pivotalPointsSection += `\n\nPIVOTAL RELATIONSHIPS (MUST EXPLAIN):\n${pp.relationships.map(r => `- ${r}`).join("\n")}`;
+        }
+        if (pp.mustDevelop.length > 0) {
+          pivotalPointsSection += `\n\nMUST DEVELOP IN OUTPUT:\n${pp.mustDevelop.map(d => `- ${d}`).join("\n")}`;
+        }
+      }
+      
       preservationMandate = `
 
 PRESERVATION MODE ACTIVE - INPUT IS HIGH QUALITY
@@ -2172,7 +2256,7 @@ YOU MUST:
 - If the original states a theorem, STATE THAT THEOREM in the output
 - If the original has precise terminology, USE THAT TERMINOLOGY
 - Expand and illustrate the ACTUAL claims, not a vague version of them
-- Examples must illustrate the SPECIFIC claims, not adjacent but different ideas`;
+- Examples must illustrate the SPECIFIC claims, not adjacent but different ideas${pivotalPointsSection}`;
     }
     
     // Extract ALL relevant signals from content analysis
