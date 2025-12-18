@@ -818,8 +818,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
 
   // Refine Coherence rewrite output with word count and/or custom instructions
   const handleRefineCoherence = async () => {
-    const coherenceOutput = rewriteResultData?.rewrittenText || rewriteResult;
-    if (!coherenceOutput?.trim()) {
+    if (!coherenceRewrite?.trim()) {
       toast({ title: "No coherence output to refine", variant: "destructive" });
       return;
     }
@@ -830,7 +829,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: coherenceOutput,
+          text: coherenceRewrite,
           targetWordCount: refineCoherenceWordCount ? parseInt(refineCoherenceWordCount) : null,
           customInstructions: refineCoherenceInstructions || null,
         }),
@@ -843,12 +842,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       
       const data = await response.json();
       if (data.success && data.output) {
-        // Update the coherence result with refined output
-        if (rewriteResultData) {
-          setRewriteResultData((prev: any) => ({ ...prev, rewrittenText: data.output }));
-        } else {
-          setRewriteResult(data.output);
-        }
+        // Update the coherence rewrite with refined output
+        setCoherenceRewrite(data.output);
         setRefineCoherenceWordCount("");
         setRefineCoherenceInstructions("");
         toast({ title: "Coherence output refined successfully!" });
@@ -6297,6 +6292,64 @@ Generated on: ${new Date().toLocaleString()}`;
                 <pre className="whitespace-pre-wrap font-sans text-sm text-gray-800 dark:text-gray-200">
                   {coherenceRewrite}
                 </pre>
+              </div>
+
+              {/* Refine Coherence Rewrite Section */}
+              <div className="mt-4 p-4 bg-indigo-100 dark:bg-indigo-800/30 rounded-lg border border-indigo-300 dark:border-indigo-600">
+                <h4 className="text-sm font-semibold text-indigo-800 dark:text-indigo-200 mb-3 flex items-center gap-2">
+                  <FileEdit className="w-4 h-4" />
+                  Refine Output (Adjust Word Count / Modify)
+                </h4>
+                <div className="flex flex-wrap gap-3 items-end">
+                  <div className="flex-1 min-w-[120px] max-w-[160px]">
+                    <label className="block text-xs text-indigo-700 dark:text-indigo-300 mb-1">
+                      Target Words
+                    </label>
+                    <input
+                      type="number"
+                      value={refineCoherenceWordCount}
+                      onChange={(e) => setRefineCoherenceWordCount(e.target.value)}
+                      placeholder="e.g., 800"
+                      className="w-full p-2 text-sm border rounded dark:bg-gray-700 dark:border-gray-600"
+                      data-testid="input-refine-coherence-word-count"
+                    />
+                  </div>
+                  <div className="flex-[2] min-w-[200px]">
+                    <label className="block text-xs text-indigo-700 dark:text-indigo-300 mb-1">
+                      Custom Instructions
+                    </label>
+                    <input
+                      type="text"
+                      value={refineCoherenceInstructions}
+                      onChange={(e) => setRefineCoherenceInstructions(e.target.value)}
+                      placeholder="e.g., More examples, shorter sentences, add a quote from Aristotle"
+                      className="w-full p-2 text-sm border rounded dark:bg-gray-700 dark:border-gray-600"
+                      data-testid="input-refine-coherence-instructions"
+                    />
+                  </div>
+                  <Button
+                    onClick={handleRefineCoherence}
+                    disabled={refineCoherenceLoading || (!refineCoherenceWordCount && !refineCoherenceInstructions)}
+                    size="sm"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                    data-testid="button-refine-coherence"
+                  >
+                    {refineCoherenceLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        Refining...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-1" />
+                        Refine
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-2">
+                  Current: ~{coherenceRewrite.trim().split(/\s+/).length} words
+                </p>
               </div>
 
               {/* Scientific Corrections Applied */}
