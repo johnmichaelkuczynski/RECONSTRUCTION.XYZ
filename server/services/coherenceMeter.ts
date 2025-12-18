@@ -1921,6 +1921,7 @@ Output ONLY the shortened text. No commentary. No explanation.`;
 
 // SYNTHESIZE INTO COMPLETE ESSAY: Transform ANY input (abstract, fragmented, concise) into a self-contained essay
 // This is "turn to gold" operation - create an excellent, comprehensive philosophical work
+// CRITICAL: The LLM must GENERATE FRESH SUBSTANTIVE CONTENT not in the original
 async function synthesizeIntoCompleteEssay(
   text: string,
   inputWordCount: number
@@ -1950,14 +1951,56 @@ Be clear and concise.`;
 
   const extractedPosition = extractionMessage.content[0].type === 'text' ? extractionMessage.content[0].text : '';
 
-  // STAGE 2: SYNTHESIZE INTO A COMPREHENSIVE PHILOSOPHICAL ESSAY
-  // The goal is to create a SELF-CONTAINED WORK that stands on its own
-  const essayPrompt = `You are creating a COMPLETE PHILOSOPHICAL ESSAY that fully develops and defends a position.
+  // STAGE 2: GENERATE FRESH SUBSTANTIVE CONTENT NOT IN THE ORIGINAL
+  // This is the KEY to preventing bloating - explicitly ask for new information that DEVELOPS the position
+  const freshContentPrompt = `You have extracted a core philosophical position. Now you must GENERATE FRESH SUBSTANTIVE CONTENT that develops and deepens this position.
 
-CORE POSITION EXTRACTED:
+CORE POSITION:
 ${extractedPosition}
 
-ORIGINAL INPUT (for reference):
+ORIGINAL INPUT (what was given):
+${text}
+
+YOUR TASK:
+Generate FRESH SUBSTANTIVE MATERIAL that is NOT explicitly in the original but is LOGICALLY ENTAILED by the position. This new material should include:
+
+1. CONCRETE EXAMPLES: Real-world or thought experiment illustrations that make the position clear (not just restating it)
+2. COUNTERARGUMENTS: What would strong objectors say? What are their best challenges? (Go beyond what the original mentions)
+3. IMPLICATIONS: What follows if this position is true? What becomes possible or impossible?
+4. DISTINCTIONS: What careful distinctions are needed to make the argument work? Where do people get confused?
+5. COMPARISONS: How does this position compare to alternatives? Why is it better?
+6. HISTORICAL/CONTEXTUAL BACKGROUND: Why has this been controversial or misunderstood?
+
+CRITICAL REQUIREMENTS FOR THIS CONTENT:
+- Do NOT simply rephrase or elaborate on what's already in the original
+- DO generate genuinely NEW philosophical insights that develop the position
+- DO provide specific examples, thought experiments, or illustrations
+- DO articulate objections and responses that weren't mentioned
+- DO explore implications and consequences
+- The new content should SUBSTANTIALLY EXPAND the argumentative depth
+
+Output as a structured list with clear headers for each section.`;
+
+  const freshContentMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 4000,
+    temperature: 0.6,
+    messages: [{ role: "user", content: freshContentPrompt }]
+  });
+
+  const freshContent = freshContentMessage.content[0].type === 'text' ? freshContentMessage.content[0].text : '';
+
+  // STAGE 3: SYNTHESIZE INTO A COMPREHENSIVE PHILOSOPHICAL ESSAY
+  // NOW combine the core position WITH the fresh substantive content
+  const essayPrompt = `You are creating a COMPLETE PHILOSOPHICAL ESSAY that develops and defends a position using fresh, substantive material.
+
+CORE POSITION:
+${extractedPosition}
+
+FRESH SUBSTANTIVE CONTENT TO INTEGRATE:
+${freshContent}
+
+ORIGINAL INPUT (for minimal reference only):
 ${text}
 
 YOUR TASK:
@@ -1965,27 +2008,32 @@ Create a comprehensive, self-contained philosophical essay that:
 
 1. OPENS with the philosophical problem or question being addressed
 2. ESTABLISHES the thesis clearly and compellingly
-3. DEFINES key terms and makes crucial distinctions
-4. DEVELOPS the argument systematically - each section builds logically on the previous
-5. PROVIDES examples or illustrations that illuminate the position
-6. ADDRESSES major objections and counterarguments directly
-7. EXPLAINS WHY this position is superior to alternatives
-8. CONCLUDES by articulating the philosophical significance and implications
+3. DEFINES key terms and makes crucial distinctions (use the fresh content)
+4. DEVELOPS the argument systematically using CONCRETE EXAMPLES from the fresh content
+5. ADDRESSES major objections and counterarguments (use the fresh content objections)
+6. EXPLAINS implications and consequences (use the fresh content insights)
+7. COMPARES to alternatives (use fresh content comparisons)
+8. CONCLUDES by articulating the philosophical significance
 
 ESSAY REQUIREMENTS:
-- Self-contained: A reader with no other context should understand the full argument
-- Compelling: Make the case for the position persuasively
-- Clear: Logical flow from problem → thesis → development → conclusion
-- Dense: Nearly every sentence advances the argument. No filler.
+- Self-contained: A reader should understand the full argument and its implications
+- SUBSTANTIVE: Use the fresh content to make real arguments, not just restate the original
+- Dense: Nearly every sentence advances the argument. ZERO filler or padding.
+- Clear: Logical flow from problem → thesis → development → implications → conclusion
 - Scholarly: Academic tone but direct and accessible
-- Comprehensive: Explore the position thoroughly, not just summarize
 
-TARGET LENGTH: 800-1500 words (must be substantial enough to be a complete essay, not an abstract)
+TARGET LENGTH: 1000-1500 words (substantial because it contains genuinely new philosophical material)
 
-CRITICAL: This should be a DISTINCT, WELL-ARGUED ESSAY, not just a rearrangement of the input. Create something that would stand alone as a philosophical work.
+CRITICAL MANDATE:
+This essay must be demonstrably RICHER and more DEVELOPED than the original input. It should:
+- Introduce examples not in the original
+- Address objections more thoroughly
+- Explore implications the original didn't mention
+- Make distinctions that deepen understanding
+- Provide philosophical depth beyond what the input contained
 
 OUTPUT:
-Write ONLY the essay. Plain prose. No markdown, no headers, no meta-commentary. Just the complete philosophical essay.`;
+Write ONLY the essay. Plain prose. No markdown, no headers, no meta-commentary.`;
 
   const essayMessage = await anthropic.messages.create({
     model: "claude-3-7-sonnet-20250219",
@@ -1997,22 +2045,23 @@ Write ONLY the essay. Plain prose. No markdown, no headers, no meta-commentary. 
   let essay = stripMarkdown(essayMessage.content[0].type === 'text' ? essayMessage.content[0].text : '');
   let essayWordCount = essay.trim().split(/\s+/).length;
 
-  // STAGE 3: VALIDATION - Ensure it's a proper essay, not just an abstract
-  if (essayWordCount < 400) {
-    // If too short, expand it further
-    const expandPrompt = `This essay is too short (${essayWordCount} words). It needs to be more substantial to be a complete philosophical work.
+  // STAGE 4: VALIDATION - Ensure it's substantive, not just longer
+  if (essayWordCount < 600) {
+    // If too short, expand with more substantive material
+    const expandPrompt = `This essay is too short (${essayWordCount} words). It must be more substantial with genuine philosophical depth.
 
 CURRENT ESSAY:
 ${essay}
 
-Expand this to 800-1200 words by:
-1. Adding more detailed argumentation
-2. Developing points more thoroughly
-3. Adding relevant examples or illustrations
-4. Exploring implications more deeply
-5. Addressing more counterarguments
+Expand this to 1000-1300 words by adding:
+1. More detailed philosophical argumentation (not just elaboration of existing points)
+2. Additional concrete examples or thought experiments
+3. Deeper treatment of counterarguments and responses
+4. Exploration of edge cases or boundary conditions
+5. Discussion of why this position was historically missed or misunderstood
+6. Implications for related philosophical questions
 
-Keep the core argument but make it more comprehensive and thorough.
+Each addition should be SUBSTANTIVE - advancing the argument, not padding.
 
 OUTPUT: Write ONLY the expanded essay. Plain prose, no markdown.`;
 
@@ -2031,10 +2080,10 @@ OUTPUT: Write ONLY the expanded essay. Plain prose, no markdown.`;
 
   return {
     reconstructedText: essay,
-    changes: `Reconstructed from concise/abstract input (${inputWordCount} words) into a complete philosophical essay (${essayWordCount} words, ${Number(growthPercent) > 0 ? '+' : ''}${growthPercent}% expansion). Created a self-contained work that fully develops the core position.`,
+    changes: `Reconstructed from input (${inputWordCount} words) into a complete philosophical essay (${essayWordCount} words, +${growthPercent}%). Generated fresh substantive content: examples, counterarguments, implications, distinctions, and comparisons not in the original.`,
     wasReconstructed: true,
-    adjacentMaterialAdded: `Synthesized: comprehensive argumentative structure, detailed developments of the thesis, relevant examples and illustrations, systematic treatment of objections, and clear implications. Transformed input into a complete philosophical work.`,
-    originalLimitationsIdentified: `The original input was concise or abstract. Reconstructed it into a full essay by: extracting the core position, developing each aspect systematically, adding examples and counterargument responses, and articulating philosophical significance.`
+    adjacentMaterialAdded: `Added fresh philosophical material: concrete examples and thought experiments, comprehensive objection analysis with responses, logical implications and consequences, critical distinctions that deepen understanding, comparisons to alternative positions, and historical context. All expansions are substantive developments of the core position, not padding.`,
+    originalLimitationsIdentified: `The original was concise/abstract. Reconstructed by: (1) extracting the core position, (2) generating fresh substantive content (examples, objections, implications, distinctions), (3) integrating all material into a comprehensive essay. The result is richer philosophically, not just longer.`
   };
 }
 
