@@ -1951,39 +1951,74 @@ Be clear and concise.`;
 
   const extractedPosition = extractionMessage.content[0].type === 'text' ? extractionMessage.content[0].text : '';
 
-  // STAGE 2: GENERATE FRESH SUBSTANTIVE CONTENT NOT IN THE ORIGINAL
-  // This is the KEY to preventing bloating - explicitly ask for new information that DEVELOPS the position
-  const freshContentPrompt = `You have extracted a core philosophical position. Now you must GENERATE FRESH SUBSTANTIVE CONTENT that develops and deepens this position.
+  // STAGE 2A: GENERATE FRESH, ORIGINAL EXAMPLES THAT ILLUSTRATE THE POSITION
+  // Examples are CRITICAL - they must be novel, specific, and demonstrate why the position is correct
+  const examplesPrompt = `You have identified a core philosophical position. Now generate FRESH, ORIGINAL EXAMPLES that ILLUSTRATE this position.
 
 CORE POSITION:
 ${extractedPosition}
+
+YOUR TASK:
+Generate 4-5 specific, original examples that make this position CLEAR and COMPELLING. These examples should:
+
+1. Be NOVEL (not mentioned in the original input or common knowledge)
+2. Be SPECIFIC (concrete, real-world or thought experiment cases - not abstract)
+3. ILLUSTRATE the position directly (show why the position is correct by demonstrating it in action)
+4. Be DIVERSE (different contexts, different types of situations)
+5. Show CONTRAST (illustrate how things would be different under this vs alternative positions)
+
+For EACH example, provide:
+- SCENARIO: What is the case?
+- WHY IT WORKS: How does this example illustrate the core position?
+- CONTRAST: What would happen if the alternative view were true?
+
+Do NOT simply restate the original text. Create NOVEL ILLUSTRATIONS that demonstrate the position's truth.
+
+Examples should be specific enough that a reader thinks "Oh, I see - this is EXACTLY what the position means."`;
+
+  const examplesMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 3000,
+    temperature: 0.7,
+    messages: [{ role: "user", content: examplesPrompt }]
+  });
+
+  const freshExamples = examplesMessage.content[0].type === 'text' ? examplesMessage.content[0].text : '';
+
+  // STAGE 2B: GENERATE FRESH SUBSTANTIVE CONTENT NOT IN THE ORIGINAL
+  // This is the KEY to preventing bloating - explicitly ask for new information that DEVELOPS the position
+  const freshContentPrompt = `You have extracted a core philosophical position and generated fresh examples. Now generate additional SUBSTANTIVE CONTENT that develops and deepens this position.
+
+CORE POSITION:
+${extractedPosition}
+
+FRESH EXAMPLES ALREADY GENERATED:
+${freshExamples}
 
 ORIGINAL INPUT (what was given):
 ${text}
 
 YOUR TASK:
-Generate FRESH SUBSTANTIVE MATERIAL that is NOT explicitly in the original but is LOGICALLY ENTAILED by the position. This new material should include:
+Generate ADDITIONAL FRESH SUBSTANTIVE MATERIAL (beyond the examples) that develops the position:
 
-1. CONCRETE EXAMPLES: Real-world or thought experiment illustrations that make the position clear (not just restating it)
-2. COUNTERARGUMENTS: What would strong objectors say? What are their best challenges? (Go beyond what the original mentions)
-3. IMPLICATIONS: What follows if this position is true? What becomes possible or impossible?
-4. DISTINCTIONS: What careful distinctions are needed to make the argument work? Where do people get confused?
-5. COMPARISONS: How does this position compare to alternatives? Why is it better?
-6. HISTORICAL/CONTEXTUAL BACKGROUND: Why has this been controversial or misunderstood?
+1. COUNTERARGUMENTS: What would strong objectors say? What are their best challenges? (Create novel objections, not just restatements)
+2. IMPLICATIONS: What follows if this position is true? What becomes possible or impossible? What changes in how we understand related concepts?
+3. DISTINCTIONS: What careful distinctions are needed to make the argument work? Where do people commonly get confused?
+4. COMPARISONS: How does this position compare to alternatives? Why is it superior? Where do alternatives fail?
+5. HISTORICAL/CONTEXTUAL BACKGROUND: Why has this been controversial or misunderstood? What confusions led to alternative views?
 
-CRITICAL REQUIREMENTS FOR THIS CONTENT:
-- Do NOT simply rephrase or elaborate on what's already in the original
-- DO generate genuinely NEW philosophical insights that develop the position
-- DO provide specific examples, thought experiments, or illustrations
-- DO articulate objections and responses that weren't mentioned
-- DO explore implications and consequences
-- The new content should SUBSTANTIALLY EXPAND the argumentative depth
+CRITICAL REQUIREMENTS:
+- Do NOT repeat the examples already generated
+- Do NOT simply rephrase or elaborate on what's in the original
+- DO generate genuinely NEW philosophical insights
+- DO be specific and concrete, not vague
+- Each section should ADD substantive argumentative depth
 
 Output as a structured list with clear headers for each section.`;
 
   const freshContentMessage = await anthropic.messages.create({
     model: "claude-3-7-sonnet-20250219",
-    max_tokens: 4000,
+    max_tokens: 3500,
     temperature: 0.6,
     messages: [{ role: "user", content: freshContentPrompt }]
   });
@@ -1991,49 +2026,59 @@ Output as a structured list with clear headers for each section.`;
   const freshContent = freshContentMessage.content[0].type === 'text' ? freshContentMessage.content[0].text : '';
 
   // STAGE 3: SYNTHESIZE INTO A COMPREHENSIVE PHILOSOPHICAL ESSAY
-  // NOW combine the core position WITH the fresh substantive content
-  const essayPrompt = `You are creating a COMPLETE PHILOSOPHICAL ESSAY that develops and defends a position using fresh, substantive material.
+  // NOW combine the core position WITH the fresh substantive content AND examples
+  const essayPrompt = `You are creating a COMPLETE PHILOSOPHICAL ESSAY that develops and defends a position using fresh, substantive material and original examples.
 
 CORE POSITION:
 ${extractedPosition}
 
-FRESH SUBSTANTIVE CONTENT TO INTEGRATE:
+FRESH ORIGINAL EXAMPLES TO WEAVE THROUGHOUT:
+${freshExamples}
+
+ADDITIONAL SUBSTANTIVE CONTENT TO INTEGRATE:
 ${freshContent}
 
 ORIGINAL INPUT (for minimal reference only):
 ${text}
 
 YOUR TASK:
-Create a comprehensive, self-contained philosophical essay that:
+Create a comprehensive, self-contained philosophical essay that WEAVES TOGETHER the fresh examples and substantive content:
 
 1. OPENS with the philosophical problem or question being addressed
 2. ESTABLISHES the thesis clearly and compellingly
-3. DEFINES key terms and makes crucial distinctions (use the fresh content)
-4. DEVELOPS the argument systematically using CONCRETE EXAMPLES from the fresh content
-5. ADDRESSES major objections and counterarguments (use the fresh content objections)
-6. EXPLAINS implications and consequences (use the fresh content insights)
-7. COMPARES to alternatives (use fresh content comparisons)
-8. CONCLUDES by articulating the philosophical significance
+3. INTRODUCES a concrete EXAMPLE to illuminate what the position means (use fresh examples)
+4. DEVELOPS the argument systematically, using MULTIPLE ORIGINAL EXAMPLES at strategic points
+5. DEFINES key terms and makes crucial distinctions (use fresh content distinctions)
+6. ADDRESSES major objections and counterarguments DIRECTLY (use fresh content objections)
+7. SHOWS HOW THE EXAMPLES RESPOND to those objections (connect examples to counterarguments)
+8. EXPLAINS implications and consequences (use fresh content insights)
+9. COMPARES to alternatives, using examples to show why this position is superior
+10. CONCLUDES by articulating the philosophical significance
 
 ESSAY REQUIREMENTS:
 - Self-contained: A reader should understand the full argument and its implications
+- EXAMPLE-RICH: The essay should be THREADED with original concrete examples that ILLUSTRATE the position
 - SUBSTANTIVE: Use the fresh content to make real arguments, not just restate the original
 - Dense: Nearly every sentence advances the argument. ZERO filler or padding.
-- Clear: Logical flow from problem → thesis → development → implications → conclusion
+- Clear: Logical flow from problem → thesis → examples → development → implications → conclusion
 - Scholarly: Academic tone but direct and accessible
 
-TARGET LENGTH: 1000-1500 words (substantial because it contains genuinely new philosophical material)
+TARGET LENGTH: 1000-1500 words (substantial because it contains genuinely new examples and philosophical material)
 
 CRITICAL MANDATE:
-This essay must be demonstrably RICHER and more DEVELOPED than the original input. It should:
-- Introduce examples not in the original
+This essay must be demonstrably RICHER, more ILLUSTRATED, and more DEVELOPED than the original input. It should:
+- USE SPECIFIC ORIGINAL EXAMPLES throughout (not generic illustrations)
+- Show the position in ACTION via concrete cases
 - Address objections more thoroughly
 - Explore implications the original didn't mention
 - Make distinctions that deepen understanding
-- Provide philosophical depth beyond what the input contained
+- Provide philosophical depth DEMONSTRATED through examples
+
+EXAMPLE INTEGRATION:
+Do NOT list examples in isolation. WEAVE them into the argument so they DEMONSTRATE why the position is correct. Each example should show a different facet or application.
 
 OUTPUT:
-Write ONLY the essay. Plain prose. No markdown, no headers, no meta-commentary.`;
+Write ONLY the essay. Plain prose. No markdown, no headers, no meta-commentary. The examples should be SEAMLESSLY integrated into the prose, not extracted as separate sections.`;
 
   const essayMessage = await anthropic.messages.create({
     model: "claude-3-7-sonnet-20250219",
