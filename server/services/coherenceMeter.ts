@@ -2141,11 +2141,39 @@ async function synthesizeIntoCompleteEssay(
   let contentGapContext = "";
   let exampleDirective = "";
   let contentDirective = "";
+  let preservationMode = false;
+  let preservationMandate = "";
   
   if (contentAnalysis) {
     const gaps: string[] = [];
     const exampleGaps: string[] = [];
     const contentGaps: string[] = [];
+    
+    // PRESERVATION MODE: Detect when input is already high-quality and must be preserved
+    // When input is substantive (richnessScore >= 7 OR salvageability = SALVAGEABLE), 
+    // we must PRESERVE the core technical claims, not replace them with vague adjacent material
+    const isHighQuality = contentAnalysis.richnessScore >= 7 || contentAnalysis.salvageability.status === "SALVAGEABLE";
+    const hasSpecificDetails = contentAnalysis.breakdown.specificDetails.quality === "HIGH" || contentAnalysis.breakdown.specificDetails.quality === "MEDIUM";
+    const hasUniqueInsights = contentAnalysis.breakdown.uniqueInsights.quality === "HIGH" || contentAnalysis.breakdown.uniqueInsights.quality === "MEDIUM";
+    
+    if (isHighQuality || (hasSpecificDetails && hasUniqueInsights)) {
+      preservationMode = true;
+      preservationMandate = `
+
+PRESERVATION MODE ACTIVE - INPUT IS HIGH QUALITY
+The input contains precise technical claims that MUST be preserved verbatim. Do NOT:
+- Abstract away specific terminology (e.g., "not recursively enumerable" must stay as "not recursively enumerable")
+- Replace technical claims with vague paraphrases
+- Substitute the specific argument with a related but different argument
+- Ignore unique terminology, theorems, or precise distinctions
+
+YOU MUST:
+- Preserve ALL specific technical terms and claims from the original
+- If the original states a theorem, STATE THAT THEOREM in the output
+- If the original has precise terminology, USE THAT TERMINOLOGY
+- Expand and illustrate the ACTUAL claims, not a vague version of them
+- Examples must illustrate the SPECIFIC claims, not adjacent but different ideas`;
+    }
     
     // Extract ALL relevant signals from content analysis
     
@@ -2175,8 +2203,8 @@ async function synthesizeIntoCompleteEssay(
     // Vagueness
     if (contentAnalysis.breakdown.vagueness.level === "HIGH") {
       gaps.push("HIGH VAGUENESS - replace generalizations with concrete, verifiable claims");
-      if (contentAnalysis.breakdown.vagueness.problematicPhrases && contentAnalysis.breakdown.vagueness.problematicPhrases.length > 0) {
-        gaps.push(`Vague phrases to eliminate: "${contentAnalysis.breakdown.vagueness.problematicPhrases.slice(0, 3).join('", "')}"`);
+      if (contentAnalysis.breakdown.vagueness.instances && contentAnalysis.breakdown.vagueness.instances.length > 0) {
+        gaps.push(`Vague phrases to eliminate: "${contentAnalysis.breakdown.vagueness.instances.slice(0, 3).join('", "')}"`);
       }
     }
     
@@ -2209,7 +2237,28 @@ async function synthesizeIntoCompleteEssay(
   }
   
   // STAGE 1: EXTRACT THE CORE POSITION
-  const extractionPrompt = `You are analyzing this text to identify the CORE PHILOSOPHICAL POSITION or INSIGHT it contains.
+  // In preservation mode, we must also extract MANDATORY CLAIMS that must appear verbatim in the output
+  const extractionPrompt = preservationMode ? 
+`You are analyzing this text to identify its CORE POSITION and MANDATORY TECHNICAL CLAIMS.
+${preservationMandate}
+
+TEXT:
+${text}
+
+Extract and clearly state:
+1. MAIN POSITION: The central claim or insight (1 sentence)
+2. MANDATORY CLAIMS TO PRESERVE: List VERBATIM any specific theorems, technical terms, or precise claims that MUST appear in the final output. Quote them exactly as they appear.
+   - If there is a theorem, state it exactly
+   - If there are technical terms (e.g., "recursively enumerable", "truth-preserving deductive logics"), list them
+   - If there are precise distinctions or definitions, quote them
+3. PROBLEM IT SOLVES: What philosophical problem or question does this address?
+4. KEY DISTINCTIONS: What crucial distinctions underpin the argument?
+5. HOW IT STRENGTHENS/EXTENDS PRIOR WORK: If the text claims to extend or strengthen previous results (e.g., Gödel), explain exactly how.
+6. SIGNIFICANCE: Why does this position matter?
+
+CRITICAL: Do NOT paraphrase or abstract the technical claims. Preserve their precise formulation.`
+  : 
+`You are analyzing this text to identify the CORE PHILOSOPHICAL POSITION or INSIGHT it contains.
 
 TEXT:
 ${text}
@@ -2235,7 +2284,40 @@ Be clear and concise.`;
   // STAGE 2A: GENERATE FRESH, ORIGINAL EXAMPLES THAT ILLUSTRATE THE POSITION
   // Examples are CRITICAL - they must be novel, specific, and demonstrate why the position is correct
   // Now includes targeted directives from content analysis
-  const examplesPrompt = `You have identified a core philosophical position. Now generate FRESH, ORIGINAL EXAMPLES that ILLUSTRATE this position.
+  // In preservation mode, examples must illustrate the SPECIFIC technical claims, not vague abstractions
+  const examplesPrompt = preservationMode ?
+`You have identified a core position with MANDATORY TECHNICAL CLAIMS. Now generate FRESH, ORIGINAL EXAMPLES that ILLUSTRATE the SPECIFIC CLAIMS.
+${preservationMandate}
+
+CORE POSITION AND MANDATORY CLAIMS:
+${extractedPosition}
+${exampleDirective}
+
+ORIGINAL TEXT (for reference - the technical claims come from here):
+${text}
+
+YOUR TASK:
+Generate 4-5 specific, original examples that ILLUSTRATE THE SPECIFIC TECHNICAL CLAIMS (not a vague paraphrase).
+
+For example, if the claim is "the class of recursive truth-preserving deductive logics is not recursively enumerable", your examples must illustrate:
+- What it means for something to be "not recursively enumerable"
+- Why this is a stronger result than standard incompleteness
+- How this blocks algorithmic enumeration of formal systems
+
+REQUIREMENTS:
+1. Be NOVEL (not mentioned in the original)
+2. Be SPECIFIC (concrete cases - not abstract)
+3. ILLUSTRATE THE ACTUAL TECHNICAL CLAIM (not an adjacent/related but different claim)
+4. Show CONTRAST (illustrate how things would be different if the claim were false)
+
+For EACH example, provide:
+- SCENARIO: What is the case?
+- TECHNICAL CONNECTION: How does this illustrate the SPECIFIC theorem/claim?
+- CONTRAST: What would be different if the alternative were true?
+
+CRITICAL: Do NOT generate examples for a vaguer version of the claim. Illustrate the PRECISE claim.`
+  :
+`You have identified a core philosophical position. Now generate FRESH, ORIGINAL EXAMPLES that ILLUSTRATE this position.
 
 CORE POSITION:
 ${extractedPosition}
@@ -2271,7 +2353,40 @@ Examples should be specific enough that a reader thinks "Oh, I see - this is EXA
   // STAGE 2B: GENERATE FRESH SUBSTANTIVE CONTENT NOT IN THE ORIGINAL
   // This is the KEY to preventing bloating - explicitly ask for new information that DEVELOPS the position
   // Now includes targeted directives from content analysis
-  const freshContentPrompt = `You have extracted a core philosophical position and generated fresh examples. Now generate additional SUBSTANTIVE CONTENT that develops and deepens this position.
+  // In preservation mode, fresh content must EXTEND the specific technical claims
+  const freshContentPrompt = preservationMode ?
+`You have extracted a core position with MANDATORY TECHNICAL CLAIMS and generated examples. Now generate additional SUBSTANTIVE CONTENT that EXTENDS and DEVELOPS these specific claims.
+${preservationMandate}
+
+CORE POSITION AND MANDATORY CLAIMS:
+${extractedPosition}
+
+FRESH EXAMPLES ALREADY GENERATED:
+${freshExamples}
+
+ORIGINAL INPUT (the source of the technical claims):
+${text}
+${contentDirective}
+
+YOUR TASK:
+Generate ADDITIONAL FRESH SUBSTANTIVE MATERIAL that develops THE SPECIFIC TECHNICAL CLAIMS (not a vague paraphrase):
+
+1. EXPLAIN THE THEOREM: If there is a theorem, explain what it means in precise terms. What does "not recursively enumerable" mean? How does this differ from standard incompleteness?
+2. STRENGTHEN/CONTEXTUALIZE: How does this result relate to and strengthen prior work (e.g., Gödel)? Be precise about the relationship.
+3. COUNTERARGUMENTS: What would strong objectors say? Address objections to the SPECIFIC claim.
+4. IMPLICATIONS: What follows from THIS SPECIFIC result? Not from a vaguer version.
+5. TECHNICAL DISTINCTIONS: What careful distinctions are needed to understand the claim correctly?
+
+CRITICAL REQUIREMENTS:
+- All content must reference and develop THE SPECIFIC TECHNICAL CLAIMS
+- Do NOT drift into adjacent but different topics
+- If the original says "strengthens Gödel", explain HOW
+- If the original uses technical terms, USE THOSE TERMS
+- Each section should ADD depth to the ACTUAL argument, not a paraphrase
+
+Output as a structured list with clear headers for each section.`
+  :
+`You have extracted a core philosophical position and generated fresh examples. Now generate additional SUBSTANTIVE CONTENT that develops and deepens this position.
 
 CORE POSITION:
 ${extractedPosition}
@@ -2313,7 +2428,54 @@ Output as a structured list with clear headers for each section.`;
   // STAGE 3: SYNTHESIZE INTO A COMPREHENSIVE PHILOSOPHICAL ESSAY
   // NOW combine the core position WITH the fresh substantive content AND examples
   // Include content gap context from content analysis to ensure targeted improvements
-  const essayPrompt = `You are creating a COMPLETE PHILOSOPHICAL ESSAY that develops and defends a position using fresh, substantive material and original examples.
+  // In preservation mode, the essay must PRESERVE the specific technical claims
+  const essayPrompt = preservationMode ?
+`You are creating a COMPLETE PHILOSOPHICAL ESSAY that PRESERVES and DEVELOPS the SPECIFIC TECHNICAL CLAIMS from the original input.
+${preservationMandate}
+
+CORE POSITION AND MANDATORY CLAIMS TO PRESERVE:
+${extractedPosition}
+
+FRESH ORIGINAL EXAMPLES TO WEAVE THROUGHOUT:
+${freshExamples}
+
+ADDITIONAL SUBSTANTIVE CONTENT TO INTEGRATE:
+${freshContent}
+
+ORIGINAL INPUT (THE SOURCE - PRESERVE ITS TECHNICAL CLAIMS):
+${text}
+${contentGapContext}
+
+YOUR TASK:
+Create a comprehensive, self-contained essay that:
+1. STATES THE SPECIFIC TECHNICAL CLAIMS from the original (e.g., "the class of recursive truth-preserving deductive logics is not recursively enumerable")
+2. EXPLAINS what these claims mean (what is recursive enumerability? what are truth-preserving deductive logics?)
+3. SHOWS HOW this result strengthens/extends prior work (e.g., how does this go beyond Gödel?)
+4. USES EXAMPLES to illustrate the SPECIFIC claims (not vague paraphrases)
+5. DRAWS OUT the philosophical consequences from the SPECIFIC result
+
+MANDATORY PRESERVATION:
+- The essay MUST include the precise theorem/claim stated in the original
+- The essay MUST use the technical terminology from the original
+- The essay MUST explain how this result differs from and extends prior results
+- Do NOT substitute a vague theme (like "rationality isn't recursivity") for the precise claim
+
+ESSAY STRUCTURE:
+1. OPEN with the specific problem (not a vague framing)
+2. STATE THE THEOREM/CLAIM precisely
+3. EXPLAIN what it means in technical terms
+4. SHOW how it extends prior work (Gödel, etc.)
+5. GIVE EXAMPLES that illustrate the specific claim
+6. ADDRESS OBJECTIONS to the specific claim
+7. DRAW OUT IMPLICATIONS of the specific result
+8. CONCLUDE with the philosophical significance
+
+TARGET LENGTH: 1000-1500 words
+
+OUTPUT:
+Write ONLY the essay. Plain prose. No markdown, no headers, no meta-commentary.`
+  :
+`You are creating a COMPLETE PHILOSOPHICAL ESSAY that develops and defends a position using fresh, substantive material and original examples.
 
 CORE POSITION:
 ${extractedPosition}
@@ -2414,31 +2576,42 @@ OUTPUT: Write ONLY the expanded essay. Plain prose, no markdown.`;
   let limitationsDescription = `The original was concise/abstract.`;
   if (contentAnalysis) {
     const issues: string[] = [];
-    if (contentAnalysis.richnessAssessment === "SPARSE") {
-      issues.push("sparse content (richness score: " + contentAnalysis.richnessScore + "/10)");
-    }
-    if (contentAnalysis.breakdown.concreteExamples.quality === "NONE" || contentAnalysis.breakdown.concreteExamples.quality === "LOW") {
-      issues.push("lacked concrete examples");
-    }
-    if (contentAnalysis.breakdown.vagueness.level === "HIGH") {
-      issues.push("high vagueness");
-    }
-    if (contentAnalysis.salvageability.status === "NEEDS_REPLACEMENT") {
-      issues.push("content needed significant replacement");
-    } else if (contentAnalysis.salvageability.status === "NEEDS_AUGMENTATION") {
-      issues.push("content needed substantial augmentation");
-    }
-    if (issues.length > 0) {
-      limitationsDescription = `Content analysis revealed: ${issues.join(", ")}.`;
+    if (preservationMode) {
+      // In preservation mode, the original was high-quality - don't describe it as having issues
+      limitationsDescription = `Original was HIGH-QUALITY (richness: ${contentAnalysis.richnessScore}/10). PRESERVATION MODE ensured technical claims were preserved verbatim while adding examples.`;
+    } else {
+      if (contentAnalysis.richnessAssessment === "SPARSE") {
+        issues.push("sparse content (richness score: " + contentAnalysis.richnessScore + "/10)");
+      }
+      if (contentAnalysis.breakdown.concreteExamples.quality === "NONE" || contentAnalysis.breakdown.concreteExamples.quality === "LOW") {
+        issues.push("lacked concrete examples");
+      }
+      if (contentAnalysis.breakdown.vagueness.level === "HIGH") {
+        issues.push("high vagueness");
+      }
+      if (contentAnalysis.salvageability.status === "NEEDS_REPLACEMENT") {
+        issues.push("content needed significant replacement");
+      } else if (contentAnalysis.salvageability.status === "NEEDS_AUGMENTATION") {
+        issues.push("content needed substantial augmentation");
+      }
+      if (issues.length > 0) {
+        limitationsDescription = `Content analysis revealed: ${issues.join(", ")}.`;
+      }
     }
   }
 
+  const preservationNote = preservationMode 
+    ? " PRESERVATION MODE: Original contained high-quality technical claims that were preserved verbatim. Examples and expansions illustrate the SPECIFIC claims, not vague paraphrases."
+    : "";
+
   return {
     reconstructedText: essay,
-    changes: `Reconstructed from input (${inputWordCount} words) into a complete philosophical essay (${essayWordCount} words, +${growthPercent}%). Generated fresh substantive content: examples, counterarguments, implications, distinctions, and comparisons not in the original.${contentAnalysis ? ` Content analysis informed targeted improvements (original richness: ${contentAnalysis.richnessScore}/10).` : ''}`,
+    changes: `Reconstructed from input (${inputWordCount} words) into a complete philosophical essay (${essayWordCount} words, +${growthPercent}%). Generated fresh substantive content: examples, counterarguments, implications, distinctions, and comparisons not in the original.${contentAnalysis ? ` Content analysis informed targeted improvements (original richness: ${contentAnalysis.richnessScore}/10).` : ''}${preservationNote}`,
     wasReconstructed: true,
-    adjacentMaterialAdded: `Added fresh philosophical material: concrete examples and thought experiments, comprehensive objection analysis with responses, logical implications and consequences, critical distinctions that deepen understanding, comparisons to alternative positions, and historical context. All expansions are substantive developments of the core position, not padding.`,
-    originalLimitationsIdentified: `${limitationsDescription} Reconstructed by: (1) analyzing content gaps, (2) extracting the core position, (3) generating fresh substantive content targeted at identified gaps, (4) integrating all material into a comprehensive essay. The result is richer philosophically, not just longer.`
+    adjacentMaterialAdded: preservationMode
+      ? `Added fresh illustrations and examples that demonstrate the SPECIFIC technical claims from the original. All additions expand and clarify the precise argument, not vague adjacent material. Technical terminology and theorems were preserved exactly.`
+      : `Added fresh philosophical material: concrete examples and thought experiments, comprehensive objection analysis with responses, logical implications and consequences, critical distinctions that deepen understanding, comparisons to alternative positions, and historical context. All expansions are substantive developments of the core position, not padding.`,
+    originalLimitationsIdentified: `${limitationsDescription} Reconstructed by: (1) analyzing content gaps, (2) extracting the core position${preservationMode ? " with MANDATORY CLAIMS to preserve" : ""}, (3) generating fresh substantive content targeted at identified gaps, (4) integrating all material into a comprehensive essay. The result is richer philosophically, not just longer.`
   };
 }
 
