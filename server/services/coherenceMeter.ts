@@ -1803,67 +1803,10 @@ export async function reconstructToMaxCoherence(
   
   const inputWordCount = text.trim().split(/\s+/).length;
   
-  // STAGE 0: SIGNAL-TO-NOISE DIAGNOSTIC
-  // Determine if input is already coherent (needs condensing) or incoherent (needs synthesis)
-  const diagnosticPrompt = `You are a signal-to-noise analyzer. Evaluate this text for COHERENCE LEVEL and INFORMATION DENSITY.
-
-TEXT TO ANALYZE:
-${text}
-
-Evaluate:
-1. COHERENCE_LEVEL: How structurally coherent is this text? (1-10)
-   - 1-3: Incoherent rambling, fragments, unclear thesis
-   - 4-6: Some structure but disorganized, thesis unclear
-   - 7-10: Clear structure, identifiable thesis, logical flow
-
-2. SIGNAL_DENSITY: What percentage of the text carries substantive argument vs filler/noise?
-   - LOW: <50% signal, lots of padding, repetition, tangents
-   - MEDIUM: 50-75% signal
-   - HIGH: >75% signal, nearly every sentence advances the argument
-
-3. REDUNDANCY_LEVEL: How much repetition/redundancy exists?
-   - HIGH: Same points made multiple times, circular
-   - MEDIUM: Some repetition
-   - LOW: Efficient, no unnecessary repetition
-
-4. RECONSTRUCTION_STRATEGY: Based on the above, which approach is needed?
-   - CONDENSE: Text is already coherent but has noise/padding. CUT words, don't add.
-   - SYNTHESIZE: Text is incoherent and needs material added to achieve coherence.
-
-Respond in EXACTLY this format:
-COHERENCE_LEVEL: [1-10]
-SIGNAL_DENSITY: [LOW/MEDIUM/HIGH]
-REDUNDANCY_LEVEL: [HIGH/MEDIUM/LOW]
-RECONSTRUCTION_STRATEGY: [CONDENSE/SYNTHESIZE]
-CORE_THESIS: [The main argument in one sentence]
-KEY_NOISE: [What should be cut - list 2-4 types of noise present]`;
-
-  const diagnosticMessage = await anthropic.messages.create({
-    model: "claude-3-7-sonnet-20250219",
-    max_tokens: 1500,
-    temperature: 0.3,
-    messages: [{ role: "user", content: diagnosticPrompt }]
-  });
-
-  const diagnosticOutput = diagnosticMessage.content[0].type === 'text' ? diagnosticMessage.content[0].text : '';
+  // RECONSTRUCT ALWAYS SYNTHESIZES: Turn input (abstract, fragmented, or concise) into a COMPLETE ESSAY
+  // This is a "turn to gold" operation: create a self-contained philosophical work
   
-  const coherenceLevelMatch = diagnosticOutput.match(/COHERENCE_LEVEL:\s*(\d+)/i);
-  const strategyMatch = diagnosticOutput.match(/RECONSTRUCTION_STRATEGY:\s*(CONDENSE|SYNTHESIZE)/i);
-  const coreThesisMatch = diagnosticOutput.match(/CORE_THESIS:\s*([\s\S]*?)(?=KEY_NOISE:|$)/i);
-  const keyNoiseMatch = diagnosticOutput.match(/KEY_NOISE:\s*([\s\S]*?)$/i);
-  
-  const coherenceLevel = coherenceLevelMatch ? parseInt(coherenceLevelMatch[1]) : 5;
-  const strategy = strategyMatch ? strategyMatch[1].toUpperCase() : 'CONDENSE';
-  const coreThesis = coreThesisMatch ? coreThesisMatch[1].trim() : '';
-  const keyNoise = keyNoiseMatch ? keyNoiseMatch[1].trim() : '';
-
-  // BRANCH: CONDENSE pathway for already-coherent input
-  if (strategy === 'CONDENSE' || coherenceLevel >= 6) {
-    return await condenseAndSharpen(text, coreThesis, keyNoise, inputWordCount);
-  }
-
-  // BRANCH: SYNTHESIZE pathway for incoherent input
-  return await synthesizeFromIncoherent(text, coreThesis, inputWordCount);
+  return await synthesizeIntoCompleteEssay(text, inputWordCount);
 }
 
 // CONDENSE PATHWAY: For coherent input that has noise - CUT, never add
@@ -1976,115 +1919,122 @@ Output ONLY the shortened text. No commentary. No explanation.`;
   };
 }
 
-// SYNTHESIZE PATHWAY: For incoherent input that needs structure added
-async function synthesizeFromIncoherent(
+// SYNTHESIZE INTO COMPLETE ESSAY: Transform ANY input (abstract, fragmented, concise) into a self-contained essay
+// This is "turn to gold" operation - create an excellent, comprehensive philosophical work
+async function synthesizeIntoCompleteEssay(
   text: string,
-  extractedThesis: string,
   inputWordCount: number
 ): Promise<ReconstructionResult> {
   
-  // STAGE 1: EXTRACT THE ACTUAL ARGUMENT
-  const argumentExtractionPrompt = `You are extracting the ACTUAL PHILOSOPHICAL ARGUMENT from potentially fragmented text.
+  // STAGE 1: EXTRACT THE CORE POSITION
+  const extractionPrompt = `You are analyzing this text to identify the CORE PHILOSOPHICAL POSITION or INSIGHT it contains.
 
-ORIGINAL TEXT:
+TEXT:
 ${text}
 
-Your task: Identify what this author is actually ARGUING for. Not what they're describing, not what they're analyzing, but what POSITION or INSIGHT they are defending.
+Extract and clearly state:
+1. MAIN POSITION: The central claim or insight (1 sentence)
+2. PROBLEM IT SOLVES: What philosophical problem or question does this address?
+3. KEY DISTINCTIONS: What crucial distinctions underpin the argument?
+4. OBJECTIONS: What are the main counterarguments?
+5. SIGNIFICANCE: Why does this position matter?
 
-Respond with:
-1. THE MAIN CLAIM being defended (in one clear sentence)
-2. WHY this claim matters (what problem does it solve?)
-3. WHAT objections does the author anticipate?
-4. HOW does the author respond to those objections?
-5. WHAT is the philosophical significance of this being true?
+Be clear and concise.`;
 
-Be concise - these should be 1-2 sentences each.`;
-
-  const argumentMessage = await anthropic.messages.create({
+  const extractionMessage = await anthropic.messages.create({
     model: "claude-3-7-sonnet-20250219",
-    max_tokens: 2000,
+    max_tokens: 2500,
     temperature: 0.3,
-    messages: [{ role: "user", content: argumentExtractionPrompt }]
+    messages: [{ role: "user", content: extractionPrompt }]
   });
 
-  const argumentOutput = argumentMessage.content[0].type === 'text' ? argumentMessage.content[0].text : '';
+  const extractedPosition = extractionMessage.content[0].type === 'text' ? extractionMessage.content[0].text : '';
 
-  // STAGE 2: SYNTHESIZE INTO A COHERENT DEFENSE OF THE ARGUMENT
-  // This is NOT "minimal additions" - this is creating a DISTINCT, EXCELLENT reconstruction
-  const synthesisPrompt = `You are writing an EXCELLENT, COHERENT PHILOSOPHICAL ESSAY that articulates and defends a position.
+  // STAGE 2: SYNTHESIZE INTO A COMPREHENSIVE PHILOSOPHICAL ESSAY
+  // The goal is to create a SELF-CONTAINED WORK that stands on its own
+  const essayPrompt = `You are creating a COMPLETE PHILOSOPHICAL ESSAY that fully develops and defends a position.
 
-EXTRACTED ARGUMENT:
-${argumentOutput}
+CORE POSITION EXTRACTED:
+${extractedPosition}
 
-ORIGINAL SOURCE TEXT (for reference, not to copy):
+ORIGINAL INPUT (for reference):
 ${text}
 
 YOUR TASK:
-Write a compelling, coherent essay that:
+Create a comprehensive, self-contained philosophical essay that:
 
-1. Opens with a clear statement of the central philosophical problem or question
-2. Clearly states the main claim being defended
-3. Provides the logical structure for why this claim is the right answer
-4. Articulates key distinctions that make the argument work
-5. Addresses major objections to the position
-6. Concludes by explaining the philosophical significance
+1. OPENS with the philosophical problem or question being addressed
+2. ESTABLISHES the thesis clearly and compellingly
+3. DEFINES key terms and makes crucial distinctions
+4. DEVELOPS the argument systematically - each section builds logically on the previous
+5. PROVIDES examples or illustrations that illuminate the position
+6. ADDRESSES major objections and counterarguments directly
+7. EXPLAINS WHY this position is superior to alternatives
+8. CONCLUDES by articulating the philosophical significance and implications
 
-EXCELLENCE CRITERIA:
-- The argument should be CLEAR and FOLLOWABLE (not fragmented)
-- The essay should be DENSE - nearly every sentence advances the argument
-- The structure should be LOGICAL - each part supports the next
-- Transitions should be EXPLICIT - the reader should never wonder why something is being said
-- The tone should be SCHOLARLY but DIRECT - no filler, no hedging, no padding
+ESSAY REQUIREMENTS:
+- Self-contained: A reader with no other context should understand the full argument
+- Compelling: Make the case for the position persuasively
+- Clear: Logical flow from problem → thesis → development → conclusion
+- Dense: Nearly every sentence advances the argument. No filler.
+- Scholarly: Academic tone but direct and accessible
+- Comprehensive: Explore the position thoroughly, not just summarize
 
-CRITICAL: This should read like a DISTINCT, WELL-WRITTEN DEFENSE of the position, not a rearrangement of the original text.
+TARGET LENGTH: 800-1500 words (must be substantial enough to be a complete essay, not an abstract)
 
-The output should be approximately ${Math.max(inputWordCount * 0.8, 400)}-${Math.max(inputWordCount * 1.3, 800)} words.
+CRITICAL: This should be a DISTINCT, WELL-ARGUED ESSAY, not just a rearrangement of the input. Create something that would stand alone as a philosophical work.
 
 OUTPUT:
-Write ONLY the essay. Plain prose, no markdown, no commentary, no meta-discussion.`;
+Write ONLY the essay. Plain prose. No markdown, no headers, no meta-commentary. Just the complete philosophical essay.`;
 
-  const synthesisMessage = await anthropic.messages.create({
+  const essayMessage = await anthropic.messages.create({
     model: "claude-3-7-sonnet-20250219",
-    max_tokens: 15000,
+    max_tokens: 20000,
     temperature: 0.5,
-    messages: [{ role: "user", content: synthesisPrompt }]
+    messages: [{ role: "user", content: essayPrompt }]
   });
 
-  let reconstructedText = stripMarkdown(synthesisMessage.content[0].type === 'text' ? synthesisMessage.content[0].text : '');
-  let outputWordCount = reconstructedText.trim().split(/\s+/).length;
+  let essay = stripMarkdown(essayMessage.content[0].type === 'text' ? essayMessage.content[0].text : '');
+  let essayWordCount = essay.trim().split(/\s+/).length;
 
-  // VALIDATION: If output is too long, trim ruthlessly while preserving argument
-  const maxAllowedWords = Math.max(inputWordCount * 1.3, 800);
-  
-  if (outputWordCount > maxAllowedWords) {
-    const trimPrompt = `This essay is ${outputWordCount} words but must be ${maxAllowedWords} words or fewer.
+  // STAGE 3: VALIDATION - Ensure it's a proper essay, not just an abstract
+  if (essayWordCount < 400) {
+    // If too short, expand it further
+    const expandPrompt = `This essay is too short (${essayWordCount} words). It needs to be more substantial to be a complete philosophical work.
 
-CURRENT TEXT:
-${reconstructedText}
+CURRENT ESSAY:
+${essay}
 
-Trim to exactly ${maxAllowedWords} words. Keep EVERY substantive part of the argument. Remove ONLY fluff, redundant explanations, or overcomplicated wording. Tighten every sentence without cutting any logical steps.
+Expand this to 800-1200 words by:
+1. Adding more detailed argumentation
+2. Developing points more thoroughly
+3. Adding relevant examples or illustrations
+4. Exploring implications more deeply
+5. Addressing more counterarguments
 
-Output ONLY the trimmed essay. No commentary.`;
+Keep the core argument but make it more comprehensive and thorough.
 
-    const trimMessage = await anthropic.messages.create({
+OUTPUT: Write ONLY the expanded essay. Plain prose, no markdown.`;
+
+    const expandMessage = await anthropic.messages.create({
       model: "claude-3-7-sonnet-20250219",
-      max_tokens: 12000,
-      temperature: 0.2,
-      messages: [{ role: "user", content: trimPrompt }]
+      max_tokens: 20000,
+      temperature: 0.5,
+      messages: [{ role: "user", content: expandPrompt }]
     });
 
-    reconstructedText = stripMarkdown(trimMessage.content[0].type === 'text' ? trimMessage.content[0].text : '');
-    outputWordCount = reconstructedText.trim().split(/\s+/).length;
+    essay = stripMarkdown(expandMessage.content[0].type === 'text' ? expandMessage.content[0].text : '');
+    essayWordCount = essay.trim().split(/\s+/).length;
   }
 
-  const growthPercent = ((outputWordCount - inputWordCount) / inputWordCount * 100).toFixed(1);
+  const growthPercent = ((essayWordCount - inputWordCount) / inputWordCount * 100).toFixed(1);
 
   return {
-    reconstructedText,
-    changes: `Reconstructed fragmented input (${inputWordCount} words) into coherent philosophical defense (${outputWordCount} words, ${Number(growthPercent) > 0 ? '+' : ''}${growthPercent}%). Extracted core argument, organized it logically, and articulated it coherently while preserving direction and intent.`,
+    reconstructedText: essay,
+    changes: `Reconstructed from concise/abstract input (${inputWordCount} words) into a complete philosophical essay (${essayWordCount} words, ${Number(growthPercent) > 0 ? '+' : ''}${growthPercent}% expansion). Created a self-contained work that fully develops the core position.`,
     wasReconstructed: true,
-    adjacentMaterialAdded: `Synthesized: clear articulation of the main claim, logical structure connecting premises to conclusion, explicit objection-handling, and philosophical significance. Created a DISTINCT, EXCELLENT essay that defends the position.`,
-    originalLimitationsIdentified: `The original text presented arguments in a list-like, fragmented manner without coherent flow. These were synthesized into a unified philosophical defense that articulates why the position is correct.`
+    adjacentMaterialAdded: `Synthesized: comprehensive argumentative structure, detailed developments of the thesis, relevant examples and illustrations, systematic treatment of objections, and clear implications. Transformed input into a complete philosophical work.`,
+    originalLimitationsIdentified: `The original input was concise or abstract. Reconstructed it into a full essay by: extracting the core position, developing each aspect systematically, adding examples and counterargument responses, and articulating philosophical significance.`
   };
 }
 
