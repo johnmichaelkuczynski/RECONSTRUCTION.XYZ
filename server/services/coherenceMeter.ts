@@ -1801,206 +1801,265 @@ export async function reconstructToMaxCoherence(
   coherenceType: string = "logical-consistency"
 ): Promise<ReconstructionResult> {
   
-  // STAGE 1: THESIS EXTRACTION
-  // Identify what the author is TRYING to say, even from incoherent rambling
-  const thesisExtractionPrompt = `You are a philosophical archaeologist. Your task is to excavate the CORE THESIS and CONCEPTUAL TERRITORY from potentially incoherent text.
+  const inputWordCount = text.trim().split(/\s+/).length;
+  
+  // STAGE 0: SIGNAL-TO-NOISE DIAGNOSTIC
+  // Determine if input is already coherent (needs condensing) or incoherent (needs synthesis)
+  const diagnosticPrompt = `You are a signal-to-noise analyzer. Evaluate this text for COHERENCE LEVEL and INFORMATION DENSITY.
 
-The input may be:
-- Rambling, disorganized thoughts
-- Half-formed ideas expressed poorly
-- Confused but gesturing toward a real insight
-- A diamond buried in rough ore
-
-YOUR TASK:
-1. Identify the CORE THESIS the author seems to be reaching for
-2. Identify the CONCEPTUAL TERRITORY they're operating in (epistemology? ontology? philosophy of language? ethics?)
-3. Identify KEY DISTINCTIONS they seem to be trying to make
-4. Identify what PROBLEM or QUESTION they're grappling with
-
-INPUT TEXT:
+TEXT TO ANALYZE:
 ${text}
+
+Evaluate:
+1. COHERENCE_LEVEL: How structurally coherent is this text? (1-10)
+   - 1-3: Incoherent rambling, fragments, unclear thesis
+   - 4-6: Some structure but disorganized, thesis unclear
+   - 7-10: Clear structure, identifiable thesis, logical flow
+
+2. SIGNAL_DENSITY: What percentage of the text carries substantive argument vs filler/noise?
+   - LOW: <50% signal, lots of padding, repetition, tangents
+   - MEDIUM: 50-75% signal
+   - HIGH: >75% signal, nearly every sentence advances the argument
+
+3. REDUNDANCY_LEVEL: How much repetition/redundancy exists?
+   - HIGH: Same points made multiple times, circular
+   - MEDIUM: Some repetition
+   - LOW: Efficient, no unnecessary repetition
+
+4. RECONSTRUCTION_STRATEGY: Based on the above, which approach is needed?
+   - CONDENSE: Text is already coherent but has noise/padding. CUT words, don't add.
+   - SYNTHESIZE: Text is incoherent and needs material added to achieve coherence.
 
 Respond in EXACTLY this format:
+COHERENCE_LEVEL: [1-10]
+SIGNAL_DENSITY: [LOW/MEDIUM/HIGH]
+REDUNDANCY_LEVEL: [HIGH/MEDIUM/LOW]
+RECONSTRUCTION_STRATEGY: [CONDENSE/SYNTHESIZE]
+CORE_THESIS: [The main argument in one sentence]
+KEY_NOISE: [What should be cut - list 2-4 types of noise present]`;
 
-CORE_THESIS: [State what the author appears to be arguing, even if poorly expressed. This should be a single clear statement of their apparent position.]
-
-CONCEPTUAL_TERRITORY: [What domain of thought is this? What are the relevant philosophical/scientific/logical frameworks?]
-
-KEY_DISTINCTIONS: [What distinctions is the author trying to draw? List 2-4 key contrasts they seem to be gesturing at.]
-
-CENTRAL_PROBLEM: [What question or problem is driving their thinking?]
-
-AUTHOR_INTENT: [In 1-2 sentences, what does this person WANT to communicate? What insight are they reaching for?]`;
-
-  const thesisMessage = await anthropic.messages.create({
-    model: "claude-3-7-sonnet-20250219",
-    max_tokens: 2000,
-    temperature: 0.4,
-    messages: [{ role: "user", content: thesisExtractionPrompt }]
-  });
-
-  const thesisOutput = thesisMessage.content[0].type === 'text' ? thesisMessage.content[0].text : '';
-  
-  const coreThesisMatch = thesisOutput.match(/CORE_THESIS:\s*([\s\S]*?)(?=CONCEPTUAL_TERRITORY:|$)/i);
-  const territoryMatch = thesisOutput.match(/CONCEPTUAL_TERRITORY:\s*([\s\S]*?)(?=KEY_DISTINCTIONS:|$)/i);
-  const distinctionsMatch = thesisOutput.match(/KEY_DISTINCTIONS:\s*([\s\S]*?)(?=CENTRAL_PROBLEM:|$)/i);
-  const problemMatch = thesisOutput.match(/CENTRAL_PROBLEM:\s*([\s\S]*?)(?=AUTHOR_INTENT:|$)/i);
-  const intentMatch = thesisOutput.match(/AUTHOR_INTENT:\s*([\s\S]*?)$/i);
-
-  const coreThesis = coreThesisMatch ? coreThesisMatch[1].trim() : 'Unable to extract thesis';
-  const territory = territoryMatch ? territoryMatch[1].trim() : 'General philosophy';
-  const distinctions = distinctionsMatch ? distinctionsMatch[1].trim() : '';
-  const problem = problemMatch ? problemMatch[1].trim() : '';
-  const intent = intentMatch ? intentMatch[1].trim() : '';
-
-  // STAGE 2: GAP DIAGNOSIS
-  // Identify what argumentative pillars are missing to make this a coherent essay
-  const gapDiagnosisPrompt = `Given the following extracted thesis and conceptual territory, identify what argumentative elements are MISSING that would be needed to construct a maximally coherent essay.
-
-EXTRACTED CORE THESIS: ${coreThesis}
-
-CONCEPTUAL TERRITORY: ${territory}
-
-KEY DISTINCTIONS ATTEMPTED: ${distinctions}
-
-CENTRAL PROBLEM: ${problem}
-
-What is needed to turn this into a 9-10/10 coherent essay? Identify:
-
-1. MISSING_DEFINITIONS: What key terms need to be precisely defined?
-2. MISSING_EXAMPLES: What concrete examples would illustrate the distinctions?
-3. MISSING_ARGUMENTS: What logical steps are needed to support the thesis?
-4. MISSING_FRAMEWORKS: What conceptual frameworks would organize the argument?
-5. MISSING_QUALIFICATIONS: What objections or edge cases need to be addressed?
-
-Respond in the exact format above, with each category followed by 2-4 specific items.`;
-
-  const gapMessage = await anthropic.messages.create({
-    model: "claude-3-7-sonnet-20250219",
-    max_tokens: 2000,
-    temperature: 0.4,
-    messages: [{ role: "user", content: gapDiagnosisPrompt }]
-  });
-
-  const gapOutput = gapMessage.content[0].type === 'text' ? gapMessage.content[0].text : '';
-
-  // STAGE 3: SYNTHESIS OF THEMATICALLY-ADJACENT MATERIAL
-  // Generate the actual supporting content
-  const synthesisPrompt = `You are generating THEMATICALLY-ADJACENT MATERIAL to fill the gaps identified in an argumentative reconstruction.
-
-CORE THESIS TO SUPPORT: ${coreThesis}
-
-CONCEPTUAL TERRITORY: ${territory}
-
-DISTINCTIONS TO ARTICULATE: ${distinctions}
-
-CENTRAL PROBLEM BEING ADDRESSED: ${problem}
-
-GAPS TO FILL:
-${gapOutput}
-
-YOUR TASK:
-Generate the following supporting material that stays THEMATICALLY ADJACENT to the core thesis:
-
-1. PRECISE DEFINITIONS for key terms (2-3 definitions with clear criteria)
-2. CONCRETE EXAMPLES that illustrate each major distinction (2-4 examples using everyday or mathematical/logical cases)
-3. SUPPORTING ARGUMENTS that logically connect to the thesis (2-3 argument chains)
-4. A STRUCTURAL FRAMEWORK for organizing the essay (a clear progression from opening to conclusion)
-
-RULES FOR THEMATIC ADJACENCY:
-- All examples must illuminate the same conceptual territory as the original thesis
-- All definitions must be relevant to the distinctions being drawn
-- All arguments must support or qualify the core position
-- The material should feel like what a domain expert would naturally add
-- Use analogies from logic, mathematics, language, or everyday life as appropriate
-
-Output the material in clear sections. Do not produce the final essay yet - just the raw material.`;
-
-  const synthesisMessage = await anthropic.messages.create({
-    model: "claude-3-7-sonnet-20250219",
-    max_tokens: 4000,
-    temperature: 0.6,
-    messages: [{ role: "user", content: synthesisPrompt }]
-  });
-
-  const synthesizedMaterial = synthesisMessage.content[0].type === 'text' ? synthesisMessage.content[0].text : '';
-
-  // STAGE 4: COMPOSE FINAL RECONSTRUCTION
-  // Assemble everything into a maximally coherent essay
-  const compositionPrompt = `You are composing the FINAL RECONSTRUCTION - a maximally coherent essay that articulates what the original author was trying to say, but couldn't express clearly.
-
-ORIGINAL INPUT (incoherent/poorly expressed):
-${text}
-
-EXTRACTED CORE THESIS:
-${coreThesis}
-
-AUTHOR'S APPARENT INTENT:
-${intent}
-
-SYNTHESIZED SUPPORTING MATERIAL:
-${synthesizedMaterial}
-
-YOUR TASK:
-Compose a MAXIMALLY COHERENT essay (aim for 9-10/10 coherence) that:
-
-1. OPENS with a clear statement establishing the conceptual territory and central question
-2. INTRODUCES the key distinctions with precise definitions
-3. PROVIDES concrete examples that illuminate each distinction
-4. BUILDS the argument step by step with clear logical progression
-5. ADDRESSES potential objections or edge cases
-6. CONCLUDES by synthesizing the thesis in its strongest form
-
-CRITICAL REQUIREMENTS:
-- The essay must PRESERVE the original author's thesis and direction
-- The essay must ADD substantial thematically-adjacent material (examples, definitions, arguments)
-- The essay must achieve MAXIMUM COHERENCE through clear structure and logical flow
-- Output PLAIN TEXT ONLY - no markdown formatting, no headers, no bullet points
-- Write in clear, academic prose
-- The result should read as a unified, polished philosophical essay
-- Do NOT include any meta-commentary about the reconstruction process
-
-OUTPUT:
-Write ONLY the final essay. No preamble, no explanation, no labels. Just the essay in plain prose.`;
-
-  const compositionMessage = await anthropic.messages.create({
-    model: "claude-3-7-sonnet-20250219",
-    max_tokens: 10000,
-    temperature: 0.5,
-    messages: [{ role: "user", content: compositionPrompt }]
-  });
-
-  const reconstructedText = stripMarkdown(compositionMessage.content[0].type === 'text' ? compositionMessage.content[0].text : '');
-
-  // STAGE 5: ANALYZE RECONSTRUCTION
-  const analysisPrompt = `Compare the ORIGINAL text to the RECONSTRUCTED text and provide a concise summary of:
-1. The core thesis that was preserved
-2. What thematically-adjacent material was synthesized
-3. The key transformations made to achieve maximum coherence
-
-ORIGINAL:
-${text}
-
-RECONSTRUCTED:
-${reconstructedText}
-
-Provide a concise summary (4-6 sentences) of how the reconstruction transforms incoherent input into a maximally coherent essay while preserving the author's core intent.`;
-
-  const analysisMessage = await anthropic.messages.create({
+  const diagnosticMessage = await anthropic.messages.create({
     model: "claude-3-7-sonnet-20250219",
     max_tokens: 1500,
     temperature: 0.3,
-    messages: [{ role: "user", content: analysisPrompt }]
+    messages: [{ role: "user", content: diagnosticPrompt }]
   });
 
-  const analysisOutput = analysisMessage.content[0].type === 'text' ? analysisMessage.content[0].text : '';
+  const diagnosticOutput = diagnosticMessage.content[0].type === 'text' ? diagnosticMessage.content[0].text : '';
+  
+  const coherenceLevelMatch = diagnosticOutput.match(/COHERENCE_LEVEL:\s*(\d+)/i);
+  const strategyMatch = diagnosticOutput.match(/RECONSTRUCTION_STRATEGY:\s*(CONDENSE|SYNTHESIZE)/i);
+  const coreThesisMatch = diagnosticOutput.match(/CORE_THESIS:\s*([\s\S]*?)(?=KEY_NOISE:|$)/i);
+  const keyNoiseMatch = diagnosticOutput.match(/KEY_NOISE:\s*([\s\S]*?)$/i);
+  
+  const coherenceLevel = coherenceLevelMatch ? parseInt(coherenceLevelMatch[1]) : 5;
+  const strategy = strategyMatch ? strategyMatch[1].toUpperCase() : 'CONDENSE';
+  const coreThesis = coreThesisMatch ? coreThesisMatch[1].trim() : '';
+  const keyNoise = keyNoiseMatch ? keyNoiseMatch[1].trim() : '';
+
+  // BRANCH: CONDENSE pathway for already-coherent input
+  if (strategy === 'CONDENSE' || coherenceLevel >= 6) {
+    return await condenseAndSharpen(text, coreThesis, keyNoise, inputWordCount);
+  }
+
+  // BRANCH: SYNTHESIZE pathway for incoherent input
+  return await synthesizeFromIncoherent(text, coreThesis, inputWordCount);
+}
+
+// CONDENSE PATHWAY: For coherent input that has noise - CUT, never add
+async function condenseAndSharpen(
+  text: string, 
+  coreThesis: string, 
+  keyNoise: string,
+  inputWordCount: number
+): Promise<ReconstructionResult> {
+  
+  // Target: output should be SHORTER than input (max 90% of original length)
+  const maxOutputWords = Math.floor(inputWordCount * 0.9);
+  
+  const condensePrompt = `You are a SIGNAL MAXIMIZER. Your job is to INCREASE signal and DECREASE noise.
+
+ORIGINAL TEXT (${inputWordCount} words):
+${text}
+
+CORE THESIS TO PRESERVE:
+${coreThesis}
+
+NOISE TO ELIMINATE:
+${keyNoise}
+
+YOUR TASK:
+Rewrite this text to MAXIMIZE signal-to-noise ratio. You must:
+
+1. PRESERVE every substantive argument, distinction, and example
+2. CUT all padding, filler, redundancy, throat-clearing, and tangents
+3. SHARPEN every sentence to carry maximum information
+4. NEVER add new material - only remove noise
+5. The output MUST be SHORTER than the input (target: ${maxOutputWords} words or fewer)
+
+RULES:
+- If a point is made twice, keep only the clearest version
+- Cut phrases like "I think", "basically", "it seems", "actually", "so"
+- Cut rhetorical questions that add no information
+- Cut meta-commentary about the writing process
+- Preserve technical terms and key distinctions exactly
+- Preserve concrete examples and arguments
+- Every sentence must advance the argument
+
+OUTPUT:
+Write ONLY the condensed text. Plain prose, no markdown, no commentary. The result must be more information-dense than the original.`;
+
+  const condenseMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 10000,
+    temperature: 0.3,
+    messages: [{ role: "user", content: condensePrompt }]
+  });
+
+  let condensedText = stripMarkdown(condenseMessage.content[0].type === 'text' ? condenseMessage.content[0].text : '');
+  const outputWordCount = condensedText.trim().split(/\s+/).length;
+
+  // VALIDATION: Ensure output is actually shorter
+  if (outputWordCount > inputWordCount) {
+    // Force a second pass to cut more aggressively
+    const forceCutPrompt = `This text is ${outputWordCount} words but MUST be ${maxOutputWords} words or fewer. Cut aggressively while preserving core arguments. Remove ANYTHING that isn't essential.
+
+TEXT:
+${condensedText}
+
+Output ONLY the shortened text. No commentary.`;
+
+    const forceCutMessage = await anthropic.messages.create({
+      model: "claude-3-7-sonnet-20250219",
+      max_tokens: 8000,
+      temperature: 0.2,
+      messages: [{ role: "user", content: forceCutPrompt }]
+    });
+
+    condensedText = stripMarkdown(forceCutMessage.content[0].type === 'text' ? forceCutMessage.content[0].text : '');
+  }
+
+  let finalWordCount = condensedText.trim().split(/\s+/).length;
+  
+  // STRICT ENFORCEMENT: Keep cutting until output is shorter than input
+  let attempts = 0;
+  while (finalWordCount >= inputWordCount && attempts < 3) {
+    attempts++;
+    const forceCutPrompt = `This text is ${finalWordCount} words but MUST be under ${inputWordCount} words. 
+
+CURRENT TEXT:
+${condensedText}
+
+Cut ${Math.ceil((finalWordCount - inputWordCount * 0.85) / 10) * 10} more words. Remove the least essential sentences. Merge redundant points. Tighten every sentence.
+
+Output ONLY the shortened text. No commentary. No explanation.`;
+
+    const forceCutMessage = await anthropic.messages.create({
+      model: "claude-3-7-sonnet-20250219",
+      max_tokens: 8000,
+      temperature: 0.2,
+      messages: [{ role: "user", content: forceCutPrompt }]
+    });
+
+    condensedText = stripMarkdown(forceCutMessage.content[0].type === 'text' ? forceCutMessage.content[0].text : '');
+    finalWordCount = condensedText.trim().split(/\s+/).length;
+  }
+  
+  const compressionRatio = ((inputWordCount - finalWordCount) / inputWordCount * 100).toFixed(1);
+
+  return {
+    reconstructedText: condensedText,
+    changes: `Condensed from ${inputWordCount} to ${finalWordCount} words (${compressionRatio}% reduction). Removed noise while preserving all substantive arguments. Signal density increased.`,
+    wasReconstructed: false,
+    adjacentMaterialAdded: "None - this was a condensation operation. Material was removed, not added.",
+    originalLimitationsIdentified: `The original had noise/padding that reduced signal density. Eliminated: ${keyNoise}`
+  };
+}
+
+// SYNTHESIZE PATHWAY: For incoherent input that needs structure added
+async function synthesizeFromIncoherent(
+  text: string,
+  extractedThesis: string,
+  inputWordCount: number
+): Promise<ReconstructionResult> {
+  
+  // For synthesis, output can be similar length but not padded - every word must carry weight
+  const maxOutputWords = Math.max(inputWordCount, 500); // Allow growth only if input is very short
+
+  const synthesisPrompt = `You are reconstructing an INCOHERENT text into a COHERENT argument.
+
+ORIGINAL INCOHERENT TEXT:
+${text}
+
+EXTRACTED CORE THESIS:
+${extractedThesis}
+
+YOUR TASK:
+Transform this incoherent input into a maximally coherent essay that:
+
+1. PRESERVES the author's apparent thesis and direction
+2. ADDS only what is NECESSARY for coherence (definitions, structure, logical connections)
+3. NEVER adds padding, filler, or unnecessary elaboration
+4. Every sentence must carry substantive weight
+5. Target length: approximately ${maxOutputWords} words (do not pad to reach this)
+
+CRITICAL RULES FOR SYNTHESIS:
+- Add structure and logical flow
+- Add precise definitions ONLY for ambiguous key terms
+- Add transitional logic between points
+- Add brief examples ONLY where the argument is unclear without them
+- DO NOT add background information the reader likely knows
+- DO NOT add verbose introductions or conclusions
+- DO NOT add rhetorical flourishes or academic padding
+- Every added word must increase signal, not noise
+
+The goal is a DENSE, HIGH-SIGNAL essay that articulates what the author was trying to say.
+
+OUTPUT:
+Write ONLY the reconstructed essay. Plain prose, no markdown, no commentary.`;
+
+  const synthesisMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 10000,
+    temperature: 0.4,
+    messages: [{ role: "user", content: synthesisPrompt }]
+  });
+
+  let reconstructedText = stripMarkdown(synthesisMessage.content[0].type === 'text' ? synthesisMessage.content[0].text : '');
+  let outputWordCount = reconstructedText.trim().split(/\s+/).length;
+
+  // STRICT ENFORCEMENT: For synthesis, don't allow more than 20% growth (unless input was very short)
+  const maxAllowedWords = inputWordCount < 200 ? 500 : Math.floor(inputWordCount * 1.2);
+  
+  if (outputWordCount > maxAllowedWords) {
+    const trimPrompt = `This reconstructed text is ${outputWordCount} words but must be ${maxAllowedWords} words or fewer.
+
+CURRENT TEXT:
+${reconstructedText}
+
+Trim to ${maxAllowedWords} words. Keep ALL substantive arguments. Remove ANY padding, filler, or unnecessary elaboration that was added. Every word must carry weight.
+
+Output ONLY the trimmed text. No commentary.`;
+
+    const trimMessage = await anthropic.messages.create({
+      model: "claude-3-7-sonnet-20250219",
+      max_tokens: 8000,
+      temperature: 0.2,
+      messages: [{ role: "user", content: trimPrompt }]
+    });
+
+    reconstructedText = stripMarkdown(trimMessage.content[0].type === 'text' ? trimMessage.content[0].text : '');
+    outputWordCount = reconstructedText.trim().split(/\s+/).length;
+  }
+
+  const growthPercent = ((outputWordCount - inputWordCount) / inputWordCount * 100).toFixed(1);
 
   return {
     reconstructedText,
-    changes: analysisOutput,
+    changes: `Reconstructed from incoherent input (${inputWordCount} words) to coherent essay (${outputWordCount} words, ${Number(growthPercent) > 0 ? '+' : ''}${growthPercent}%). Added logical structure and minimal necessary definitions while preserving core thesis.`,
     wasReconstructed: true,
-    adjacentMaterialAdded: `Synthesized: definitions, concrete examples, supporting arguments, and structural framework. Core thesis "${coreThesis.substring(0, 100)}..." was preserved and articulated with maximum coherence.`,
-    originalLimitationsIdentified: `The original text was ${text.length < 200 ? 'fragmentary' : 'disorganized'} and lacked: precise definitions, concrete examples, clear logical structure, and explicit argumentation. These were synthesized from thematically-adjacent material.`
+    adjacentMaterialAdded: `Added: logical structure, essential definitions, and transitional connections. Core thesis "${extractedThesis.substring(0, 80)}..." was preserved and articulated coherently.`,
+    originalLimitationsIdentified: `The original text lacked coherent structure and clear logical flow. These were synthesized while avoiding padding.`
   };
 }
 
