@@ -1983,67 +1983,92 @@ async function synthesizeFromIncoherent(
   inputWordCount: number
 ): Promise<ReconstructionResult> {
   
-  // For synthesis, output can be similar length but not padded - every word must carry weight
-  const maxOutputWords = Math.max(inputWordCount, 500); // Allow growth only if input is very short
+  // STAGE 1: EXTRACT THE ACTUAL ARGUMENT
+  const argumentExtractionPrompt = `You are extracting the ACTUAL PHILOSOPHICAL ARGUMENT from potentially fragmented text.
 
-  const synthesisPrompt = `You are reconstructing an INCOHERENT text into a COHERENT argument.
-
-ORIGINAL INCOHERENT TEXT:
+ORIGINAL TEXT:
 ${text}
 
-EXTRACTED CORE THESIS:
-${extractedThesis}
+Your task: Identify what this author is actually ARGUING for. Not what they're describing, not what they're analyzing, but what POSITION or INSIGHT they are defending.
+
+Respond with:
+1. THE MAIN CLAIM being defended (in one clear sentence)
+2. WHY this claim matters (what problem does it solve?)
+3. WHAT objections does the author anticipate?
+4. HOW does the author respond to those objections?
+5. WHAT is the philosophical significance of this being true?
+
+Be concise - these should be 1-2 sentences each.`;
+
+  const argumentMessage = await anthropic.messages.create({
+    model: "claude-3-7-sonnet-20250219",
+    max_tokens: 2000,
+    temperature: 0.3,
+    messages: [{ role: "user", content: argumentExtractionPrompt }]
+  });
+
+  const argumentOutput = argumentMessage.content[0].type === 'text' ? argumentMessage.content[0].text : '';
+
+  // STAGE 2: SYNTHESIZE INTO A COHERENT DEFENSE OF THE ARGUMENT
+  // This is NOT "minimal additions" - this is creating a DISTINCT, EXCELLENT reconstruction
+  const synthesisPrompt = `You are writing an EXCELLENT, COHERENT PHILOSOPHICAL ESSAY that articulates and defends a position.
+
+EXTRACTED ARGUMENT:
+${argumentOutput}
+
+ORIGINAL SOURCE TEXT (for reference, not to copy):
+${text}
 
 YOUR TASK:
-Transform this incoherent input into a maximally coherent essay that:
+Write a compelling, coherent essay that:
 
-1. PRESERVES the author's apparent thesis and direction
-2. ADDS only what is NECESSARY for coherence (definitions, structure, logical connections)
-3. NEVER adds padding, filler, or unnecessary elaboration
-4. Every sentence must carry substantive weight
-5. Target length: approximately ${maxOutputWords} words (do not pad to reach this)
+1. Opens with a clear statement of the central philosophical problem or question
+2. Clearly states the main claim being defended
+3. Provides the logical structure for why this claim is the right answer
+4. Articulates key distinctions that make the argument work
+5. Addresses major objections to the position
+6. Concludes by explaining the philosophical significance
 
-CRITICAL RULES FOR SYNTHESIS:
-- Add structure and logical flow
-- Add precise definitions ONLY for ambiguous key terms
-- Add transitional logic between points
-- Add brief examples ONLY where the argument is unclear without them
-- DO NOT add background information the reader likely knows
-- DO NOT add verbose introductions or conclusions
-- DO NOT add rhetorical flourishes or academic padding
-- Every added word must increase signal, not noise
+EXCELLENCE CRITERIA:
+- The argument should be CLEAR and FOLLOWABLE (not fragmented)
+- The essay should be DENSE - nearly every sentence advances the argument
+- The structure should be LOGICAL - each part supports the next
+- Transitions should be EXPLICIT - the reader should never wonder why something is being said
+- The tone should be SCHOLARLY but DIRECT - no filler, no hedging, no padding
 
-The goal is a DENSE, HIGH-SIGNAL essay that articulates what the author was trying to say.
+CRITICAL: This should read like a DISTINCT, WELL-WRITTEN DEFENSE of the position, not a rearrangement of the original text.
+
+The output should be approximately ${Math.max(inputWordCount * 0.8, 400)}-${Math.max(inputWordCount * 1.3, 800)} words.
 
 OUTPUT:
-Write ONLY the reconstructed essay. Plain prose, no markdown, no commentary.`;
+Write ONLY the essay. Plain prose, no markdown, no commentary, no meta-discussion.`;
 
   const synthesisMessage = await anthropic.messages.create({
     model: "claude-3-7-sonnet-20250219",
-    max_tokens: 10000,
-    temperature: 0.4,
+    max_tokens: 15000,
+    temperature: 0.5,
     messages: [{ role: "user", content: synthesisPrompt }]
   });
 
   let reconstructedText = stripMarkdown(synthesisMessage.content[0].type === 'text' ? synthesisMessage.content[0].text : '');
   let outputWordCount = reconstructedText.trim().split(/\s+/).length;
 
-  // STRICT ENFORCEMENT: For synthesis, don't allow more than 20% growth (unless input was very short)
-  const maxAllowedWords = inputWordCount < 200 ? 500 : Math.floor(inputWordCount * 1.2);
+  // VALIDATION: If output is too long, trim ruthlessly while preserving argument
+  const maxAllowedWords = Math.max(inputWordCount * 1.3, 800);
   
   if (outputWordCount > maxAllowedWords) {
-    const trimPrompt = `This reconstructed text is ${outputWordCount} words but must be ${maxAllowedWords} words or fewer.
+    const trimPrompt = `This essay is ${outputWordCount} words but must be ${maxAllowedWords} words or fewer.
 
 CURRENT TEXT:
 ${reconstructedText}
 
-Trim to ${maxAllowedWords} words. Keep ALL substantive arguments. Remove ANY padding, filler, or unnecessary elaboration that was added. Every word must carry weight.
+Trim to exactly ${maxAllowedWords} words. Keep EVERY substantive part of the argument. Remove ONLY fluff, redundant explanations, or overcomplicated wording. Tighten every sentence without cutting any logical steps.
 
-Output ONLY the trimmed text. No commentary.`;
+Output ONLY the trimmed essay. No commentary.`;
 
     const trimMessage = await anthropic.messages.create({
       model: "claude-3-7-sonnet-20250219",
-      max_tokens: 8000,
+      max_tokens: 12000,
       temperature: 0.2,
       messages: [{ role: "user", content: trimPrompt }]
     });
@@ -2056,10 +2081,10 @@ Output ONLY the trimmed text. No commentary.`;
 
   return {
     reconstructedText,
-    changes: `Reconstructed from incoherent input (${inputWordCount} words) to coherent essay (${outputWordCount} words, ${Number(growthPercent) > 0 ? '+' : ''}${growthPercent}%). Added logical structure and minimal necessary definitions while preserving core thesis.`,
+    changes: `Reconstructed fragmented input (${inputWordCount} words) into coherent philosophical defense (${outputWordCount} words, ${Number(growthPercent) > 0 ? '+' : ''}${growthPercent}%). Extracted core argument, organized it logically, and articulated it coherently while preserving direction and intent.`,
     wasReconstructed: true,
-    adjacentMaterialAdded: `Added: logical structure, essential definitions, and transitional connections. Core thesis "${extractedThesis.substring(0, 80)}..." was preserved and articulated coherently.`,
-    originalLimitationsIdentified: `The original text lacked coherent structure and clear logical flow. These were synthesized while avoiding padding.`
+    adjacentMaterialAdded: `Synthesized: clear articulation of the main claim, logical structure connecting premises to conclusion, explicit objection-handling, and philosophical significance. Created a DISTINCT, EXCELLENT essay that defends the position.`,
+    originalLimitationsIdentified: `The original text presented arguments in a list-like, fragmented manner without coherent flow. These were synthesized into a unified philosophical defense that articulates why the position is correct.`
   };
 }
 
