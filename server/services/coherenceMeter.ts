@@ -1329,7 +1329,21 @@ export async function rewriteWithGlobalCoherence(
   const aggressivenessInstructions = {
     conservative: "Make minimal changes. Only fix clear coherence breaks. Preserve author voice completely.",
     moderate: "Fix coherence issues while preserving core meaning. Improve flow and connections between ideas.",
-    aggressive: "Substantially improve coherence. Reorganize if needed. Strengthen logical connections throughout."
+    aggressive: `MAXIMUM COHERENCE MODE - COMPLETE TRANSFORMATION REQUIRED:
+You are NOT doing light editing. You are COMPLETELY REWRITING this text to achieve 9-10/10 coherence.
+
+MANDATORY ACTIONS:
+1. RESTRUCTURE the entire argument from scratch if the original is poorly organized
+2. ADD missing logical connections, premises, and supporting arguments
+3. REMOVE or REWRITE any incoherent, repetitive, or poorly-expressed passages
+4. EXPAND underdeveloped points with full explanations
+5. CREATE smooth transitions between every paragraph
+6. ENSURE every sentence advances the argument purposefully
+7. ELIMINATE all vagueness, ambiguity, and weak phrasing
+
+DO NOT just paraphrase the original. If the input is incoherent garbage, your output must be a COMPLETELY RESTRUCTURED, PROFESSIONALLY WRITTEN version that makes the argument clearly and compellingly.
+
+The output should read like it was written by a skilled professional writer, not like the original with minor fixes.`
   };
 
   // Mode-specific rewrite rules matching the analysis rules
@@ -1417,10 +1431,13 @@ CHANGES:
 STATE_UPDATE:
 {"newElements": [], "resolvedElements": [], "abandonedElements": [], "levelOrPhaseShift": null, "trajectoryChange": null}`;
 
+    // Use higher temperature for aggressive mode to allow more creative restructuring
+    const rewriteTemperature = aggressiveness === "aggressive" ? 0.6 : aggressiveness === "moderate" ? 0.4 : 0.2;
+    
     const message = await anthropic.messages.create({
       model: "claude-3-7-sonnet-20250219",
-      max_tokens: 4096,
-      temperature: 0.3,
+      max_tokens: 6000,
+      temperature: rewriteTemperature,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }]
     });
@@ -1683,22 +1700,53 @@ export async function rewriteForCoherence(
 ): Promise<CoherenceRewriteResult> {
   
   let systemPrompt = "";
+  let temperature = 0.5;
+  
   if (aggressiveness === "conservative") {
     systemPrompt = `You are a coherence editor. Make MINIMAL changes to fix ONLY internal contradictions and clarity issues. Preserve structure and wording.`;
+    temperature = 0.3;
   } else if (aggressiveness === "moderate") {
     systemPrompt = `You are a coherence improver. Fix internal contradictions, improve term clarity, strengthen hierarchical structure. May expand moderately.`;
+    temperature = 0.5;
   } else {
-    systemPrompt = `You are a coherence maximizer. Achieve 9-10/10 coherence. May expand significantly, restructure completely, add extensive context. PRIORITIZE MAXIMUM INTERNAL COHERENCE.`;
+    systemPrompt = `You are a MAXIMUM COHERENCE TRANSFORMER. Your job is to take ANY input - no matter how poorly written - and produce a 9-10/10 coherent masterpiece.
+
+CRITICAL MANDATE:
+This is NOT light editing. You must COMPLETELY TRANSFORM the text into professional-grade writing.
+
+MANDATORY ACTIONS:
+1. RESTRUCTURE the entire argument from scratch if poorly organized
+2. ADD missing logical connections, premises, and supporting arguments  
+3. REMOVE or COMPLETELY REWRITE any incoherent, repetitive, or poorly-expressed passages
+4. EXPAND underdeveloped points with full explanations
+5. CREATE smooth, professional transitions between every paragraph
+6. ENSURE every sentence advances the argument purposefully
+7. ELIMINATE all vagueness, ambiguity, and weak phrasing
+8. REPLACE buzzwords and jargon with clear, grounded language
+
+YOUR OUTPUT MUST:
+- Read like it was written by a skilled professional writer
+- Have crystal-clear logical flow from start to finish
+- Leave no logical gaps or unexplained leaps
+- Be something a discerning reader would find compelling and well-structured
+
+DO NOT produce a slightly polished version of garbage. If the input is incoherent, your output must be a COMPLETELY RESTRUCTURED, PROFESSIONALLY WRITTEN version.`;
+    temperature = 0.7;
   }
 
-  const userPrompt = `Rewrite this text to maximize INTERNAL COHERENCE (internal consistency, clarity, hierarchical structure).
+  const userPrompt = `${aggressiveness === "aggressive" ? "COMPLETELY TRANSFORM" : "Rewrite"} this text to ${aggressiveness === "aggressive" ? "achieve MAXIMUM (9-10/10)" : "maximize"} COHERENCE.
 
-CRITICAL RULES:
+${aggressiveness === "aggressive" ? `WARNING: The input may be poorly written. Do NOT just paraphrase it. You must produce dramatically superior output.
+
+` : ""}CRITICAL RULES:
 1. You MAY keep false claims (coherence ≠ truth)
 2. You MAY keep unverified claims (coherence ≠ evidence)  
 3. You MAY assume expert knowledge (coherence ≠ accessibility)
 4. You MUST fix: internal contradictions, unclear terms, sequential-only structure
 5. You MUST detect and eliminate faux-placeholder coherence (replace buzzwords with grounded terms, make structure hierarchical not sequential)
+${aggressiveness === "aggressive" ? `6. You MUST completely restructure if the original is poorly organized
+7. You MUST add missing logical connections and expand underdeveloped points
+8. Your output MUST read like professional-grade writing` : ""}
 
 ORIGINAL TEXT:
 ${text}
@@ -1707,8 +1755,8 @@ Output ONLY the rewritten text. No headers, no labels, no commentary, and NO MAR
 
   const message = await anthropic.messages.create({
     model: "claude-3-7-sonnet-20250219",
-    max_tokens: 4096,
-    temperature: 0.7,
+    max_tokens: 8192,
+    temperature: temperature,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }]
   });

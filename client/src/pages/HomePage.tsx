@@ -5022,7 +5022,7 @@ Generated on: ${new Date().toLocaleString()}`;
                 ) : (
                   <>
                     <Zap className="w-5 h-5 mr-2" />
-                    ANALYZE + REWRITE
+                    ANALYZE AND REWRITE TO MAXIMUM COHERENCE
                   </>
                 )}
               </Button>
