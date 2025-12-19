@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { stripe, CREDIT_PACKAGES, type Provider, type PriceTier, hasUnlimitedCredits } from "../lib/stripe-config";
+import { stripe, isStripeConfigured, CREDIT_PACKAGES, type Provider, type PriceTier, hasUnlimitedCredits } from "../lib/stripe-config";
 import { storage } from "../storage";
 import { z } from "zod";
 
@@ -12,6 +12,10 @@ export function registerPaymentRoutes(app: Express) {
   // Create Stripe Checkout Session
   app.post("/api/payments/checkout", async (req: Request, res: Response) => {
     try {
+      if (!isStripeConfigured || !stripe) {
+        return res.status(503).json({ message: "Payment system not configured" });
+      }
+
       if (!req.isAuthenticated() || !req.user) {
         return res.status(401).json({ message: "Authentication required" });
       }
@@ -85,6 +89,10 @@ export function registerPaymentRoutes(app: Express) {
 
   // Stripe Webhook Handler
   app.post("/api/payments/webhook", async (req: Request, res: Response) => {
+    if (!isStripeConfigured || !stripe) {
+      return res.status(503).send("Payment system not configured");
+    }
+
     const sig = req.headers["stripe-signature"];
     
     if (!sig) {
