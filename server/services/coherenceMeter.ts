@@ -2059,12 +2059,20 @@ export interface ReconstructionResult {
   originalLimitationsIdentified: string;
 }
 
+// Maximum words allowed for reconstruction (hard limit)
+const MAX_RECONSTRUCTION_WORDS = 5000;
+
 export async function reconstructToMaxCoherence(
   text: string,
   coherenceType: string = "logical-consistency"
 ): Promise<ReconstructionResult> {
   
   const inputWordCount = text.trim().split(/\s+/).length;
+  
+  // HARD LIMIT: Reject inputs over 5000 words immediately
+  if (inputWordCount > MAX_RECONSTRUCTION_WORDS) {
+    throw new Error(`Input exceeds maximum of ${MAX_RECONSTRUCTION_WORDS} words (got ${inputWordCount}). Please shorten your text.`);
+  }
   
   // FIRST: Run content analysis to understand what the input lacks
   // This informs the synthesis process to produce substantively better output
@@ -2075,29 +2083,25 @@ export async function reconstructToMaxCoherence(
   if (inputWordCount >= CC_THRESHOLD_WORDS) {
     console.log(`[Reconstruction] Document is ${inputWordCount} words, using Cross-Chunk Coherence system`);
     
-    try {
-      const ccResult = await crossChunkReconstruct(
-        text,
-        undefined, // audienceParameters - could be added as parameter
-        undefined, // rigorLevel - could be added as parameter
-        undefined, // customInstructions - could be added as parameter
-        contentAnalysis
-      );
-      
-      return {
-        reconstructedText: ccResult.reconstructedText,
-        changes: ccResult.changes,
-        wasReconstructed: ccResult.wasReconstructed,
-        adjacentMaterialAdded: ccResult.adjacentMaterialAdded,
-        originalLimitationsIdentified: ccResult.originalLimitationsIdentified
-      };
-    } catch (error) {
-      console.error("[Reconstruction] CC system failed, falling back to standard synthesis:", error);
-      // Fall through to standard synthesis if CC fails
-    }
+    // Note: CC system errors should propagate - we only catch non-fatal errors
+    const ccResult = await crossChunkReconstruct(
+      text,
+      undefined, // audienceParameters - could be added as parameter
+      undefined, // rigorLevel - could be added as parameter
+      undefined, // customInstructions - could be added as parameter
+      contentAnalysis
+    );
+    
+    return {
+      reconstructedText: ccResult.reconstructedText,
+      changes: ccResult.changes,
+      wasReconstructed: ccResult.wasReconstructed,
+      adjacentMaterialAdded: ccResult.adjacentMaterialAdded,
+      originalLimitationsIdentified: ccResult.originalLimitationsIdentified
+    };
   }
   
-  // STANDARD PATH: For shorter documents or CC fallback
+  // STANDARD PATH: For shorter documents only
   // RECONSTRUCT ALWAYS SYNTHESIZES: Turn input (abstract, fragmented, or concise) into a COMPLETE ESSAY
   // This is a "turn to gold" operation: create a self-contained philosophical work
   // Pass content analysis to guide what substantive improvements are needed
