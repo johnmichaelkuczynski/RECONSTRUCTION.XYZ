@@ -2148,6 +2148,33 @@ PROVIDE A FINAL VALIDATED SCORE OUT OF 100 IN THE FORMAT: SCORE: X/100
     }
   });
 
+  // Quick AI detection endpoint for TextStats component
+  app.post("/api/detect-ai", async (req, res) => {
+    try {
+      const { text } = req.body;
+      
+      if (!text || typeof text !== 'string') {
+        return res.status(400).json({ message: "Text is required" });
+      }
+      
+      if (text.trim().length < 50) {
+        return res.status(400).json({ message: "Text must be at least 50 characters for AI detection" });
+      }
+
+      const gptZeroResult = await gptZeroService.analyzeText(text);
+      
+      res.json({
+        aiScore: gptZeroResult.aiScore,
+        humanScore: 100 - gptZeroResult.aiScore,
+        isAI: gptZeroResult.isAI,
+        confidence: gptZeroResult.confidence,
+      });
+    } catch (error: any) {
+      console.error('AI detection error:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Main rewrite endpoint - GPT Bypass Humanizer
   app.post("/api/rewrite", async (req, res) => {
     try {
