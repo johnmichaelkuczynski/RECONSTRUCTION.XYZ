@@ -13,6 +13,7 @@ import { DocumentComparisonModal } from "@/components/DocumentComparisonModal";
 import { FictionAssessmentModal } from "@/components/FictionAssessmentModal";
 import { FictionAssessmentPopup } from "@/components/FictionAssessmentPopup";
 import { FictionComparisonModal } from "@/components/FictionComparisonModal";
+import { TextStats } from "@/components/TextStats";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -3753,6 +3754,7 @@ Generated on: ${new Date().toLocaleString()}`;
                 data-testid="textarea-validator-input"
               />
             </div>
+            <TextStats text={validatorInputText} showAiDetect={true} />
           </div>
 
           {/* FULL SUITE - Run All Functions in Sequence */}
@@ -3900,6 +3902,11 @@ Generated on: ${new Date().toLocaleString()}`;
                             {validatorBatchResults.filter(r => r.success)[0]?.output || "(No reconstruction output)"}
                           </pre>
                         </div>
+                        {validatorBatchResults.filter(r => r.success)[0]?.output && (
+                          <div className="px-3 pb-2">
+                            <TextStats text={validatorBatchResults.filter(r => r.success)[0]?.output || ''} showAiDetect={true} variant="compact" />
+                          </div>
+                        )}
                         
                         {/* Refine Reconstruction Section */}
                         {validatorBatchResults.filter(r => r.success)[0]?.output && (
@@ -3988,6 +3995,11 @@ Generated on: ${new Date().toLocaleString()}`;
                             {objectionsOutput || "(No objections output)"}
                           </pre>
                         </div>
+                        {objectionsOutput && (
+                          <div className="px-3 pb-2">
+                            <TextStats text={objectionsOutput} showAiDetect={true} variant="compact" />
+                          </div>
+                        )}
                       </div>
 
                       {/* Section 3: Objection-Proof Final Version */}
@@ -4019,6 +4031,11 @@ Generated on: ${new Date().toLocaleString()}`;
                             {fullSuiteObjectionProofOutput || "(No objection-proof output)"}
                           </pre>
                         </div>
+                        {fullSuiteObjectionProofOutput && (
+                          <div className="px-3 pb-2">
+                            <TextStats text={fullSuiteObjectionProofOutput} showAiDetect={true} variant="compact" />
+                          </div>
+                        )}
                         
                         {/* Refine Final Version Section */}
                         {fullSuiteObjectionProofOutput && (
@@ -4460,11 +4477,14 @@ Generated on: ${new Date().toLocaleString()}`;
                     </div>
                     
                     {result.success ? (
-                      <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[400px] overflow-y-auto">
-                        <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
-                          {result.output}
-                        </pre>
-                      </div>
+                      <>
+                        <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[400px] overflow-y-auto">
+                          <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
+                            {result.output}
+                          </pre>
+                        </div>
+                        <TextStats text={result.output || ''} showAiDetect={true} variant="compact" />
+                      </>
                     ) : (
                       <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded border border-red-200 dark:border-red-700">
                         <p className="text-red-700 dark:text-red-300">
@@ -4506,6 +4526,7 @@ Generated on: ${new Date().toLocaleString()}`;
                   {objectionsOutput}
                 </pre>
               </div>
+              <TextStats text={objectionsOutput} showAiDetect={true} variant="compact" />
             </div>
           )}
 
@@ -4916,9 +4937,7 @@ Generated on: ${new Date().toLocaleString()}`;
                       {objectionProofOutput}
                     </pre>
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                    Word count: ~{objectionProofOutput.trim().split(/\s+/).length} words
-                  </p>
+                  <TextStats text={objectionProofOutput} showAiDetect={true} variant="compact" />
                 </div>
               )}
 
@@ -5157,6 +5176,7 @@ Generated on: ${new Date().toLocaleString()}`;
                 data-testid="textarea-coherence-input"
               />
             </div>
+            <TextStats text={coherenceInputText} showAiDetect={true} />
           </div>
 
           {/* Chunk Selector - appears when text > 1000 words */}
@@ -6152,10 +6172,13 @@ Generated on: ${new Date().toLocaleString()}`;
               </div>
               {/* Show coherence analysis text only if there is coherence analysis */}
               {coherenceAnalysis && (
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border border-indigo-200 dark:border-indigo-700">
-                  <pre className="whitespace-pre-wrap font-sans text-sm text-gray-800 dark:text-gray-200">
-                    {coherenceAnalysis}
-                  </pre>
+                <div className="space-y-2">
+                  <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border border-indigo-200 dark:border-indigo-700">
+                    <pre className="whitespace-pre-wrap font-sans text-sm text-gray-800 dark:text-gray-200">
+                      {coherenceAnalysis}
+                    </pre>
+                  </div>
+                  <TextStats text={coherenceAnalysis} showAiDetect={true} variant="compact" />
                 </div>
               )}
               
@@ -6405,6 +6428,7 @@ Generated on: ${new Date().toLocaleString()}`;
                   {coherenceRewrite}
                 </pre>
               </div>
+              <TextStats text={coherenceRewrite} showAiDetect={true} variant="compact" />
 
               {/* Refine Coherence Rewrite Section */}
               <div className="mt-4 p-4 bg-indigo-100 dark:bg-indigo-800/30 rounded-lg border border-indigo-300 dark:border-indigo-600">
