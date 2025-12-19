@@ -216,6 +216,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   
   // Coherence Meter State
   const [coherenceInputText, setCoherenceInputText] = useState("");
+  const [coherenceDragOver, setCoherenceDragOver] = useState(false);
   const [coherenceType, setCoherenceType] = useState<"logical-consistency" | "logical-cohesiveness" | "scientific-explanatory" | "thematic-psychological" | "instructional" | "motivational" | "mathematical" | "philosophical" | "auto-detect">("auto-detect");
   const [coherenceAnalysis, setCoherenceAnalysis] = useState<string>("");
   const [coherenceRewrite, setCoherenceRewrite] = useState<string>("");
@@ -5094,13 +5095,68 @@ Generated on: ${new Date().toLocaleString()}`;
                 </label>
               </div>
             </div>
-            <Textarea
-              value={coherenceInputText}
-              onChange={(e) => setCoherenceInputText(e.target.value)}
-              placeholder="Paste your text here to analyze coherence... (up to 5000 words - long texts are chunked with global coherence preservation)"
-              className="min-h-[200px] font-mono text-sm"
-              data-testid="textarea-coherence-input"
-            />
+            <div
+              className={`relative transition-all duration-200 ${
+                coherenceDragOver 
+                  ? "ring-2 ring-indigo-500 ring-offset-2 rounded-md" 
+                  : ""
+              }`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setCoherenceDragOver(true);
+              }}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setCoherenceDragOver(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setCoherenceDragOver(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setCoherenceDragOver(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file && (file.type === 'application/pdf' || 
+                    file.type === 'application/msword' || 
+                    file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                    file.type === 'text/plain' ||
+                    file.name.endsWith('.txt') ||
+                    file.name.endsWith('.pdf') ||
+                    file.name.endsWith('.doc') ||
+                    file.name.endsWith('.docx'))) {
+                  handleFileUpload(file, setCoherenceInputText);
+                } else if (file) {
+                  toast({
+                    title: "Unsupported File Type",
+                    description: "Please upload a PDF, Word document (.doc, .docx), or text file (.txt)",
+                    variant: "destructive",
+                  });
+                }
+              }}
+              data-testid="dropzone-coherence"
+            >
+              {coherenceDragOver && (
+                <div className="absolute inset-0 bg-indigo-100/80 dark:bg-indigo-900/80 rounded-md flex items-center justify-center z-10 pointer-events-none">
+                  <div className="flex flex-col items-center gap-2 text-indigo-700 dark:text-indigo-300">
+                    <Upload className="w-10 h-10" />
+                    <span className="font-semibold">Drop document here</span>
+                    <span className="text-sm">PDF, Word, or TXT files</span>
+                  </div>
+                </div>
+              )}
+              <Textarea
+                value={coherenceInputText}
+                onChange={(e) => setCoherenceInputText(e.target.value)}
+                placeholder="Paste your text here to analyze coherence... or drag & drop a document (PDF, Word, TXT)"
+                className="min-h-[200px] font-mono text-sm"
+                data-testid="textarea-coherence-input"
+              />
+            </div>
           </div>
 
           {/* Chunk Selector - appears when text > 1000 words */}
