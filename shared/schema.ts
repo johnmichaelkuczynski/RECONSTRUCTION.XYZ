@@ -504,3 +504,100 @@ export const insertSystemInstructionSchema = createInsertSchema(systemInstructio
 
 export type InsertSystemInstruction = z.infer<typeof insertSystemInstructionSchema>;
 export type SystemInstruction = typeof systemInstructions.$inferSelect;
+
+// Cross-Chunk Coherence (CC) Reconstruction Tables
+// Store document-level state for multi-pass reconstruction
+export const reconstructionDocuments = pgTable("reconstruction_documents", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  title: text("title"),
+  originalText: text("original_text").notNull(),
+  wordCount: integer("word_count").notNull(),
+  globalSkeleton: jsonb("global_skeleton"), // Stores skeleton extracted in Pass 1
+  finalOutput: text("final_output"),
+  validationResult: jsonb("validation_result"), // Stores Pass 3 validation results
+  status: text("status").default("pending"), // pending, skeleton_extracted, chunks_processed, stitched, completed, failed
+  audienceParameters: text("audience_parameters"),
+  rigorLevel: text("rigor_level"),
+  customInstructions: text("custom_instructions"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertReconstructionDocumentSchema = createInsertSchema(reconstructionDocuments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertReconstructionDocument = z.infer<typeof insertReconstructionDocumentSchema>;
+export type ReconstructionDocument = typeof reconstructionDocuments.$inferSelect;
+
+// Store per-chunk state for reconstruction
+export const reconstructionChunks = pgTable("reconstruction_chunks", {
+  id: serial("id").primaryKey(),
+  documentId: integer("document_id").references(() => reconstructionDocuments.id).notNull(),
+  chunkIndex: integer("chunk_index").notNull(),
+  chunkInputText: text("chunk_input_text").notNull(),
+  chunkOutputText: text("chunk_output_text"),
+  chunkDelta: jsonb("chunk_delta"), // New claims, terms used, conflicts detected
+  conflictsDetected: jsonb("conflicts_detected"), // Specific conflicts with skeleton
+  status: text("status").default("pending"), // pending, processing, completed, conflict_flagged
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertReconstructionChunkSchema = createInsertSchema(reconstructionChunks).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertReconstructionChunk = z.infer<typeof insertReconstructionChunkSchema>;
+export type ReconstructionChunk = typeof reconstructionChunks.$inferSelect;
+
+// Store processing runs for audit/debugging
+export const reconstructionRuns = pgTable("reconstruction_runs", {
+  id: serial("id").primaryKey(),
+  documentId: integer("document_id").references(() => reconstructionDocuments.id).notNull(),
+  runType: text("run_type").notNull(), // 'skeleton', 'chunk_pass', 'stitch', 'repair'
+  chunkIndex: integer("chunk_index"), // Only for chunk_pass runs
+  runInput: jsonb("run_input"),
+  runOutput: jsonb("run_output"),
+  durationMs: integer("duration_ms"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertReconstructionRunSchema = createInsertSchema(reconstructionRuns).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertReconstructionRun = z.infer<typeof insertReconstructionRunSchema>;
+export type ReconstructionRun = typeof reconstructionRuns.$inferSelect;
+
+// Global Skeleton type for Pass 1 extraction
+export interface GlobalSkeleton {
+  outline: string[];           // 8-20 numbered claims/sections
+  thesis: string;              // Central argument
+  keyTerms: { term: string; meaning: string }[];  // Terms with meanings
+  commitmentLedger: { type: 'asserts' | 'rejects' | 'assumes'; claim: string }[];
+  entities: { name: string; type: string; role: string }[];  // People, orgs, variables
+  audienceParameters?: string;
+  rigorLevel?: string;
+}
+
+// Chunk Delta type for Pass 2 tracking
+export interface ChunkDelta {
+  newClaimsIntroduced: string[];
+  termsUsed: string[];
+  conflictsDetected: { skeletonItem: string; chunkContent: string; description: string }[];
+  ledgerAdditions: { type: 'asserts' | 'rejects' | 'assumes'; claim: string }[];
+}
+
+// Stitch Result type for Pass 3
+export interface StitchResult {
+  contradictions: { chunk1: number; chunk2: number; description: string }[];
+  terminologyDrift: { term: string; chunk: number; originalMeaning: string; driftedMeaning: string }[];
+  missingPremises: { location: number; description: string }[];
+  redundancies: { chunks: number[]; description: string }[];
+  repairPlan: { chunkIndex: number; repairAction: string }[];
+}
