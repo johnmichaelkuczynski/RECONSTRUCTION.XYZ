@@ -35,6 +35,26 @@ The application employs a monorepo structure, separating client and server compo
     - **Conservative Reconstruction**: "Charitable Interpretation" mode for generating coherent essays articulating a text's unified argument.
 
 ## Recent Changes (December 2024)
+- **Cross-Chunk Coherence (CC) System for Reconstruction**: Implemented 3-pass architecture to prevent "Frankenstein" outputs in long document reconstruction:
+  - **Pass 1 - Global Skeleton Extraction**: Fast, lightweight extraction of document structure before any reconstruction:
+    - Outline: 8-20 numbered claims/sections identifying document structure
+    - Thesis: Central argument or purpose
+    - Key Terms: Important terms with their meanings as used in the document
+    - Commitment Ledger: Explicit commitments (asserts X, rejects Y, assumes Z)
+    - Entities: People, organizations, variables that must be referenced consistently
+  - **Pass 2 - Constrained Chunk Reconstruction**: Divides input into ~800-word chunks (respecting paragraph boundaries) and reconstructs each with:
+    - Full global skeleton injected as constraints
+    - Strict instruction: must not contradict commitment ledger, must use key terms as defined
+    - Delta report: new claims introduced, terms used, conflicts detected
+  - **Pass 3 - Global Consistency Stitch**: Final validation pass that:
+    - Detects cross-chunk contradictions and terminology drift
+    - Identifies missing premises and redundancies
+    - Generates repair plan and executes micro-repairs
+    - Assembles final coherent output
+  - **Parameters**: Max 5000 words input, 800-word chunks at paragraph boundaries
+  - **Database Schema**: Added reconstruction_documents, reconstruction_chunks, reconstruction_runs tables for persistence/debugging
+  - **Integration**: Automatically activates for documents >= 1200 words; shorter documents use standard synthesis
+- **Coherence Meter Refine Feature**: Added ability to refine coherence rewrite output with target word count and custom instructions
 - **Exemplar-Driven GCS Semantic Fixes**: Fixed critical state mutation semantics:
   - **Scientific-Explanatory**: Resolved feedback loops are now REMOVED from active list (not just status flip), allowing later reactivation
   - **Instructional**: Satisfied prerequisites are now REMOVED from prereqs list (not added), properly clearing completed requirements
