@@ -145,6 +145,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   // Text Model Validator State
   const [validatorInputText, setValidatorInputText] = useState("");
   const [validatorMode, setValidatorMode] = useState<"reconstruction" | null>(null);
+  const [validatorDragOver, setValidatorDragOver] = useState(false);
   const [validatorOutput, setValidatorOutput] = useState<string>("");
   const [validatorLoading, setValidatorLoading] = useState(false);
   // Multi-mode batch processing
@@ -3657,7 +3658,7 @@ Generated on: ${new Date().toLocaleString()}`;
             </p>
           </div>
 
-          {/* Input Area */}
+          {/* Input Area with Drag & Drop */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-semibold text-emerald-800 dark:text-emerald-200">
@@ -3689,13 +3690,68 @@ Generated on: ${new Date().toLocaleString()}`;
                 </Button>
               </label>
             </div>
-            <Textarea
-              value={validatorInputText}
-              onChange={(e) => setValidatorInputText(e.target.value)}
-              placeholder="Paste complex, obscure, or muddled text here... (philosophy papers, technical documents, draft arguments, etc.)"
-              className="min-h-[200px] font-mono text-sm"
-              data-testid="textarea-validator-input"
-            />
+            <div
+              className={`relative transition-all duration-200 ${
+                validatorDragOver 
+                  ? "ring-2 ring-emerald-500 ring-offset-2 rounded-md" 
+                  : ""
+              }`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setValidatorDragOver(true);
+              }}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setValidatorDragOver(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setValidatorDragOver(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setValidatorDragOver(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file && (file.type === 'application/pdf' || 
+                    file.type === 'application/msword' || 
+                    file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                    file.type === 'text/plain' ||
+                    file.name.endsWith('.txt') ||
+                    file.name.endsWith('.pdf') ||
+                    file.name.endsWith('.doc') ||
+                    file.name.endsWith('.docx'))) {
+                  handleFileUpload(file, setValidatorInputText);
+                } else if (file) {
+                  toast({
+                    title: "Unsupported File Type",
+                    description: "Please upload a PDF, Word document (.doc, .docx), or text file (.txt)",
+                    variant: "destructive",
+                  });
+                }
+              }}
+              data-testid="dropzone-validator"
+            >
+              {validatorDragOver && (
+                <div className="absolute inset-0 bg-emerald-100/80 dark:bg-emerald-900/80 rounded-md flex items-center justify-center z-10 pointer-events-none">
+                  <div className="flex flex-col items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                    <Upload className="w-10 h-10" />
+                    <span className="font-semibold">Drop document here</span>
+                    <span className="text-sm">PDF, Word, or TXT files</span>
+                  </div>
+                </div>
+              )}
+              <Textarea
+                value={validatorInputText}
+                onChange={(e) => setValidatorInputText(e.target.value)}
+                placeholder="Paste complex, obscure, or muddled text here... or drag & drop a document (PDF, Word, TXT)"
+                className="min-h-[200px] font-mono text-sm"
+                data-testid="textarea-validator-input"
+              />
+            </div>
           </div>
 
           {/* FULL SUITE - Run All Functions in Sequence */}
