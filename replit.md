@@ -35,6 +35,12 @@ The application employs a monorepo structure, separating client and server compo
     - **Conservative Reconstruction**: "Charitable Interpretation" mode for generating coherent essays articulating a text's unified argument.
 
 ## Recent Changes (December 2024)
+- **TextStats Component with AI Detection**: Added automatic word/character counts and GPTZero-powered AI detection to all input and output areas:
+  - Displays word count and character count below each text area
+  - "Check AI" button runs GPTZero detection showing color-coded results (red >70% AI, yellow 40-70%, green <40% AI)
+  - Added to: Text Model Validator input, Reconstruction output, Objections output, Objection-proof output, Full Suite outputs, Coherence Meter input/analysis/rewrite
+  - Component has two variants: default (full display) and compact (minimal display)
+- **Drag-and-Drop Document Upload**: Both Text Model Validator and Coherence Meter support drag-and-drop file uploads with visual feedback (emerald for Validator, indigo for Coherence Meter)
 - **Cross-Chunk Coherence (CC) System for Reconstruction**: Implemented 3-pass architecture to prevent "Frankenstein" outputs in long document reconstruction:
   - **Pass 1 - Global Skeleton Extraction**: Fast, lightweight extraction of document structure before any reconstruction:
     - Outline: 8-20 numbered claims/sections identifying document structure
