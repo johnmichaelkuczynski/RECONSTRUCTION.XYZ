@@ -31,6 +31,31 @@ import CopyButton from "@/components/CopyButton";
 import SendToButton from "@/components/SendToButton";
 import { MathRenderer } from "@/components/MathRenderer";
 
+// Utility function to strip markdown formatting from AI outputs
+const stripMarkdown = (text: string): string => {
+  if (!text) return text;
+  return text
+    // Remove headers (## or ###, etc.)
+    .replace(/^#{1,6}\s+/gm, '')
+    // Remove bold (**text** or __text__)
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    // Remove italic (*text* or _text_) - be careful not to remove bullet points
+    .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '$1')
+    .replace(/(?<!_)_([^_\n]+)_(?!_)/g, '$1')
+    // Remove code blocks (```...```)
+    .replace(/```[\s\S]*?```/g, (match) => match.replace(/```\w*\n?/g, '').replace(/```/g, ''))
+    // Remove inline code (`code`)
+    .replace(/`([^`]+)`/g, '$1')
+    // Remove horizontal rules
+    .replace(/^[-*_]{3,}\s*$/gm, '')
+    // Remove blockquotes
+    .replace(/^>\s+/gm, '')
+    // Clean up excessive newlines
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 const HomePage: React.FC = () => {
   const { toast } = useToast();
   
@@ -727,7 +752,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       
       const data = await response.json();
       if (data.success && data.output) {
-        setFullSuiteObjectionProofOutput(data.output);
+        setFullSuiteObjectionProofOutput(stripMarkdown(data.output));
         setRefineFinalWordCount("");
         setRefineFinalInstructions("");
         toast({ title: "Final version refined successfully!" });
@@ -765,7 +790,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       
       const data = await response.json();
       if (data.success && data.output) {
-        setObjectionProofRefinedOutput(data.output);
+        setObjectionProofRefinedOutput(stripMarkdown(data.output));
         toast({ title: "Refined version generated!" });
       }
     } catch (error: any) {
@@ -805,7 +830,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         // Update the batch results with the refined output
         setValidatorBatchResults(prev => prev.map(r => 
           r.success && r.mode === "reconstruction" 
-            ? { ...r, output: data.output }
+            ? { ...r, output: stripMarkdown(data.output) }
             : r
         ));
         setRefineReconstructionWordCount("");
@@ -846,7 +871,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       const data = await response.json();
       if (data.success && data.output) {
         // Update the coherence rewrite with refined output
-        setCoherenceRewrite(data.output);
+        setCoherenceRewrite(stripMarkdown(data.output));
         setRefineCoherenceWordCount("");
         setRefineCoherenceInstructions("");
         toast({ title: "Coherence output refined successfully!" });
@@ -921,7 +946,12 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       console.log('Batch validation response:', data);
       if (data.success && data.results) {
         console.log('Setting batch results:', data.results.length, 'items');
-        setValidatorBatchResults(data.results);
+        // Strip markdown from all outputs
+        const cleanedResults = data.results.map((r: any) => ({
+          ...r,
+          output: r.output ? stripMarkdown(r.output) : r.output
+        }));
+        setValidatorBatchResults(cleanedResults);
         toast({
           title: "Batch Validation Complete!",
           description: `Processed ${data.successfulModes}/${data.totalModes} modes successfully`,
@@ -978,7 +1008,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
 
       const data = await response.json();
       if (data.success && data.output) {
-        setObjectionsOutput(data.output);
+        setObjectionsOutput(stripMarkdown(data.output));
         toast({
           title: "Objections Generated!",
           description: "25 likely objections and responses have been generated.",
@@ -1050,7 +1080,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           } else {
             const data = await response.json();
             if (data.success && data.output) {
-              batchResults.push({ mode, success: true, output: data.output });
+              batchResults.push({ mode, success: true, output: stripMarkdown(data.output) });
             } else {
               batchResults.push({ mode, success: false, error: data.message || "No output returned" });
             }
@@ -1102,7 +1132,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         throw new Error('Objections returned no output');
       }
 
-      setObjectionsOutput(objectionsData.output);
+      setObjectionsOutput(stripMarkdown(objectionsData.output));
       // Also set the objections input text so it can be used in objection-proof
       setObjectionsInputText(reconstructionOutput);
       console.log("[FULL SUITE] Stage 2 complete: Objections generated");
@@ -1132,8 +1162,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         throw new Error('Objection-proof returned no output');
       }
 
-      setFullSuiteObjectionProofOutput(objectionProofData.output);
-      setObjectionProofOutput(objectionProofData.output); // Also set standalone state
+      setFullSuiteObjectionProofOutput(stripMarkdown(objectionProofData.output));
+      setObjectionProofOutput(stripMarkdown(objectionProofData.output)); // Also set standalone state
       console.log("[FULL SUITE] Stage 3 complete: Objection-proof version generated");
 
       // ============ COMPLETE ============
@@ -1236,7 +1266,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
 
       const data = await response.json();
       if (data.success) {
-        setCoherenceAnalysis(data.analysis);
+        setCoherenceAnalysis(stripMarkdown(data.analysis));
         setCoherenceScore(data.score);
         setCoherenceAssessment(data.assessment);
         
@@ -1380,7 +1410,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
 
       const data = await response.json();
       if (data.success) {
-        setCoherenceRewrite(data.rewrite);
+        setCoherenceRewrite(stripMarkdown(data.rewrite));
         setCoherenceChanges(data.changes);
         
         // Capture detected coherence type if auto-detected
@@ -1479,7 +1509,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
 
       const analyzeData = await analyzeResponse.json();
       if (analyzeData.success) {
-        setCoherenceAnalysis(analyzeData.analysis);
+        setCoherenceAnalysis(stripMarkdown(analyzeData.analysis));
         setCoherenceScore(analyzeData.score);
         setCoherenceAssessment(analyzeData.assessment);
         
@@ -1529,7 +1559,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
 
       const rewriteData = await rewriteResponse.json();
       if (rewriteData.success) {
-        setCoherenceRewrite(rewriteData.rewrite);
+        setCoherenceRewrite(stripMarkdown(rewriteData.rewrite));
         setCoherenceChanges(rewriteData.changes);
         
         if (rewriteData.isScientificExplanatory) {
@@ -1598,7 +1628,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
 
       const data = await response.json();
       if (data.success) {
-        setCoherenceRewrite(data.rewrite);
+        setCoherenceRewrite(stripMarkdown(data.rewrite));
         setCoherenceChanges(data.changes);
         toast({ title: "Max Coherence Rewrite Complete!", description: "Text has been aggressively rewritten for maximum coherence." });
       }
@@ -1647,7 +1677,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
 
       const data = await response.json();
       if (data.success) {
-        setCoherenceRewrite(data.rewrite);
+        setCoherenceRewrite(stripMarkdown(data.rewrite));
         setCoherenceChanges(data.changes);
         const reconstructionMsg = data.wasReconstructed 
           ? "Text reconstructed with thematically-adjacent material." 
@@ -1698,7 +1728,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       const analyzeData = await analyzeResponse.json();
       
       if (analyzeData.success) {
-        setCoherenceAnalysis(analyzeData.analysis);
+        setCoherenceAnalysis(stripMarkdown(analyzeData.analysis));
         setCoherenceScore(analyzeData.score);
         setCoherenceAssessment(analyzeData.assessment);
       }
@@ -1715,7 +1745,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       const rewriteData = await rewriteResponse.json();
       
       if (rewriteData.success) {
-        setCoherenceRewrite(rewriteData.rewrite);
+        setCoherenceRewrite(stripMarkdown(rewriteData.rewrite));
         setCoherenceChanges(rewriteData.changes);
       }
 
@@ -1765,7 +1795,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       const analyzeData = await analyzeResponse.json();
       
       if (analyzeData.success) {
-        setCoherenceAnalysis(analyzeData.analysis);
+        setCoherenceAnalysis(stripMarkdown(analyzeData.analysis));
         setCoherenceScore(analyzeData.score);
         setCoherenceAssessment(analyzeData.assessment);
       }
@@ -1784,7 +1814,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       const reconstructData = await reconstructResponse.json();
       
       if (reconstructData.success) {
-        setCoherenceRewrite(reconstructData.rewrite);
+        setCoherenceRewrite(stripMarkdown(reconstructData.rewrite));
         setCoherenceChanges(reconstructData.changes);
       }
 
@@ -1913,7 +1943,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       }
       const data = await response.json();
       if (data.success) {
-        setCoherenceRewrite(data.rewrite);
+        setCoherenceRewrite(stripMarkdown(data.rewrite));
         setCoherenceChanges(data.changes);
         setCoherenceRewriteAccuracyScore(data.coherenceScore);
         toast({ title: "Max Coherence Rewrite Complete!", description: `Coherence Score: ${data.coherenceScore}/10` });
@@ -2032,9 +2062,9 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         const data = await response.json();
         if (data.success) {
           if (mode === "analyze") {
-            setCoherenceAnalysis(data.analysis);
+            setCoherenceAnalysis(stripMarkdown(data.analysis));
           } else {
-            setCoherenceRewrite(data.rewrite);
+            setCoherenceRewrite(stripMarkdown(data.rewrite));
             setCoherenceChanges(data.changes);
           }
           
@@ -2097,13 +2127,13 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         }
 
         if (mode === "analyze") {
-          setCoherenceAnalysis(combinedAnalysis.trim());
+          setCoherenceAnalysis(stripMarkdown(combinedAnalysis.trim()));
           toast({
             title: "All Sections Analyzed!",
             description: `Processed ${selectedChunkObjects.length} sections successfully`,
           });
         } else {
-          setCoherenceRewrite(combinedRewrite.trim());
+          setCoherenceRewrite(stripMarkdown(combinedRewrite.trim()));
           setCoherenceChanges(combinedChanges.trim());
           toast({
             title: "All Sections Rewritten!",
@@ -4868,7 +4898,7 @@ Generated on: ${new Date().toLocaleString()}`;
                         });
                         const data = await response.json();
                         if (data.success) {
-                          setObjectionProofOutput(data.output);
+                          setObjectionProofOutput(stripMarkdown(data.output));
                           toast({
                             title: "Objection-Proof Version Generated",
                             description: "Your text has been rewritten to pre-empt identified objections",
