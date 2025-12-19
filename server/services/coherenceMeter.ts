@@ -1,4 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { crossChunkReconstruct, CCReconstructionResult } from './crossChunkCoherence';
+
+// Threshold for using Cross-Chunk Coherence system (words)
+const CC_THRESHOLD_WORDS = 1200;
 
 // Utility to strip markdown formatting from text
 function stripMarkdown(text: string): string {
@@ -2066,6 +2070,34 @@ export async function reconstructToMaxCoherence(
   // This informs the synthesis process to produce substantively better output
   const contentAnalysis = await analyzeContent(text);
   
+  // FOR LONG DOCUMENTS: Use Cross-Chunk Coherence (CC) 3-pass system
+  // This prevents "Frankenstein" outputs where chunks contradict each other
+  if (inputWordCount >= CC_THRESHOLD_WORDS) {
+    console.log(`[Reconstruction] Document is ${inputWordCount} words, using Cross-Chunk Coherence system`);
+    
+    try {
+      const ccResult = await crossChunkReconstruct(
+        text,
+        undefined, // audienceParameters - could be added as parameter
+        undefined, // rigorLevel - could be added as parameter
+        undefined, // customInstructions - could be added as parameter
+        contentAnalysis
+      );
+      
+      return {
+        reconstructedText: ccResult.reconstructedText,
+        changes: ccResult.changes,
+        wasReconstructed: ccResult.wasReconstructed,
+        adjacentMaterialAdded: ccResult.adjacentMaterialAdded,
+        originalLimitationsIdentified: ccResult.originalLimitationsIdentified
+      };
+    } catch (error) {
+      console.error("[Reconstruction] CC system failed, falling back to standard synthesis:", error);
+      // Fall through to standard synthesis if CC fails
+    }
+  }
+  
+  // STANDARD PATH: For shorter documents or CC fallback
   // RECONSTRUCT ALWAYS SYNTHESIZES: Turn input (abstract, fragmented, or concise) into a COMPLETE ESSAY
   // This is a "turn to gold" operation: create a self-contained philosophical work
   // Pass content analysis to guide what substantive improvements are needed
