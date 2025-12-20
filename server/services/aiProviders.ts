@@ -14,11 +14,11 @@ const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
 // </important_do_not_delete>
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "default_key",
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY_ENV_VAR || "default_key",
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 const PRESET_TEXT: Record<string,string> = {
@@ -211,7 +211,7 @@ export class AIProviderService {
       const response = await fetch('https://api.perplexity.ai/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY || process.env.PERPLEXITY_API_KEY_ENV_VAR || "default_key"}`,
+          'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -249,7 +249,7 @@ export class AIProviderService {
       const response = await fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY_ENV_VAR || "default_key"}`,
+          'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
