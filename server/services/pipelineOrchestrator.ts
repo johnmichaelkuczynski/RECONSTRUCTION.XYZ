@@ -49,7 +49,8 @@ export async function runFullPipeline(
   originalText: string,
   params: PipelineParams,
   userId?: number,
-  onProgress?: PipelineProgressCallback
+  onProgress?: PipelineProgressCallback,
+  existingJobId?: number
 ): Promise<{
   success: boolean;
   jobId: number;
@@ -65,20 +66,35 @@ export async function runFullPipeline(
   
   console.log(`[Pipeline] Starting full pipeline with ${wordCount} words`);
   
-  // Create pipeline job
-  const [job] = await db.insert(pipelineJobs).values({
-    userId,
-    originalText,
-    originalWordCount: wordCount,
-    customInstructions: params.customInstructions,
-    targetAudience: params.targetAudience,
-    objective: params.objective,
-    status: 'running',
-    currentStage: 1,
-    stageStatus: 'pending'
-  }).returning();
+  let jobId: number;
   
-  const jobId = job.id;
+  // Use existing job if provided, otherwise create new one
+  if (existingJobId) {
+    jobId = existingJobId;
+    // Update existing job to running status
+    await db.update(pipelineJobs).set({
+      status: 'running',
+      currentStage: 1,
+      stageStatus: 'pending',
+      updatedAt: new Date()
+    }).where(eq(pipelineJobs.id, existingJobId));
+    console.log(`[Pipeline] Using existing job ${jobId}`);
+  } else {
+    // Create pipeline job
+    const [job] = await db.insert(pipelineJobs).values({
+      userId,
+      originalText,
+      originalWordCount: wordCount,
+      customInstructions: params.customInstructions,
+      targetAudience: params.targetAudience,
+      objective: params.objective,
+      status: 'running',
+      currentStage: 1,
+      stageStatus: 'pending'
+    }).returning();
+    jobId = job.id;
+    console.log(`[Pipeline] Created new job ${jobId}`);
+  }
   
   const emitProgress = (stage: number, status: string, message: string, chunksCompleted = 0, totalChunks = 0) => {
     if (onProgress) {

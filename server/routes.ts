@@ -4752,5 +4752,332 @@ Provide ONLY the rewritten section. Do not include any explanations, description
     return sections;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FULL PIPELINE CROSS-CHUNK COHERENCE (FPCC) ROUTES
+  // 4-Stage Pipeline: Reconstruction → Objections → Responses → Bullet-proof
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Start a new pipeline job (synchronous: waits for job creation before responding)
+  app.post("/api/pipeline/start", async (req: Request, res: Response) => {
+    try {
+      const { text, customInstructions, targetAudience, objective } = req.body;
+
+      if (!text) {
+        return res.status(400).json({ success: false, message: "Text is required" });
+      }
+
+      const wordCount = text.trim().split(/\s+/).filter((w: string) => w).length;
+      if (wordCount < 100) {
+        return res.status(400).json({ success: false, message: "Text must be at least 100 words" });
+      }
+
+      const { pipelineJobs } = await import('@shared/schema');
+      const { db } = await import('./db');
+      const { runFullPipeline } = await import('./services/pipelineOrchestrator');
+
+      const userId = req.isAuthenticated() && req.user ? req.user.id : undefined;
+
+      // Create job first to get the ID
+      const [job] = await db.insert(pipelineJobs).values({
+        userId,
+        originalText: text,
+        originalWordCount: wordCount,
+        customInstructions,
+        targetAudience,
+        objective,
+        status: 'running',
+        currentStage: 1,
+        stageStatus: 'pending'
+      }).returning();
+
+      res.json({
+        success: true,
+        message: "Pipeline started. Use the job ID to poll for status.",
+        jobId: job.id,
+        wordCount,
+        started: true
+      });
+
+      // Run pipeline in background with the pre-created job ID
+      runFullPipeline(text, { customInstructions, targetAudience, objective }, userId, undefined, job.id)
+        .then(result => {
+          console.log(`[Pipeline API] Job ${job.id} completed: ${result.success ? 'success' : 'failed'}`);
+        })
+        .catch(error => {
+          console.error(`[Pipeline API] Job ${job.id} failed:`, error);
+        });
+
+    } catch (error: any) {
+      console.error("[Pipeline API] Start error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Start pipeline with immediate job ID return
+  app.post("/api/pipeline/create", async (req: Request, res: Response) => {
+    try {
+      const { text, customInstructions, targetAudience, objective } = req.body;
+
+      if (!text) {
+        return res.status(400).json({ success: false, message: "Text is required" });
+      }
+
+      const wordCount = text.trim().split(/\s+/).filter((w: string) => w).length;
+      if (wordCount < 100) {
+        return res.status(400).json({ success: false, message: "Text must be at least 100 words" });
+      }
+
+      const { pipelineJobs } = await import('@shared/schema');
+      const { db } = await import('./db');
+
+      const userId = req.isAuthenticated() && req.user ? req.user.id : undefined;
+
+      const [job] = await db.insert(pipelineJobs).values({
+        userId,
+        originalText: text,
+        originalWordCount: wordCount,
+        customInstructions,
+        targetAudience,
+        objective,
+        status: 'pending',
+        currentStage: 1,
+        stageStatus: 'pending'
+      }).returning();
+
+      res.json({
+        success: true,
+        jobId: job.id,
+        wordCount,
+        message: "Pipeline job created. Call /api/pipeline/run/:jobId to start processing."
+      });
+
+    } catch (error: any) {
+      console.error("[Pipeline API] Create error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Run a created pipeline job
+  app.post("/api/pipeline/run/:jobId", async (req: Request, res: Response) => {
+    try {
+      const jobId = parseInt(req.params.jobId);
+
+      const { pipelineJobs } = await import('@shared/schema');
+      const { db } = await import('./db');
+      const { eq } = await import('drizzle-orm');
+
+      const [job] = await db.select().from(pipelineJobs).where(eq(pipelineJobs.id, jobId));
+
+      if (!job) {
+        return res.status(404).json({ success: false, message: "Job not found" });
+      }
+
+      if (job.status !== 'pending') {
+        return res.status(400).json({ success: false, message: `Job is already ${job.status}` });
+      }
+
+      const { runFullPipeline } = await import('./services/pipelineOrchestrator');
+
+      await db.update(pipelineJobs).set({ status: 'running' }).where(eq(pipelineJobs.id, jobId));
+
+      res.json({
+        success: true,
+        jobId,
+        message: "Pipeline job started. Poll /api/pipeline/status/:jobId for progress."
+      });
+
+      runFullPipeline(
+        job.originalText,
+        {
+          customInstructions: job.customInstructions || undefined,
+          targetAudience: job.targetAudience || undefined,
+          objective: job.objective || undefined
+        },
+        job.userId || undefined,
+        undefined,
+        jobId // Pass existing job ID
+      ).then(result => {
+        console.log(`[Pipeline API] Job ${jobId} completed: ${result.success ? 'success' : 'failed'}`);
+      }).catch(error => {
+        console.error(`[Pipeline API] Job ${jobId} error:`, error);
+      });
+
+    } catch (error: any) {
+      console.error("[Pipeline API] Run error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Get pipeline job status
+  app.get("/api/pipeline/status/:jobId", async (req: Request, res: Response) => {
+    try {
+      const jobId = parseInt(req.params.jobId);
+
+      const { getPipelineStatus, getPipelineObjections } = await import('./services/pipelineOrchestrator');
+
+      const job = await getPipelineStatus(jobId);
+
+      if (!job) {
+        return res.status(404).json({ success: false, message: "Job not found" });
+      }
+
+      const objections = await getPipelineObjections(jobId);
+
+      res.json({
+        success: true,
+        job: {
+          id: job.id,
+          status: job.status,
+          currentStage: job.currentStage,
+          stageStatus: job.stageStatus,
+          wordCounts: {
+            original: job.originalWordCount,
+            reconstruction: job.reconstructionWords,
+            objections: job.objectionsWords,
+            responses: job.responsesWords,
+            bulletproof: job.bulletproofWords
+          },
+          timing: {
+            stage1Start: job.stage1StartTime,
+            stage1End: job.stage1EndTime,
+            stage2Start: job.stage2StartTime,
+            stage2End: job.stage2EndTime,
+            stage3Start: job.stage3StartTime,
+            stage3End: job.stage3EndTime,
+            stage4Start: job.stage4StartTime,
+            stage4End: job.stage4EndTime,
+            hcCheck: job.hcCheckTime
+          },
+          hcResults: job.hcCheckResults,
+          hcViolations: job.hcViolations,
+          errorMessage: job.errorMessage
+        },
+        objections: objections.map(o => ({
+          index: o.objectionIndex,
+          type: o.objectionType,
+          severity: o.severity,
+          claimTargeted: o.claimTargeted,
+          hasResponse: !!o.initialResponse,
+          hasEnhancedResponse: !!o.enhancedResponse,
+          integrated: o.integrationVerified
+        }))
+      });
+
+    } catch (error: any) {
+      console.error("[Pipeline API] Status error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Get pipeline outputs
+  app.get("/api/pipeline/outputs/:jobId", async (req: Request, res: Response) => {
+    try {
+      const jobId = parseInt(req.params.jobId);
+
+      const { getPipelineStatus, getPipelineObjections } = await import('./services/pipelineOrchestrator');
+
+      const job = await getPipelineStatus(jobId);
+
+      if (!job) {
+        return res.status(404).json({ success: false, message: "Job not found" });
+      }
+
+      const objections = await getPipelineObjections(jobId);
+
+      res.json({
+        success: true,
+        reconstruction: job.reconstructionOutput,
+        objections: job.objectionsOutput,
+        responses: job.responsesOutput,
+        bulletproof: job.bulletproofOutput,
+        objectionsDetail: objections.map(o => ({
+          index: o.objectionIndex,
+          claimTargeted: o.claimTargeted,
+          claimLocation: o.claimLocation,
+          type: o.objectionType,
+          severity: o.severity,
+          objection: o.objectionText,
+          initialResponse: o.initialResponse,
+          enhancedResponse: o.enhancedResponse,
+          integratedIn: o.integratedInSection,
+          integrationStrategy: o.integrationStrategy
+        })),
+        hcCheck: job.hcCheckResults,
+        skeleton1: job.skeleton1,
+        skeleton2: job.skeleton2,
+        skeleton3: job.skeleton3,
+        skeleton4: job.skeleton4
+      });
+
+    } catch (error: any) {
+      console.error("[Pipeline API] Outputs error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Resume a paused/failed pipeline
+  app.post("/api/pipeline/resume/:jobId", async (req: Request, res: Response) => {
+    try {
+      const jobId = parseInt(req.params.jobId);
+
+      const { resumePipeline } = await import('./services/pipelineOrchestrator');
+
+      const result = await resumePipeline(jobId);
+
+      res.json({
+        success: result.success,
+        message: result.success ? "Pipeline resumed" : result.error
+      });
+
+    } catch (error: any) {
+      console.error("[Pipeline API] Resume error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // List pipeline jobs for current user
+  app.get("/api/pipeline/list", async (req: Request, res: Response) => {
+    try {
+      const { pipelineJobs } = await import('@shared/schema');
+      const { db } = await import('./db');
+      const { eq, desc } = await import('drizzle-orm');
+
+      let jobs;
+      if (req.isAuthenticated() && req.user) {
+        jobs = await db.select({
+          id: pipelineJobs.id,
+          status: pipelineJobs.status,
+          currentStage: pipelineJobs.currentStage,
+          originalWordCount: pipelineJobs.originalWordCount,
+          createdAt: pipelineJobs.createdAt
+        })
+        .from(pipelineJobs)
+        .where(eq(pipelineJobs.userId, req.user.id))
+        .orderBy(desc(pipelineJobs.createdAt))
+        .limit(20);
+      } else {
+        jobs = await db.select({
+          id: pipelineJobs.id,
+          status: pipelineJobs.status,
+          currentStage: pipelineJobs.currentStage,
+          originalWordCount: pipelineJobs.originalWordCount,
+          createdAt: pipelineJobs.createdAt
+        })
+        .from(pipelineJobs)
+        .orderBy(desc(pipelineJobs.createdAt))
+        .limit(10);
+      }
+
+      res.json({
+        success: true,
+        jobs
+      });
+
+    } catch (error: any) {
+      console.error("[Pipeline API] List error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
   return app;
 }
