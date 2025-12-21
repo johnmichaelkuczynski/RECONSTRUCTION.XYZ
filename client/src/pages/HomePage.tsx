@@ -4358,6 +4358,52 @@ Generated on: ${new Date().toLocaleString()}`;
                   </Button>
                 </div>
               </div>
+              
+              {/* Prominent Output Word Count Display */}
+              <div 
+                className="bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-700 rounded-lg p-3 mb-4"
+                data-testid="output-word-count-display"
+              >
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-sky-700 dark:text-sky-300">Input Words:</span>
+                      <span className="text-lg font-bold text-sky-900 dark:text-sky-100">
+                        {validatorInputText.trim().split(/\s+/).filter((w: string) => w).length.toLocaleString()}
+                      </span>
+                    </div>
+                    <span className="text-sky-400">|</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Output Words:</span>
+                      <span className="text-lg font-bold text-emerald-900 dark:text-emerald-100">
+                        {validatorOutput.trim().split(/\s+/).filter((w: string) => w).length.toLocaleString()}
+                      </span>
+                    </div>
+                    {refineWordCount && (
+                      <>
+                        <span className="text-sky-400">|</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Target:</span>
+                          <span className={`text-lg font-bold flex items-center gap-1 ${
+                            validatorOutput.trim().split(/\s+/).filter((w: string) => w).length >= parseInt(refineWordCount)
+                              ? 'text-green-600 dark:text-green-400'
+                              : 'text-red-600 dark:text-red-400'
+                          }`}>
+                            {parseInt(refineWordCount).toLocaleString()}
+                            {validatorOutput.trim().split(/\s+/).filter((w: string) => w).length >= parseInt(refineWordCount) ? (
+                              <CheckCircle className="w-4 h-4" />
+                            ) : (
+                              <AlertCircle className="w-4 h-4" />
+                            )}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <TextStats text={validatorOutput} showAiDetect={true} variant="compact" />
+                </div>
+              </div>
+              
               <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[600px] overflow-y-auto">
                 <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
                   {validatorOutput}
