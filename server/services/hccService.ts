@@ -458,7 +458,7 @@ DELTA_REPORT:
     }
     
     const isTruncated = isOutputTruncated(processedText);
-    const isTooShort = wordCount < minForAttempt * 0.8;
+    const isTooShort = wordCount < minForAttempt;
     
     if (!isTruncated && !isTooShort) {
       console.log(`[HCC] Chunk ${chunkIndex ?? '?'} completed: ${wordCount} words (target: ${targetForAttempt})`);

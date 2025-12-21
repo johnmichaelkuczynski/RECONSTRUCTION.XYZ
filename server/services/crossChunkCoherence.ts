@@ -300,7 +300,7 @@ Format your response as:
     
     const outputWordCount = countWords(outputText);
     const isTruncated = isOutputTruncated(outputText);
-    const isTooShort = outputWordCount < minForAttempt * 0.8;
+    const isTooShort = outputWordCount < minForAttempt;
     
     if (!isTruncated && !isTooShort) {
       console.log(`[CC] Chunk ${chunkIndex + 1}/${totalChunks} completed: ${outputWordCount} words (target: ${targetForAttempt}) in ${Date.now() - startTime}ms`);
