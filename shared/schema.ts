@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, jsonb, timestamp, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -515,11 +515,24 @@ export const reconstructionDocuments = pgTable("reconstruction_documents", {
   wordCount: integer("word_count").notNull(),
   globalSkeleton: jsonb("global_skeleton"), // Stores skeleton extracted in Pass 1
   finalOutput: text("final_output"),
+  finalWordCount: integer("final_word_count"), // Actual output word count
   validationResult: jsonb("validation_result"), // Stores Pass 3 validation results
   status: text("status").default("pending"), // pending, skeleton_extracted, chunks_processed, stitched, completed, failed
+  
+  // Length enforcement parameters
+  targetMinWords: integer("target_min_words"), // Minimum target from user instructions
+  targetMaxWords: integer("target_max_words"), // Maximum target from user instructions
+  targetMidWords: integer("target_mid_words"), // Calculated midpoint
+  lengthRatio: real("length_ratio"), // target_mid / input_words
+  lengthMode: text("length_mode"), // heavy_compression, moderate_compression, maintain, moderate_expansion, heavy_expansion
+  chunkTargetWords: integer("chunk_target_words"), // Per-chunk word target
+  numChunks: integer("num_chunks"), // Total number of chunks
+  currentChunk: integer("current_chunk").default(0), // Progress tracking
+  
   audienceParameters: text("audience_parameters"),
   rigorLevel: text("rigor_level"),
   customInstructions: text("custom_instructions"),
+  errorMessage: text("error_message"), // For failed jobs
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -539,16 +552,28 @@ export const reconstructionChunks = pgTable("reconstruction_chunks", {
   documentId: integer("document_id").references(() => reconstructionDocuments.id).notNull(),
   chunkIndex: integer("chunk_index").notNull(),
   chunkInputText: text("chunk_input_text").notNull(),
+  chunkInputWords: integer("chunk_input_words"), // Input word count
   chunkOutputText: text("chunk_output_text"),
+  actualWords: integer("actual_words"), // Actual output word count
+  
+  // Per-chunk length targets
+  targetWords: integer("target_words"),
+  minWords: integer("min_words"),
+  maxWords: integer("max_words"),
+  
   chunkDelta: jsonb("chunk_delta"), // New claims, terms used, conflicts detected
   conflictsDetected: jsonb("conflicts_detected"), // Specific conflicts with skeleton
-  status: text("status").default("pending"), // pending, processing, completed, conflict_flagged
+  status: text("status").default("pending"), // pending, processing, completed, conflict_flagged, retry, failed
+  retryCount: integer("retry_count").default(0),
+  errorMessage: text("error_message"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const insertReconstructionChunkSchema = createInsertSchema(reconstructionChunks).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
 });
 
 export type InsertReconstructionChunk = z.infer<typeof insertReconstructionChunkSchema>;

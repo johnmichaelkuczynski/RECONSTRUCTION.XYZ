@@ -374,19 +374,32 @@ export async function reconstructChunkConstrained(
   skeleton: GlobalSkeleton,
   contentAnalysis?: any,
   targetOutputWords?: number,
-  onCheckpoint?: (chunkIdx: number, output: string) => Promise<void>
+  onCheckpoint?: (chunkIdx: number, output: string) => Promise<void>,
+  lengthConfig?: LengthConfig
 ): Promise<{ outputText: string; delta: ChunkDelta }> {
   const startTime = Date.now();
   const inputWords = countWords(chunkText);
   
-  let targetWords = targetOutputWords || inputWords;
-  if (targetWords > MAX_CHUNK_OUTPUT_WORDS) {
-    console.log(`[CC] Chunk ${chunkIndex} target ${targetWords} exceeds max ${MAX_CHUNK_OUTPUT_WORDS}, capping`);
-    targetWords = MAX_CHUNK_OUTPUT_WORDS;
+  // Calculate per-chunk target based on length ratio if config is provided
+  let targetWords: number;
+  if (lengthConfig) {
+    // Apply the ratio to this specific chunk's input
+    targetWords = Math.round(inputWords * lengthConfig.lengthRatio);
+    console.log(`[CC] Chunk ${chunkIndex}: input=${inputWords}, ratio=${lengthConfig.lengthRatio.toFixed(2)}, target=${targetWords}`);
+  } else {
+    targetWords = targetOutputWords || inputWords;
   }
   
-  const minWords = Math.round(targetWords * 0.80);
-  const maxWords = Math.min(Math.round(targetWords * 1.15), MAX_CHUNK_OUTPUT_WORDS);
+  // Apply reasonable bounds
+  const absoluteMin = 50; // Never go below 50 words
+  const absoluteMax = 2000; // Never exceed 2000 words per chunk
+  targetWords = Math.max(absoluteMin, Math.min(targetWords, absoluteMax));
+  
+  const minWords = Math.round(targetWords * 0.85);
+  const maxWords = Math.round(targetWords * 1.15);
+  
+  // Get length guidance based on mode
+  const lengthGuidance = lengthConfig ? getLengthGuidanceTemplate(lengthConfig.lengthMode) : '';
   
   const relevantOutline = skeleton.outline.slice(
     Math.floor(chunkIndex * skeleton.outline.length / totalChunks),
@@ -422,7 +435,7 @@ HARD REQUIREMENTS:
 3. Your output MUST end with a complete sentence - no truncation allowed
 4. Count your words before submitting
 
-${attempt > 1 ? `RETRY ATTEMPT ${attempt}: Previous output was too short or truncated. YOU MUST produce ${minForAttempt}-${maxForAttempt} words this time.` : ''}
+${lengthGuidance ? `${lengthGuidance}\n` : ''}${attempt > 1 ? `RETRY ATTEMPT ${attempt}: Previous output was too short or truncated. YOU MUST produce ${minForAttempt}-${maxForAttempt} words this time.` : ''}
 *** END LENGTH REQUIREMENT ***
 
 GLOBAL SKELETON (you MUST maintain consistency with this):
@@ -640,36 +653,54 @@ export async function crossChunkReconstruct(
     };
   }
   
+  // Parse and calculate length configuration from custom instructions
+  const parsedLength = parseTargetLength(customInstructions);
+  const lengthConfig = calculateLengthConfig(
+    wordCount,
+    parsedLength?.targetMin ?? null,
+    parsedLength?.targetMax ?? null,
+    customInstructions
+  );
+  
   console.log(`[CC] Starting 3-pass reconstruction for ${wordCount} word document`);
+  console.log(`[CC] Length config: target=${lengthConfig.targetMin}-${lengthConfig.targetMax} words, ratio=${lengthConfig.lengthRatio.toFixed(2)}, mode=${lengthConfig.lengthMode}`);
   
   console.log("[CC] Pass 1: Extracting global skeleton...");
   const skeleton = await extractGlobalSkeleton(text, audienceParameters, rigorLevel);
   
   console.log("[CC] Chunking document...");
   const chunkBoundaries = smartChunk(text);
-  console.log(`[CC] Created ${chunkBoundaries.length} chunks`);
+  console.log(`[CC] Created ${chunkBoundaries.length} chunks, per-chunk target ~${lengthConfig.chunkTargetWords} words`);
   
   console.log("[CC] Pass 2: Constrained chunk reconstruction (sequential with delays)...");
   const processedChunks: { text: string; delta: ChunkDelta }[] = [];
+  let totalOutputWords = 0;
   
   for (let i = 0; i < chunkBoundaries.length; i++) {
-    const chunkInputWords = countWords(chunkBoundaries[i].text);
-    const targetOutputWords = Math.min(chunkInputWords, MAX_CHUNK_OUTPUT_WORDS);
-    
     const { outputText, delta } = await reconstructChunkConstrained(
       chunkBoundaries[i].text,
       i,
       chunkBoundaries.length,
       skeleton,
       contentAnalysis,
-      targetOutputWords
+      undefined, // Let lengthConfig determine target
+      undefined, // onCheckpoint
+      lengthConfig
     );
     processedChunks.push({ text: outputText, delta });
+    totalOutputWords += countWords(outputText);
     
     if (i < chunkBoundaries.length - 1) {
       console.log(`[CC] Waiting ${CHUNK_DELAY_MS}ms before next chunk...`);
       await delay(CHUNK_DELAY_MS);
     }
+  }
+  
+  console.log(`[CC] All chunks processed. Total output: ${totalOutputWords} words (target: ${lengthConfig.targetMin}-${lengthConfig.targetMax})`);
+  
+  // Check if we're significantly under target and log warning
+  if (totalOutputWords < lengthConfig.targetMin * 0.8) {
+    console.log(`[CC] WARNING: Output ${totalOutputWords} words is significantly below minimum target ${lengthConfig.targetMin}`);
   }
   
   console.log("[CC] Pass 3: Global consistency stitch...");
@@ -678,8 +709,11 @@ export async function crossChunkReconstruct(
   const totalTime = Date.now() - totalStartTime;
   console.log(`[CC] Complete 3-pass reconstruction finished in ${totalTime}ms`);
   
+  const finalWordCount = countWords(finalOutput);
+  
   const changesDescription = [
-    `Processed ${chunkBoundaries.length} chunks through 3-pass CC system.`,
+    `Processed ${chunkBoundaries.length} chunks through 3-pass CC system (${lengthConfig.lengthMode} mode).`,
+    `Input: ${wordCount} words → Output: ${finalWordCount} words (target: ${lengthConfig.targetMin}-${lengthConfig.targetMax}).`,
     `Skeleton: ${skeleton.outline.length} outline items, ${skeleton.keyTerms.length} key terms, ${skeleton.commitmentLedger.length} commitments.`,
     stitchResult.contradictions.length > 0 ? `Resolved ${stitchResult.contradictions.length} cross-chunk contradictions.` : "No contradictions detected.",
     stitchResult.terminologyDrift.length > 0 ? `Fixed ${stitchResult.terminologyDrift.length} terminology drift issues.` : "Terminology consistent across chunks.",
@@ -694,7 +728,7 @@ export async function crossChunkReconstruct(
       .flatMap(c => c.delta.newClaimsIntroduced)
       .slice(0, 5)
       .join("; ") || "Fresh examples and substantive content added to each chunk",
-    originalLimitationsIdentified: `Original document (${wordCount} words) divided into ${chunkBoundaries.length} chunks for coherent reconstruction`,
+    originalLimitationsIdentified: `Original document (${wordCount} words) processed with ${lengthConfig.lengthMode} mode (ratio: ${lengthConfig.lengthRatio.toFixed(2)})`,
     skeleton,
     stitchResult,
     chunksProcessed: chunkBoundaries.length
