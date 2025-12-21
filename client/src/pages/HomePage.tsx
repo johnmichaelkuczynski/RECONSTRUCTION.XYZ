@@ -659,8 +659,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
 
       const data = await response.json();
       if (data.success && data.output) {
-        setValidatorOutput(data.output);
-        setObjectionsInputText(data.output);
+        setValidatorOutput(stripMarkdown(data.output));
+        setObjectionsInputText(stripMarkdown(data.output));
         toast({
           title: "Validation Complete!",
           description: `Text validated using ${mode} mode. Reconstructed text has been loaded into the Objections input.`,
@@ -714,7 +714,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       
       const data = await response.json();
       if (data.success && data.output) {
-        setValidatorOutput(data.output);
+        setValidatorOutput(stripMarkdown(data.output));
         setRefineWordCount("");
         setRefineInstructions("");
         toast({ title: "Reconstruction refined successfully!" });
@@ -4741,7 +4741,7 @@ Generated on: ${new Date().toLocaleString()}`;
                       });
                       const data = await response.json();
                       if (data.success) {
-                        setValidatorOutput(data.output);
+                        setValidatorOutput(stripMarkdown(data.output));
                         toast({
                           title: "Reconstruction Complete",
                           description: redoCustomInstructions ? "Regenerated with your custom instructions" : "Regenerated with default settings",
