@@ -10,7 +10,10 @@ import {
 const anthropic = new Anthropic();
 
 const MAX_INPUT_WORDS = 20000;
-const TARGET_CHUNK_SIZE = 800;
+const TARGET_CHUNK_SIZE = 500;
+const MAX_CHUNK_OUTPUT_WORDS = 600;
+const CHUNK_DELAY_MS = 2000;
+const MAX_CHUNK_RETRIES = 2;
 
 interface ChunkBoundary {
   start: number;
@@ -142,21 +145,88 @@ Return ONLY valid JSON, no explanation.`;
   return skeleton;
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function isOutputTruncated(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  
+  const lastChar = trimmed[trimmed.length - 1];
+  const validEndings = ['.', '!', '?', '"', "'", ')', ']', '—', ':'];
+  
+  if (!validEndings.includes(lastChar)) {
+    const sentences = trimmed.match(/[.!?]["']?\s/g);
+    if (!sentences || sentences.length < 2) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(w => w.length > 0).length;
+}
+
 export async function reconstructChunkConstrained(
   chunkText: string,
   chunkIndex: number,
   totalChunks: number,
   skeleton: GlobalSkeleton,
-  contentAnalysis?: any
+  contentAnalysis?: any,
+  targetOutputWords?: number,
+  onCheckpoint?: (chunkIdx: number, output: string) => Promise<void>
 ): Promise<{ outputText: string; delta: ChunkDelta }> {
   const startTime = Date.now();
+  const inputWords = countWords(chunkText);
+  
+  let targetWords = targetOutputWords || inputWords;
+  if (targetWords > MAX_CHUNK_OUTPUT_WORDS) {
+    console.log(`[CC] Chunk ${chunkIndex} target ${targetWords} exceeds max ${MAX_CHUNK_OUTPUT_WORDS}, capping`);
+    targetWords = MAX_CHUNK_OUTPUT_WORDS;
+  }
+  
+  const minWords = Math.round(targetWords * 0.80);
+  const maxWords = Math.min(Math.round(targetWords * 1.15), MAX_CHUNK_OUTPUT_WORDS);
   
   const relevantOutline = skeleton.outline.slice(
     Math.floor(chunkIndex * skeleton.outline.length / totalChunks),
     Math.ceil((chunkIndex + 1) * skeleton.outline.length / totalChunks)
   );
   
-  const reconstructPrompt = `You are reconstructing chunk ${chunkIndex + 1} of ${totalChunks} of a document.
+  let attempt = 0;
+  let outputText = "";
+  let delta: ChunkDelta = {
+    newClaimsIntroduced: [],
+    termsUsed: [],
+    conflictsDetected: [],
+    ledgerAdditions: []
+  };
+  
+  while (attempt < MAX_CHUNK_RETRIES) {
+    attempt++;
+    
+    const targetForAttempt = attempt === 1 ? targetWords : Math.round(targetWords * 0.85);
+    const minForAttempt = Math.round(targetForAttempt * 0.75);
+    const maxForAttempt = Math.min(Math.round(targetForAttempt * 1.1), MAX_CHUNK_OUTPUT_WORDS);
+    
+    const reconstructPrompt = `You are reconstructing chunk ${chunkIndex + 1} of ${totalChunks} of a document.
+
+*** CRITICAL OUTPUT LENGTH REQUIREMENT ***
+- Input chunk length: ${inputWords} words
+- YOUR OUTPUT MUST BE: ${minForAttempt}-${maxForAttempt} words
+- Target: approximately ${targetForAttempt} words
+
+HARD REQUIREMENTS:
+1. Your output MUST be at least ${minForAttempt} words - shorter outputs FAIL
+2. Your output MUST NOT exceed ${maxForAttempt} words - longer outputs FAIL
+3. Your output MUST end with a complete sentence - no truncation allowed
+4. Count your words before submitting
+
+${attempt > 1 ? `RETRY ATTEMPT ${attempt}: Previous output was too short or truncated. YOU MUST produce ${minForAttempt}-${maxForAttempt} words this time.` : ''}
+*** END LENGTH REQUIREMENT ***
 
 GLOBAL SKELETON (you MUST maintain consistency with this):
 THESIS: ${skeleton.thesis}
@@ -184,6 +254,7 @@ INSTRUCTIONS:
 5. If you detect a conflict between the chunk content and the skeleton, FLAG IT explicitly
 6. Generate fresh examples and substantive content that DEVELOPS the position
 7. Output should be plain prose - no markdown headers, no bullet points
+8. COMPLETE YOUR OUTPUT - do not stop mid-sentence
 
 After the reconstruction, provide a DELTA REPORT as JSON:
 {
@@ -195,47 +266,59 @@ After the reconstruction, provide a DELTA REPORT as JSON:
 
 Format your response as:
 ===RECONSTRUCTION===
-[Your reconstructed text here - plain prose, no markdown]
+[Your reconstructed text here - plain prose, no markdown, ${minForAttempt}-${maxForAttempt} words]
 ===DELTA===
 [Your JSON delta report here]`;
 
-  const message = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
-    max_tokens: 6000,
-    temperature: 0.5,
-    messages: [{ role: "user", content: reconstructPrompt }]
-  });
+    const message = await anthropic.messages.create({
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 4000,
+      temperature: 0.5,
+      messages: [{ role: "user", content: reconstructPrompt }]
+    });
 
-  const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
-  
-  let outputText = "";
-  let delta: ChunkDelta = {
-    newClaimsIntroduced: [],
-    termsUsed: [],
-    conflictsDetected: [],
-    ledgerAdditions: []
-  };
-  
-  const reconstructionMatch = responseText.match(/===RECONSTRUCTION===\s*([\s\S]*?)(?:===DELTA===|$)/);
-  if (reconstructionMatch) {
-    outputText = reconstructionMatch[1].trim();
-  } else {
-    outputText = responseText.split('===DELTA===')[0].trim();
-  }
-  
-  const deltaMatch = responseText.match(/===DELTA===\s*([\s\S]*)/);
-  if (deltaMatch) {
-    try {
-      const jsonMatch = deltaMatch[1].match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        delta = JSON.parse(jsonMatch[0]);
+    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+    
+    const reconstructionMatch = responseText.match(/===RECONSTRUCTION===\s*([\s\S]*?)(?:===DELTA===|$)/);
+    if (reconstructionMatch) {
+      outputText = reconstructionMatch[1].trim();
+    } else {
+      outputText = responseText.split('===DELTA===')[0].trim();
+    }
+    
+    const deltaMatch = responseText.match(/===DELTA===\s*([\s\S]*)/);
+    if (deltaMatch) {
+      try {
+        const jsonMatch = deltaMatch[1].match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          delta = JSON.parse(jsonMatch[0]);
+        }
+      } catch (e) {
+        console.log(`[CC] Delta parsing failed for chunk ${chunkIndex}`);
       }
-    } catch (e) {
-      console.log(`[CC] Delta parsing failed for chunk ${chunkIndex}`);
+    }
+    
+    const outputWordCount = countWords(outputText);
+    const isTruncated = isOutputTruncated(outputText);
+    const isTooShort = outputWordCount < minForAttempt * 0.8;
+    
+    if (!isTruncated && !isTooShort) {
+      console.log(`[CC] Chunk ${chunkIndex + 1}/${totalChunks} completed: ${outputWordCount} words (target: ${targetForAttempt}) in ${Date.now() - startTime}ms`);
+      break;
+    }
+    
+    if (attempt < MAX_CHUNK_RETRIES) {
+      console.log(`[CC] Chunk ${chunkIndex + 1} validation failed (truncated: ${isTruncated}, short: ${isTooShort}, got ${outputWordCount} words). Retrying...`);
+      await delay(1000);
+    } else {
+      console.log(`[CC] Chunk ${chunkIndex + 1} max retries reached. Proceeding with ${outputWordCount} words.`);
     }
   }
   
-  console.log(`[CC] Chunk ${chunkIndex + 1}/${totalChunks} reconstructed in ${Date.now() - startTime}ms`);
+  if (onCheckpoint) {
+    await onCheckpoint(chunkIndex, outputText);
+  }
+  
   return { outputText, delta };
 }
 
@@ -383,18 +466,27 @@ export async function crossChunkReconstruct(
   const chunkBoundaries = smartChunk(text);
   console.log(`[CC] Created ${chunkBoundaries.length} chunks`);
   
-  console.log("[CC] Pass 2: Constrained chunk reconstruction...");
+  console.log("[CC] Pass 2: Constrained chunk reconstruction (sequential with delays)...");
   const processedChunks: { text: string; delta: ChunkDelta }[] = [];
   
   for (let i = 0; i < chunkBoundaries.length; i++) {
+    const chunkInputWords = countWords(chunkBoundaries[i].text);
+    const targetOutputWords = Math.min(chunkInputWords, MAX_CHUNK_OUTPUT_WORDS);
+    
     const { outputText, delta } = await reconstructChunkConstrained(
       chunkBoundaries[i].text,
       i,
       chunkBoundaries.length,
       skeleton,
-      contentAnalysis
+      contentAnalysis,
+      targetOutputWords
     );
     processedChunks.push({ text: outputText, delta });
+    
+    if (i < chunkBoundaries.length - 1) {
+      console.log(`[CC] Waiting ${CHUNK_DELAY_MS}ms before next chunk...`);
+      await delay(CHUNK_DELAY_MS);
+    }
   }
   
   console.log("[CC] Pass 3: Global consistency stitch...");

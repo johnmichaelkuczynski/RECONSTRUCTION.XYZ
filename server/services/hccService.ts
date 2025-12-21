@@ -13,8 +13,11 @@ const anthropic = new Anthropic();
 
 const VIRTUAL_PART_SIZE = 25000;
 const VIRTUAL_CHAPTER_SIZE = 5000;
-const TARGET_CHUNK_SIZE = 800;
+const TARGET_CHUNK_SIZE = 500;
 const MAX_HCC_WORDS = 100000;
+const MAX_CHUNK_OUTPUT_WORDS = 600;
+const CHUNK_DELAY_MS = 2000;
+const MAX_CHUNK_RETRIES = 2;
 
 export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(w => w.length > 0).length;
@@ -332,34 +335,81 @@ Return a compressed text summary (not JSON).`;
   return message.content[0].type === 'text' ? message.content[0].text : '';
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function isOutputTruncated(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  
+  const lastChar = trimmed[trimmed.length - 1];
+  const validEndings = ['.', '!', '?', '"', "'", ')', ']', '—', ':'];
+  
+  if (!validEndings.includes(lastChar)) {
+    const sentences = trimmed.match(/[.!?]["']?\s/g);
+    if (!sentences || sentences.length < 2) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 export async function processChunkWithLength(
   chunkText: string,
   chapterSkeleton: string,
   lengthConfig: LengthEnforcementConfig,
   chunkInputWords: number,
   totalChunks: number,
-  customInstructions: string | null
+  customInstructions: string | null,
+  chunkIndex?: number,
+  onCheckpoint?: (chunkIdx: number, output: string) => Promise<void>
 ): Promise<{ processedText: string; wordCount: number; delta: any }> {
   
-  const chunkTargetWords = Math.round(chunkInputWords * lengthConfig.lengthRatio);
-  const chunkMinWords = Math.round(chunkTargetWords * 0.85);
-  const chunkMaxWords = Math.round(chunkTargetWords * 1.15);
+  let chunkTargetWords = Math.round(chunkInputWords * lengthConfig.lengthRatio);
+  
+  if (chunkTargetWords > MAX_CHUNK_OUTPUT_WORDS) {
+    console.log(`[HCC] Chunk target ${chunkTargetWords} exceeds max ${MAX_CHUNK_OUTPUT_WORDS}, capping output`);
+    chunkTargetWords = MAX_CHUNK_OUTPUT_WORDS;
+  }
+  
+  const chunkMinWords = Math.round(chunkTargetWords * 0.80);
+  const chunkMaxWords = Math.min(Math.round(chunkTargetWords * 1.15), MAX_CHUNK_OUTPUT_WORDS);
   const lengthGuidance = getLengthGuidance(lengthConfig.lengthMode);
   
-  const prompt = `You are processing one chunk of a larger document. Maintain coherence with the established structure.
+  let attempt = 0;
+  let processedText = '';
+  let wordCount = 0;
+  let delta = { new_claims: [], terms_used: [], conflicts: [], cross_refs: [] };
+  
+  while (attempt < MAX_CHUNK_RETRIES) {
+    attempt++;
+    
+    const targetForAttempt = attempt === 1 ? chunkTargetWords : Math.round(chunkTargetWords * 0.85);
+    const minForAttempt = Math.round(targetForAttempt * 0.75);
+    const maxForAttempt = Math.min(Math.round(targetForAttempt * 1.1), MAX_CHUNK_OUTPUT_WORDS);
+    
+    const prompt = `You are processing one chunk of a larger document. Maintain coherence with the established structure.
 
 CHAPTER SKELETON (you must honor this):
 ${chapterSkeleton}
 
 ${customInstructions ? `ADDITIONAL INSTRUCTIONS:\n${customInstructions}\n` : ''}
 
-*** OUTPUT LENGTH REQUIREMENT ***
+*** CRITICAL OUTPUT LENGTH REQUIREMENT ***
 This chunk is part of a ${totalChunks}-chunk document.
 - Original chunk length: ${chunkInputWords} words
-- YOUR OUTPUT MUST BE: ${chunkMinWords}-${chunkMaxWords} words
-- Target: approximately ${chunkTargetWords} words
+- YOUR OUTPUT MUST BE: ${minForAttempt}-${maxForAttempt} words
+- Target: approximately ${targetForAttempt} words
 
-This is a hard requirement. If your output is outside this range, you have failed the task.
+HARD REQUIREMENTS:
+1. Your output MUST be at least ${minForAttempt} words - shorter outputs FAIL
+2. Your output MUST NOT exceed ${maxForAttempt} words - longer outputs FAIL
+3. Your output MUST end with a complete sentence - no truncation allowed
+4. Count your words before submitting
+
+${attempt > 1 ? `RETRY ATTEMPT ${attempt}: Previous output was too short or truncated. YOU MUST produce ${minForAttempt}-${maxForAttempt} words this time.` : ''}
 
 ${lengthGuidance}
 
@@ -370,6 +420,7 @@ CONSTRAINTS:
 - Use key terms EXACTLY as defined in the skeleton
 - If you detect a conflict between chunk content and skeleton, FLAG IT EXPLICITLY
 - Preserve the chunk's contribution to the argument
+- COMPLETE YOUR OUTPUT - do not stop mid-sentence
 
 CHUNK TEXT:
 ${chunkText}
@@ -377,37 +428,53 @@ ${chunkText}
 Provide your response in this format:
 
 PROCESSED_TEXT:
-[Your reconstructed chunk here, ${chunkMinWords}-${chunkMaxWords} words]
+[Your reconstructed chunk here, ${minForAttempt}-${maxForAttempt} words, ending with a complete sentence]
 
-WORD_COUNT: [number]
+WORD_COUNT: [exact number of words in your output]
 
 DELTA_REPORT:
 {"new_claims": [], "terms_used": [], "conflicts": [], "cross_refs": []}`;
 
-  const message = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
-    max_tokens: Math.max(4000, chunkMaxWords * 2),
-    temperature: 0.3,
-    messages: [{ role: "user", content: prompt }]
-  });
+    const message = await anthropic.messages.create({
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 4000,
+      temperature: 0.3,
+      messages: [{ role: "user", content: prompt }]
+    });
 
-  const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
-  
-  let processedText = '';
-  let wordCount = 0;
-  let delta = { new_claims: [], terms_used: [], conflicts: [], cross_refs: [] };
-  
-  const textMatch = responseText.match(/PROCESSED_TEXT:\s*([\s\S]*?)(?=WORD_COUNT:|DELTA_REPORT:|$)/i);
-  if (textMatch) {
-    processedText = cleanMarkdown(textMatch[1].trim());
-    wordCount = countWords(processedText);
+    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+    
+    const textMatch = responseText.match(/PROCESSED_TEXT:\s*([\s\S]*?)(?=WORD_COUNT:|DELTA_REPORT:|$)/i);
+    if (textMatch) {
+      processedText = cleanMarkdown(textMatch[1].trim());
+      wordCount = countWords(processedText);
+    }
+    
+    const deltaMatch = responseText.match(/DELTA_REPORT:\s*(\{[\s\S]*?\})/i);
+    if (deltaMatch) {
+      try {
+        delta = JSON.parse(deltaMatch[1]);
+      } catch (e) {}
+    }
+    
+    const isTruncated = isOutputTruncated(processedText);
+    const isTooShort = wordCount < minForAttempt * 0.8;
+    
+    if (!isTruncated && !isTooShort) {
+      console.log(`[HCC] Chunk ${chunkIndex ?? '?'} completed: ${wordCount} words (target: ${targetForAttempt})`);
+      break;
+    }
+    
+    if (attempt < MAX_CHUNK_RETRIES) {
+      console.log(`[HCC] Chunk ${chunkIndex ?? '?'} validation failed (truncated: ${isTruncated}, short: ${isTooShort}, got ${wordCount} words). Retrying...`);
+      await delay(1000);
+    } else {
+      console.log(`[HCC] Chunk ${chunkIndex ?? '?'} max retries reached. Proceeding with ${wordCount} words.`);
+    }
   }
   
-  const deltaMatch = responseText.match(/DELTA_REPORT:\s*(\{[\s\S]*?\})/i);
-  if (deltaMatch) {
-    try {
-      delta = JSON.parse(deltaMatch[1]);
-    } catch (e) {}
+  if (onCheckpoint && chunkIndex !== undefined) {
+    await onCheckpoint(chunkIndex, processedText);
   }
   
   return { processedText, wordCount, delta };
@@ -566,18 +633,27 @@ export async function processHccDocument(
         
         for (let k = 0; k < chapterChunks.length; k++) {
           const chunk = chapterChunks[k];
+          const rawTargetWords = Math.round(chunk.wordCount * lengthConfig.lengthRatio);
+          const cappedTargetWords = Math.min(rawTargetWords, MAX_CHUNK_OUTPUT_WORDS);
           
-          await db.insert(hccChunks).values({
+          const [chunkRecord] = await db.insert(hccChunks).values({
             chapterId,
             documentId,
             chunkIndex: k,
             chunkInputText: chunk.text,
             chunkInputWords: chunk.wordCount,
-            targetWords: Math.round(chunk.wordCount * lengthConfig.lengthRatio),
-            minWords: Math.round(chunk.wordCount * lengthConfig.lengthRatio * 0.85),
-            maxWords: Math.round(chunk.wordCount * lengthConfig.lengthRatio * 1.15),
+            targetWords: cappedTargetWords,
+            minWords: Math.round(cappedTargetWords * 0.80),
+            maxWords: Math.min(Math.round(cappedTargetWords * 1.15), MAX_CHUNK_OUTPUT_WORDS),
             status: 'processing'
-          });
+          }).returning();
+          
+          const checkpointCallback = async (chunkIdx: number, output: string) => {
+            await db.update(hccChunks)
+              .set({ chunkOutputText: output, chunkOutputWords: countWords(output), status: 'completed' })
+              .where(eq(hccChunks.id, chunkRecord.id));
+            console.log(`[HCC] Checkpoint saved for chunk ${chunkIdx}`);
+          };
           
           const result = await processChunkWithLength(
             chunk.text,
@@ -585,10 +661,17 @@ export async function processHccDocument(
             lengthConfig,
             chunk.wordCount,
             chapterChunks.length,
-            customInstructions
+            customInstructions,
+            k,
+            checkpointCallback
           );
           
           processedChunks.push({ text: result.processedText, delta: result.delta });
+          
+          if (k < chapterChunks.length - 1) {
+            console.log(`[HCC] Waiting ${CHUNK_DELAY_MS}ms before next chunk...`);
+            await delay(CHUNK_DELAY_MS);
+          }
         }
         
         const stitchedChapter = await stitchChapter(chapterSkeleton, processedChunks);
