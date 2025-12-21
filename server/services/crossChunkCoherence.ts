@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { 
   GlobalSkeleton, 
   ChunkDelta, 
@@ -8,12 +9,52 @@ import {
 } from "@shared/schema";
 
 const anthropic = new Anthropic();
+const openai = new OpenAI();
+
+const PRIMARY_MODEL = "claude-sonnet-4-5-20250929";
+const FALLBACK_MODEL = "gpt-4-turbo";
 
 const MAX_INPUT_WORDS = 20000;
 const TARGET_CHUNK_SIZE = 500;
 const MAX_CHUNK_OUTPUT_WORDS = 600;
 const CHUNK_DELAY_MS = 2000;
 const MAX_CHUNK_RETRIES = 2;
+
+async function callWithFallback(
+  prompt: string,
+  maxTokens: number,
+  temperature: number
+): Promise<string> {
+  try {
+    const message = await anthropic.messages.create({
+      model: PRIMARY_MODEL,
+      max_tokens: maxTokens,
+      temperature,
+      messages: [{ role: "user", content: prompt }]
+    });
+    return message.content[0].type === 'text' ? message.content[0].text : '';
+  } catch (error: any) {
+    const status = error?.status || error?.response?.status;
+    const isRetryable = status === 404 || status === 429 || status === 503 || status === 529;
+    
+    if (isRetryable) {
+      console.log(`[CC] Claude model error (${status}), falling back to GPT-4 Turbo`);
+      try {
+        const completion = await openai.chat.completions.create({
+          model: FALLBACK_MODEL,
+          max_tokens: maxTokens,
+          temperature,
+          messages: [{ role: "user", content: prompt }]
+        });
+        return completion.choices[0]?.message?.content || '';
+      } catch (fallbackError: any) {
+        console.error(`[CC] Fallback to GPT-4 also failed:`, fallbackError?.message);
+        throw fallbackError;
+      }
+    }
+    throw error;
+  }
+}
 
 interface ChunkBoundary {
   start: number;
@@ -111,14 +152,7 @@ RULES:
 
 Return ONLY valid JSON, no explanation.`;
 
-  const message = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 4000,
-    temperature: 0.2,
-    messages: [{ role: "user", content: skeletonPrompt }]
-  });
-
-  const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+  const responseText = await callWithFallback(skeletonPrompt, 4000, 0.2);
   
   let skeleton: GlobalSkeleton;
   try {
@@ -270,14 +304,7 @@ Format your response as:
 ===DELTA===
 [Your JSON delta report here]`;
 
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4000,
-      temperature: 0.5,
-      messages: [{ role: "user", content: reconstructPrompt }]
-    });
-
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+    const responseText = await callWithFallback(reconstructPrompt, 4000, 0.5);
     
     const reconstructionMatch = responseText.match(/===RECONSTRUCTION===\s*([\s\S]*?)(?:===DELTA===|$)/);
     if (reconstructionMatch) {
@@ -377,14 +404,7 @@ Return your response as:
 ===FINAL_OUTPUT===
 [The complete, coherent, repaired document - plain prose, no markdown formatting]`;
 
-  const message = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 12000,
-    temperature: 0.3,
-    messages: [{ role: "user", content: stitchPrompt }]
-  });
-
-  const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+  const responseText = await callWithFallback(stitchPrompt, 12000, 0.3);
   
   let stitchResult: StitchResult = {
     contradictions: [],

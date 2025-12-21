@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { db } from "../db";
 import { 
   hccDocuments, hccParts, hccChapters, hccChunks,
@@ -10,6 +11,10 @@ import { eq } from "drizzle-orm";
 import { callAIWithFailover, cleanMarkdown } from "./aiFailover";
 
 const anthropic = new Anthropic();
+const openai = new OpenAI();
+
+const PRIMARY_MODEL = "claude-sonnet-4-5-20250929";
+const FALLBACK_MODEL = "gpt-4-turbo";
 
 const VIRTUAL_PART_SIZE = 25000;
 const VIRTUAL_CHAPTER_SIZE = 5000;
@@ -18,6 +23,42 @@ const MAX_HCC_WORDS = 100000;
 const MAX_CHUNK_OUTPUT_WORDS = 600;
 const CHUNK_DELAY_MS = 2000;
 const MAX_CHUNK_RETRIES = 2;
+
+async function callWithFallback(
+  prompt: string,
+  maxTokens: number,
+  temperature: number
+): Promise<string> {
+  try {
+    const message = await anthropic.messages.create({
+      model: PRIMARY_MODEL,
+      max_tokens: maxTokens,
+      temperature,
+      messages: [{ role: "user", content: prompt }]
+    });
+    return message.content[0].type === 'text' ? message.content[0].text : '';
+  } catch (error: any) {
+    const status = error?.status || error?.response?.status;
+    const isRetryable = status === 404 || status === 429 || status === 503 || status === 529;
+    
+    if (isRetryable) {
+      console.log(`[HCC] Claude model error (${status}), falling back to GPT-4 Turbo`);
+      try {
+        const completion = await openai.chat.completions.create({
+          model: FALLBACK_MODEL,
+          max_tokens: maxTokens,
+          temperature,
+          messages: [{ role: "user", content: prompt }]
+        });
+        return completion.choices[0]?.message?.content || '';
+      } catch (fallbackError: any) {
+        console.error(`[HCC] Fallback to GPT-4 also failed:`, fallbackError?.message);
+        throw fallbackError;
+      }
+    }
+    throw error;
+  }
+}
 
 export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(w => w.length > 0).length;
@@ -285,14 +326,7 @@ RULES:
 
 Return ONLY valid JSON.`;
 
-  const message = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 4000,
-    temperature: 0.2,
-    messages: [{ role: "user", content: prompt }]
-  });
-
-  const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+  const responseText = await callWithFallback(prompt, 4000, 0.2);
   
   try {
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -325,14 +359,7 @@ ${JSON.stringify(skeleton, null, 2)}
 
 Return a compressed text summary (not JSON).`;
 
-  const message = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: targetTokens * 2,
-    temperature: 0.2,
-    messages: [{ role: "user", content: prompt }]
-  });
-
-  return message.content[0].type === 'text' ? message.content[0].text : '';
+  return await callWithFallback(prompt, targetTokens * 2, 0.2);
 }
 
 function delay(ms: number): Promise<void> {
@@ -435,14 +462,7 @@ WORD_COUNT: [exact number of words in your output]
 DELTA_REPORT:
 {"new_claims": [], "terms_used": [], "conflicts": [], "cross_refs": []}`;
 
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4000,
-      temperature: 0.3,
-      messages: [{ role: "user", content: prompt }]
-    });
-
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+    const responseText = await callWithFallback(prompt, 4000, 0.3);
     
     const textMatch = responseText.match(/PROCESSED_TEXT:\s*([\s\S]*?)(?=WORD_COUNT:|DELTA_REPORT:|$)/i);
     if (textMatch) {
@@ -512,14 +532,7 @@ CHAPTER_OUTPUT:
 CHAPTER_DELTA:
 {"netContribution": "summary", "newCommitments": [], "conflictsResolved": [], "conflictsFlagged": [], "crossReferences": []}`;
 
-  const message = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 16000,
-    temperature: 0.3,
-    messages: [{ role: "user", content: prompt }]
-  });
-
-  const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+  const responseText = await callWithFallback(prompt, 16000, 0.3);
   
   const outputMatch = responseText.match(/CHAPTER_OUTPUT:\s*([\s\S]*?)(?=CHAPTER_DELTA:|$)/i);
   const deltaMatch = responseText.match(/CHAPTER_DELTA:\s*(\{[\s\S]*?\})/i);
