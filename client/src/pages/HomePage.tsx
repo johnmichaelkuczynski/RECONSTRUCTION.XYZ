@@ -14,6 +14,7 @@ import { FictionAssessmentModal } from "@/components/FictionAssessmentModal";
 import { FictionAssessmentPopup } from "@/components/FictionAssessmentPopup";
 import { FictionComparisonModal } from "@/components/FictionComparisonModal";
 import { TextStats } from "@/components/TextStats";
+import { CCStreamingUI } from "@/components/CCStreamingUI";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -279,6 +280,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [showCoherenceChunkSelector, setShowCoherenceChunkSelector] = useState(false);
   const [coherenceStageProgress, setCoherenceStageProgress] = useState<string>("");
   const [detectedCoherenceType, setDetectedCoherenceType] = useState<string | null>(null);
+  const [coherenceUseStreaming, setCoherenceUseStreaming] = useState(false);
+  const [coherenceStreamingActive, setCoherenceStreamingActive] = useState(false);
   
   // Content Analysis State
   const [contentAnalysisResult, setContentAnalysisResult] = useState<{
@@ -5753,6 +5756,28 @@ Generated on: ${new Date().toLocaleString()}`;
             </div>
           ) : (
             /* STANDARD BUTTONS FOR NON-MATHEMATICAL TYPES - 7 BUTTONS */
+            <>
+            <div className="flex items-center gap-4 mb-4">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="streaming-mode"
+                  checked={coherenceUseStreaming}
+                  onCheckedChange={(checked) => {
+                    setCoherenceUseStreaming(checked);
+                    if (!checked) setCoherenceStreamingActive(false);
+                  }}
+                  data-testid="switch-streaming-mode"
+                />
+                <Label htmlFor="streaming-mode" className="text-sm text-gray-600 dark:text-gray-400">
+                  Streaming Mode (see chunks one-by-one)
+                </Label>
+              </div>
+              {coherenceUseStreaming && (
+                <Badge variant="outline" className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
+                  WebSocket Streaming
+                </Badge>
+              )}
+            </div>
             <div className="flex flex-wrap gap-2 mb-6">
               {/* 1. ANALYZE */}
               <Button
@@ -5885,7 +5910,48 @@ Generated on: ${new Date().toLocaleString()}`;
                 <Trash2 className="w-3 h-3 mr-1" />
                 Clear
               </Button>
+              
+              {/* STREAMING REWRITE BUTTON - only shown when streaming mode is enabled */}
+              {coherenceUseStreaming && (
+                <Button
+                  onClick={() => setCoherenceStreamingActive(true)}
+                  disabled={coherenceLoading || !coherenceInputText.trim() || coherenceStreamingActive}
+                  size="sm"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs border-2 border-indigo-400"
+                  data-testid="button-streaming-rewrite"
+                >
+                  <Zap className="w-3 h-3 mr-1" />
+                  STREAM REWRITE (LIVE)
+                </Button>
+              )}
             </div>
+            
+            {/* CC Streaming UI - shows chunks one by one */}
+            {coherenceStreamingActive && coherenceUseStreaming && (
+              <div className="mb-6">
+                <CCStreamingUI
+                  text={coherenceInputText}
+                  customInstructions={undefined}
+                  onComplete={(finalOutput, stats) => {
+                    setCoherenceRewrite(finalOutput);
+                    setCoherenceStreamingActive(false);
+                    toast({
+                      title: "Streaming Complete",
+                      description: `Processed ${stats.totalChunks} chunks: ${stats.inputWords.toLocaleString()} → ${stats.outputWords.toLocaleString()} words (${stats.lengthMode})`
+                    });
+                  }}
+                  onError={(error) => {
+                    setCoherenceStreamingActive(false);
+                    toast({
+                      title: "Streaming Failed",
+                      description: error,
+                      variant: "destructive"
+                    });
+                  }}
+                />
+              </div>
+            )}
+            </>
           )}
 
           {/* Stage Progress Indicator */}
