@@ -1220,11 +1220,11 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       return;
     }
     
-    // Check word limit (5000 words max)
-    if (wordCount > 5000) {
+    // Check word limit (20000 words max for Coherence Meter)
+    if (wordCount > 20000) {
       toast({
         title: "Text Too Long",
-        description: `Your text has ${wordCount} words. Maximum is 5000 words.`,
+        description: `Your text has ${wordCount.toLocaleString()} words. Maximum is 20,000 words for Coherence Meter.`,
         variant: "destructive"
       });
       return;
@@ -1362,11 +1362,11 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       return;
     }
     
-    // Check word limit (5000 words max)
-    if (wordCount > 5000) {
+    // Check word limit (20000 words max for Coherence Meter)
+    if (wordCount > 20000) {
       toast({
         title: "Text Too Long",
-        description: `Your text has ${wordCount} words. Maximum is 5000 words.`,
+        description: `Your text has ${wordCount.toLocaleString()} words. Maximum is 20,000 words.`,
         variant: "destructive"
       });
       return;
@@ -1461,10 +1461,10 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       return;
     }
     
-    if (wordCount > 5000) {
+    if (wordCount > 20000) {
       toast({
         title: "Text Too Long",
-        description: `Your text has ${wordCount} words. Maximum is 5000 words.`,
+        description: `Your text has ${wordCount.toLocaleString()} words. Maximum is 20,000 words.`,
         variant: "destructive"
       });
       return;
@@ -1595,8 +1595,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       toast({ title: "No Input Text", description: "Please enter text to rewrite", variant: "destructive" });
       return;
     }
-    if (wordCount > 5000) {
-      toast({ title: "Text Too Long", description: `Your text has ${wordCount} words. Maximum is 5000 words.`, variant: "destructive" });
+    if (wordCount > 20000) {
+      toast({ title: "Text Too Long", description: `Your text has ${wordCount.toLocaleString()} words. Maximum is 20,000 words.`, variant: "destructive" });
       return;
     }
 
@@ -1647,8 +1647,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       toast({ title: "No Input Text", description: "Please enter text to reconstruct", variant: "destructive" });
       return;
     }
-    if (wordCount > 5000) {
-      toast({ title: "Text Too Long", description: `Your text has ${wordCount} words. Maximum is 5000 words.`, variant: "destructive" });
+    if (wordCount > 20000) {
+      toast({ title: "Text Too Long", description: `Your text has ${wordCount.toLocaleString()} words. Maximum is 20,000 words.`, variant: "destructive" });
       return;
     }
 
@@ -1699,8 +1699,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       toast({ title: "No Input Text", description: "Please enter text to analyze and rewrite", variant: "destructive" });
       return;
     }
-    if (wordCount > 5000) {
-      toast({ title: "Text Too Long", description: `Your text has ${wordCount} words. Maximum is 5000 words.`, variant: "destructive" });
+    if (wordCount > 20000) {
+      toast({ title: "Text Too Long", description: `Your text has ${wordCount.toLocaleString()} words. Maximum is 20,000 words.`, variant: "destructive" });
       return;
     }
 
@@ -1766,8 +1766,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       toast({ title: "No Input Text", description: "Please enter text to analyze and reconstruct", variant: "destructive" });
       return;
     }
-    if (wordCount > 5000) {
-      toast({ title: "Text Too Long", description: `Your text has ${wordCount} words. Maximum is 5000 words.`, variant: "destructive" });
+    if (wordCount > 20000) {
+      toast({ title: "Text Too Long", description: `Your text has ${wordCount.toLocaleString()} words. Maximum is 20,000 words.`, variant: "destructive" });
       return;
     }
 
@@ -3694,33 +3694,38 @@ Generated on: ${new Date().toLocaleString()}`;
           <div className="mb-6">
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-semibold text-emerald-800 dark:text-emerald-200">
-                Input Text to Validate
+                Input Text (up to 100,000 words)
               </label>
-              <label className="cursor-pointer">
-                <input
-                  type="file"
-                  accept=".pdf,.doc,.docx,.txt"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFileUpload(file, setValidatorInputText);
-                  }}
-                  data-testid="input-validator-upload"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    (e.currentTarget.previousElementSibling as HTMLInputElement)?.click();
-                  }}
-                  data-testid="button-validator-upload"
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  Upload Document
-                </Button>
-              </label>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  Word Count: {validatorInputText.trim() ? validatorInputText.trim().split(/\s+/).length.toLocaleString() : 0} / 100,000
+                </span>
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileUpload(file, setValidatorInputText);
+                    }}
+                    data-testid="input-validator-upload"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      (e.currentTarget.previousElementSibling as HTMLInputElement)?.click();
+                    }}
+                    data-testid="button-validator-upload"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    Upload Document
+                  </Button>
+                </label>
+              </div>
             </div>
             <div
               className={`relative transition-all duration-200 ${
@@ -5111,11 +5116,11 @@ Generated on: ${new Date().toLocaleString()}`;
           <div className="mb-6">
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-semibold text-indigo-800 dark:text-indigo-200">
-                Input Text (5000 word limit)
+                Input Text (20,000 word limit)
               </label>
               <div className="flex items-center gap-3">
                 <span className="text-sm text-gray-600 dark:text-gray-400">
-                  Word Count: {coherenceInputText.trim() ? coherenceInputText.trim().split(/\s+/).length : 0} / 5000
+                  Word Count: {coherenceInputText.trim() ? coherenceInputText.trim().split(/\s+/).length.toLocaleString() : 0} / 20,000
                 </span>
                 <label className="cursor-pointer">
                   <input
