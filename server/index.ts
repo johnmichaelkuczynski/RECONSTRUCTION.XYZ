@@ -87,6 +87,15 @@ app.use((req, res, next) => {
   // Create HTTP server
   const server = createServer(app);
 
+  // Set up WebSocket server for CC streaming
+  setupWebSocketServer(server);
+  console.log('[CC-WS] WebSocket server initialized');
+
+  // Schedule cleanup of old completed jobs (every hour)
+  setInterval(() => {
+    cleanupOldJobs().catch(err => console.error('[CC-WS] Cleanup failed:', err));
+  }, 60 * 60 * 1000);
+
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes

@@ -8,7 +8,8 @@ interface TextStatsProps {
   text: string;
   label?: string;
   showAiDetect?: boolean;
-  variant?: "default" | "compact";
+  variant?: "default" | "compact" | "prominent";
+  targetWords?: number;
 }
 
 interface AIDetectionResult {
@@ -18,7 +19,7 @@ interface AIDetectionResult {
   confidence: number;
 }
 
-export function TextStats({ text, label, showAiDetect = true, variant = "default" }: TextStatsProps) {
+export function TextStats({ text, label, showAiDetect = true, variant = "default", targetWords }: TextStatsProps) {
   const [aiResult, setAiResult] = useState<AIDetectionResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +27,8 @@ export function TextStats({ text, label, showAiDetect = true, variant = "default
 
   const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
   const charCount = text.length;
+  
+  const meetsTarget = targetWords ? wordCount >= targetWords : null;
 
   const handleAiDetect = async () => {
     if (text.trim().length < 50) {
@@ -72,6 +75,85 @@ export function TextStats({ text, label, showAiDetect = true, variant = "default
     if (score >= 40) return "bg-yellow-500 text-black";
     return "bg-green-500 text-white";
   };
+
+  if (variant === "prominent") {
+    return (
+      <div 
+        className="bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-700 rounded-lg p-3 mb-4"
+        data-testid="text-stats-prominent"
+      >
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-lg font-bold text-sky-900 dark:text-sky-100">
+              {wordCount.toLocaleString()} words
+            </span>
+            <span className="text-sm text-sky-600 dark:text-sky-400">
+              ({charCount.toLocaleString()} chars)
+            </span>
+          </div>
+          
+          {targetWords && (
+            <div className="flex items-center gap-2">
+              <span 
+                className={`text-lg font-bold flex items-center gap-1 ${
+                  meetsTarget 
+                    ? 'text-green-600 dark:text-green-400' 
+                    : 'text-red-600 dark:text-red-400'
+                }`}
+              >
+                {meetsTarget ? (
+                  <>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Target Met
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-5 h-5" />
+                    Below Target
+                  </>
+                )}
+              </span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                (Target: {targetWords.toLocaleString()})
+              </span>
+            </div>
+          )}
+          
+          {showAiDetect && (
+            <div className="flex items-center gap-2">
+              {loading ? (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Checking AI...</span>
+                </div>
+              ) : aiResult ? (
+                <Badge 
+                  className={`${getAiScoreColor(aiResult.aiScore)} flex items-center gap-1`}
+                  data-testid="badge-ai-score-prominent"
+                >
+                  <Bot className="w-4 h-4" />
+                  {aiResult.aiScore}% AI
+                </Badge>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAiDetect}
+                  disabled={text.trim().length < 50}
+                  data-testid="button-ai-detect-prominent"
+                >
+                  <Bot className="w-4 h-4 mr-1" />
+                  Check AI
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (variant === "compact") {
     return (

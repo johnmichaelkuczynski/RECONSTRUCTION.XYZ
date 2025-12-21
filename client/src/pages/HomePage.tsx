@@ -3935,16 +3935,21 @@ Generated on: ${new Date().toLocaleString()}`;
                             Copy
                           </Button>
                         </div>
+                        {validatorBatchResults.filter(r => r.success)[0]?.output && (
+                          <div className="px-3 pt-3">
+                            <TextStats 
+                              text={validatorBatchResults.filter(r => r.success)[0]?.output || ''} 
+                              showAiDetect={true} 
+                              variant="prominent"
+                              targetWords={parseInt(refineReconstructionWordCount) || undefined}
+                            />
+                          </div>
+                        )}
                         <div className="p-3 max-h-64 overflow-auto">
                           <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">
                             {validatorBatchResults.filter(r => r.success)[0]?.output || "(No reconstruction output)"}
                           </pre>
                         </div>
-                        {validatorBatchResults.filter(r => r.success)[0]?.output && (
-                          <div className="px-3 pb-2">
-                            <TextStats text={validatorBatchResults.filter(r => r.success)[0]?.output || ''} showAiDetect={true} variant="compact" />
-                          </div>
-                        )}
                         
                         {/* Refine Reconstruction Section */}
                         {validatorBatchResults.filter(r => r.success)[0]?.output && (
@@ -4064,13 +4069,23 @@ Generated on: ${new Date().toLocaleString()}`;
                             Copy Final Version
                           </Button>
                         </div>
+                        {fullSuiteObjectionProofOutput && (
+                          <div className="px-3 pt-3">
+                            <TextStats 
+                              text={fullSuiteObjectionProofOutput} 
+                              showAiDetect={true} 
+                              variant="prominent"
+                              targetWords={parseInt(refineReconstructionWordCount) || undefined}
+                            />
+                          </div>
+                        )}
                         <div className="p-3 max-h-96 overflow-auto">
                           <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">
                             {fullSuiteObjectionProofOutput || "(No objection-proof output)"}
                           </pre>
                         </div>
                         {fullSuiteObjectionProofOutput && (
-                          <div className="px-3 pb-2">
+                          <div className="px-3 pb-2 hidden">
                             <TextStats text={fullSuiteObjectionProofOutput} showAiDetect={true} variant="compact" />
                           </div>
                         )}
@@ -4521,12 +4536,17 @@ Generated on: ${new Date().toLocaleString()}`;
                     
                     {result.success ? (
                       <>
+                        <TextStats 
+                          text={result.output || ''} 
+                          showAiDetect={true} 
+                          variant="prominent"
+                          targetWords={parseInt(refineReconstructionWordCount) || undefined}
+                        />
                         <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[400px] overflow-y-auto">
                           <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
                             {result.output}
                           </pre>
                         </div>
-                        <TextStats text={result.output || ''} showAiDetect={true} variant="compact" />
                       </>
                     ) : (
                       <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded border border-red-200 dark:border-red-700">
@@ -4564,12 +4584,16 @@ Generated on: ${new Date().toLocaleString()}`;
                   <CopyButton text={objectionsOutput} />
                 </div>
               </div>
+              <TextStats 
+                text={objectionsOutput} 
+                showAiDetect={true} 
+                variant="prominent"
+              />
               <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[700px] overflow-y-auto">
                 <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
                   {objectionsOutput}
                 </pre>
               </div>
-              <TextStats text={objectionsOutput} showAiDetect={true} variant="compact" />
             </div>
           )}
 
