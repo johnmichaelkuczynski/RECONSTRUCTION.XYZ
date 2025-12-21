@@ -4,6 +4,7 @@ import { createServer } from "http";
 import { setupVite, serveStatic, log } from "./vite";
 import { registerRoutes } from "./routes";
 import { validateEnvironmentOrExit } from "./utils/envValidation";
+import { setupWebSocketServer, cleanupOldJobs } from "./services/ccStreamingService";
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
