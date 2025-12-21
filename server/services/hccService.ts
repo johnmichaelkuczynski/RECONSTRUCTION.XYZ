@@ -286,7 +286,7 @@ RULES:
 Return ONLY valid JSON.`;
 
   const message = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
+    model: "claude-sonnet-4-20250514",
     max_tokens: 4000,
     temperature: 0.2,
     messages: [{ role: "user", content: prompt }]
@@ -326,7 +326,7 @@ ${JSON.stringify(skeleton, null, 2)}
 Return a compressed text summary (not JSON).`;
 
   const message = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
+    model: "claude-sonnet-4-20250514",
     max_tokens: targetTokens * 2,
     temperature: 0.2,
     messages: [{ role: "user", content: prompt }]
@@ -436,7 +436,7 @@ DELTA_REPORT:
 {"new_claims": [], "terms_used": [], "conflicts": [], "cross_refs": []}`;
 
     const message = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 4000,
       temperature: 0.3,
       messages: [{ role: "user", content: prompt }]
@@ -513,7 +513,7 @@ CHAPTER_DELTA:
 {"netContribution": "summary", "newCommitments": [], "conflictsResolved": [], "conflictsFlagged": [], "crossReferences": []}`;
 
   const message = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
+    model: "claude-sonnet-4-20250514",
     max_tokens: 16000,
     temperature: 0.3,
     messages: [{ role: "user", content: prompt }]

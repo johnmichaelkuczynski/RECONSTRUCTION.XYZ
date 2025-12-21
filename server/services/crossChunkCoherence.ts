@@ -112,7 +112,7 @@ RULES:
 Return ONLY valid JSON, no explanation.`;
 
   const message = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
+    model: "claude-sonnet-4-20250514",
     max_tokens: 4000,
     temperature: 0.2,
     messages: [{ role: "user", content: skeletonPrompt }]
@@ -271,7 +271,7 @@ Format your response as:
 [Your JSON delta report here]`;
 
     const message = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 4000,
       temperature: 0.5,
       messages: [{ role: "user", content: reconstructPrompt }]
@@ -378,7 +378,7 @@ Return your response as:
 [The complete, coherent, repaired document - plain prose, no markdown formatting]`;
 
   const message = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
+    model: "claude-sonnet-4-20250514",
     max_tokens: 12000,
     temperature: 0.3,
     messages: [{ role: "user", content: stitchPrompt }]
