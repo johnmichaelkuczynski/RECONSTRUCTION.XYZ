@@ -16,7 +16,6 @@ const FALLBACK_MODEL = "gpt-4-turbo";
 
 const MAX_INPUT_WORDS = 20000;
 const TARGET_CHUNK_SIZE = 500;
-const MAX_CHUNK_OUTPUT_WORDS = 600;
 const CHUNK_DELAY_MS = 2000;
 const MAX_CHUNK_RETRIES = 2;
 
@@ -60,10 +59,26 @@ export function parseTargetLength(customInstructions: string | null | undefined)
   // Matches: "1200-1600 words", "1,200 to 1,600 words", "1.5k-2k words"
   const rangeMatch = text.match(/([\d,]+(?:\.\d+)?k?)\s*(?:-|–|—|\bto\b)\s*([\d,]+(?:\.\d+)?k?)\s*words?/i);
   if (rangeMatch) {
-    return {
-      targetMin: parseWordCount(rangeMatch[1]),
-      targetMax: parseWordCount(rangeMatch[2])
-    };
+    const min = parseWordCount(rangeMatch[1]);
+    const max = parseWordCount(rangeMatch[2]);
+    console.log(`[CC] Parsed target range: ${min}-${max} words from "${rangeMatch[0]}"`);
+    return { targetMin: min, targetMax: max };
+  }
+  
+  // "shorten to X words" / "reduce to X words" pattern - CRITICAL for compression targets
+  const shortenMatch = text.match(/(?:shorten|reduce|compress|cut|trim)\s*(?:to|down\s*to)?\s*([\d,]+(?:\.\d+)?k?)\s*words?/i);
+  if (shortenMatch) {
+    const target = parseWordCount(shortenMatch[1]);
+    console.log(`[CC] Parsed shorten target: ${target} words from "${shortenMatch[0]}"`);
+    return { targetMin: Math.round(target * 0.9), targetMax: Math.round(target * 1.1) };
+  }
+  
+  // "expand to X words" / "enrich to X words" pattern
+  const expandMatch = text.match(/(?:expand|enrich|elaborate)\s*(?:to)?\s*([\d,]+(?:\.\d+)?k?)\s*words?/i);
+  if (expandMatch) {
+    const target = parseWordCount(expandMatch[1]);
+    console.log(`[CC] Parsed expand target: ${target} words from "${expandMatch[0]}"`);
+    return { targetMin: Math.round(target * 0.9), targetMax: Math.round(target * 1.1) };
   }
   
   // "at least X words" pattern
@@ -449,7 +464,7 @@ export async function reconstructChunkConstrained(
     
     const targetForAttempt = attempt === 1 ? targetWords : Math.round(targetWords * 0.85);
     const minForAttempt = Math.round(targetForAttempt * 0.75);
-    const maxForAttempt = Math.min(Math.round(targetForAttempt * 1.1), MAX_CHUNK_OUTPUT_WORDS);
+    const maxForAttempt = Math.round(targetForAttempt * 1.2);
     
     const reconstructPrompt = `You are reconstructing chunk ${chunkIndex + 1} of ${totalChunks} of a document.
 

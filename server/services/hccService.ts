@@ -20,7 +20,6 @@ const VIRTUAL_PART_SIZE = 25000;
 const VIRTUAL_CHAPTER_SIZE = 5000;
 const TARGET_CHUNK_SIZE = 500;
 const MAX_HCC_WORDS = 100000;
-const MAX_CHUNK_OUTPUT_WORDS = 600;
 const CHUNK_DELAY_MS = 2000;
 const MAX_CHUNK_RETRIES = 2;
 
@@ -69,34 +68,73 @@ export function parseTargetLength(customInstructions: string | null): { targetMi
   
   const text = customInstructions.toLowerCase();
   
-  const rangeMatch = text.match(/(\d+)\s*[-–—to]+\s*(\d+)\s*words?/i);
+  const parseNumber = (numStr: string): number => {
+    const cleaned = numStr.replace(/,/g, '').trim();
+    if (cleaned.endsWith('k')) {
+      return parseFloat(cleaned.slice(0, -1)) * 1000;
+    }
+    return parseInt(cleaned);
+  };
+  
+  const rangeMatch = text.match(/(\d[\d,]*k?)\s*[-–—to]+\s*(\d[\d,]*k?)\s*words?/i);
   if (rangeMatch) {
-    return { targetMin: parseInt(rangeMatch[1]), targetMax: parseInt(rangeMatch[2]) };
+    const min = parseNumber(rangeMatch[1]);
+    const max = parseNumber(rangeMatch[2]);
+    console.log(`[HCC] Parsed target range: ${min}-${max} words from "${rangeMatch[0]}"`);
+    return { targetMin: min, targetMax: max };
   }
   
-  const atLeastMatch = text.match(/at\s*least\s*(\d+)\s*words?/i);
-  const noMoreMatch = text.match(/no\s*more\s*than\s*(\d+)\s*words?/i);
+  const shortenMatch = text.match(/(?:shorten|reduce|compress|cut|trim)\s*(?:to|down\s*to)?\s*(\d[\d,]*k?)\s*words?/i);
+  if (shortenMatch) {
+    const target = parseNumber(shortenMatch[1]);
+    console.log(`[HCC] Parsed shorten target: ${target} words from "${shortenMatch[0]}"`);
+    return { targetMin: Math.round(target * 0.9), targetMax: Math.round(target * 1.1) };
+  }
+  
+  const expandMatch = text.match(/(?:expand|enrich|elaborate)\s*(?:to)?\s*(\d[\d,]*k?)\s*words?/i);
+  if (expandMatch) {
+    const target = parseNumber(expandMatch[1]);
+    console.log(`[HCC] Parsed expand target: ${target} words from "${expandMatch[0]}"`);
+    return { targetMin: Math.round(target * 0.9), targetMax: Math.round(target * 1.1) };
+  }
+  
+  const atLeastMatch = text.match(/at\s*least\s*(\d[\d,]*k?)\s*words?/i);
+  const noMoreMatch = text.match(/no\s*more\s*than\s*(\d[\d,]*k?)\s*words?/i);
   if (atLeastMatch && noMoreMatch) {
-    return { targetMin: parseInt(atLeastMatch[1]), targetMax: parseInt(noMoreMatch[1]) };
+    const min = parseNumber(atLeastMatch[1]);
+    const max = parseNumber(noMoreMatch[1]);
+    console.log(`[HCC] Parsed at-least/no-more: ${min}-${max} words`);
+    return { targetMin: min, targetMax: max };
   }
   
-  const approxMatch = text.match(/(?:approximately|around|about|roughly)\s*(\d+)\s*words?/i);
+  const noLessMatch = text.match(/no\s*(?:less|fewer)\s*(?:than)?\s*(\d[\d,]*k?)\s*words?/i);
+  if (noLessMatch) {
+    const min = parseNumber(noLessMatch[1]);
+    console.log(`[HCC] Parsed no-less-than: ${min}+ words from "${noLessMatch[0]}"`);
+    return { targetMin: min, targetMax: Math.round(min * 1.2) };
+  }
+  
+  const approxMatch = text.match(/(?:approximately|around|about|roughly)\s*(\d[\d,]*k?)\s*words?/i);
   if (approxMatch) {
-    const target = parseInt(approxMatch[1]);
+    const target = parseNumber(approxMatch[1]);
+    console.log(`[HCC] Parsed approx target: ${target} words from "${approxMatch[0]}"`);
     return { targetMin: Math.round(target * 0.9), targetMax: Math.round(target * 1.1) };
   }
   
-  const exactMatch = text.match(/(\d+)\s*words?/i);
+  const exactMatch = text.match(/(\d[\d,]*k?)\s*words?(?:\s*(?:\(|\[|no\s*less))?/i);
   if (exactMatch) {
-    const target = parseInt(exactMatch[1]);
+    const target = parseNumber(exactMatch[1]);
+    console.log(`[HCC] Parsed exact target: ${target} words from "${exactMatch[0]}"`);
     return { targetMin: Math.round(target * 0.9), targetMax: Math.round(target * 1.1) };
   }
   
-  if (/expand|enrich|elaborate|develop/i.test(text)) {
+  if (/expand|enrich|elaborate|develop/i.test(text) && !/\d/.test(text)) {
+    console.log(`[HCC] Parsed expansion mode (no specific number)`);
     return { targetMin: -1, targetMax: -1 };
   }
   
-  if (/compress|summarize|shorten|condense/i.test(text)) {
+  if (/compress|summarize|shorten|condense/i.test(text) && !/\d/.test(text)) {
+    console.log(`[HCC] Parsed compression mode (no specific number)`);
     return { targetMin: -2, targetMax: -2 };
   }
   
@@ -394,16 +432,12 @@ export async function processChunkWithLength(
   onCheckpoint?: (chunkIdx: number, output: string) => Promise<void>
 ): Promise<{ processedText: string; wordCount: number; delta: any }> {
   
-  let chunkTargetWords = Math.round(chunkInputWords * lengthConfig.lengthRatio);
-  
-  if (chunkTargetWords > MAX_CHUNK_OUTPUT_WORDS) {
-    console.log(`[HCC] Chunk target ${chunkTargetWords} exceeds max ${MAX_CHUNK_OUTPUT_WORDS}, capping output`);
-    chunkTargetWords = MAX_CHUNK_OUTPUT_WORDS;
-  }
-  
+  const chunkTargetWords = Math.round(chunkInputWords * lengthConfig.lengthRatio);
   const chunkMinWords = Math.round(chunkTargetWords * 0.80);
-  const chunkMaxWords = Math.min(Math.round(chunkTargetWords * 1.15), MAX_CHUNK_OUTPUT_WORDS);
+  const chunkMaxWords = Math.round(chunkTargetWords * 1.20);
   const lengthGuidance = getLengthGuidance(lengthConfig.lengthMode);
+  
+  console.log(`[HCC] Chunk ${chunkIndex ?? 0}: Input=${chunkInputWords} words, Target=${chunkTargetWords} words (min=${chunkMinWords}, max=${chunkMaxWords}), Ratio=${lengthConfig.lengthRatio.toFixed(2)}`);
   
   let attempt = 0;
   let processedText = '';
@@ -415,7 +449,7 @@ export async function processChunkWithLength(
     
     const targetForAttempt = attempt === 1 ? chunkTargetWords : Math.round(chunkTargetWords * 0.85);
     const minForAttempt = Math.round(targetForAttempt * 0.75);
-    const maxForAttempt = Math.min(Math.round(targetForAttempt * 1.1), MAX_CHUNK_OUTPUT_WORDS);
+    const maxForAttempt = Math.round(targetForAttempt * 1.2);
     
     const prompt = `You are processing one chunk of a larger document. Maintain coherence with the established structure.
 
@@ -560,6 +594,7 @@ export async function processHccDocument(
   customInstructions: string | null,
   userId?: number
 ): Promise<{ success: boolean; output: string; documentId?: number; error?: string }> {
+  const startTime = Date.now();
   const wordCount = countWords(text);
   
   if (wordCount > MAX_HCC_WORDS) {
@@ -574,7 +609,13 @@ export async function processHccDocument(
     customInstructions
   );
   
-  console.log(`[HCC] Processing ${wordCount} words with length config:`, lengthConfig);
+  console.log(`[HCC] ═══════════════════════════════════════════════════════════════`);
+  console.log(`[HCC] Starting HCC Processing`);
+  console.log(`[HCC] Input: ${wordCount.toLocaleString()} words`);
+  console.log(`[HCC] Target: ${lengthConfig.targetMinWords.toLocaleString()}-${lengthConfig.targetMaxWords.toLocaleString()} words (mid: ${lengthConfig.targetMidWords.toLocaleString()})`);
+  console.log(`[HCC] Ratio: ${lengthConfig.lengthRatio.toFixed(3)} (${lengthConfig.lengthMode})`);
+  console.log(`[HCC] Custom Instructions: ${customInstructions ? customInstructions.slice(0, 100) + '...' : 'None'}`);
+  console.log(`[HCC] ═══════════════════════════════════════════════════════════════`);
   
   const structure = detectDocumentStructure(text);
   console.log(`[HCC] Detected structure: ${structure.parts.length} parts`);
@@ -646,8 +687,7 @@ export async function processHccDocument(
         
         for (let k = 0; k < chapterChunks.length; k++) {
           const chunk = chapterChunks[k];
-          const rawTargetWords = Math.round(chunk.wordCount * lengthConfig.lengthRatio);
-          const cappedTargetWords = Math.min(rawTargetWords, MAX_CHUNK_OUTPUT_WORDS);
+          const chunkTargetWords = Math.round(chunk.wordCount * lengthConfig.lengthRatio);
           
           const [chunkRecord] = await db.insert(hccChunks).values({
             chapterId,
@@ -655,9 +695,9 @@ export async function processHccDocument(
             chunkIndex: k,
             chunkInputText: chunk.text,
             chunkInputWords: chunk.wordCount,
-            targetWords: cappedTargetWords,
-            minWords: Math.round(cappedTargetWords * 0.80),
-            maxWords: Math.min(Math.round(cappedTargetWords * 1.15), MAX_CHUNK_OUTPUT_WORDS),
+            targetWords: chunkTargetWords,
+            minWords: Math.round(chunkTargetWords * 0.80),
+            maxWords: Math.round(chunkTargetWords * 1.20),
             status: 'processing'
           }).returning();
           
@@ -707,14 +747,30 @@ export async function processHccDocument(
     }
     
     const finalOutput = allChapterOutputs.join('\n\n');
+    const finalWordCount = countWords(finalOutput);
+    const elapsedMs = Date.now() - startTime;
+    const elapsedMinutes = (elapsedMs / 60000).toFixed(1);
     
     await db.update(hccDocuments)
       .set({ finalOutput, status: 'complete' })
       .where(eq(hccDocuments.id, documentId));
     
+    console.log(`[HCC] ═══════════════════════════════════════════════════════════════`);
+    console.log(`[HCC] HCC Processing Complete`);
+    console.log(`[HCC] Input: ${wordCount.toLocaleString()} words`);
+    console.log(`[HCC] Output: ${finalWordCount.toLocaleString()} words`);
+    console.log(`[HCC] Target: ${lengthConfig.targetMinWords.toLocaleString()}-${lengthConfig.targetMaxWords.toLocaleString()} words`);
+    console.log(`[HCC] Ratio achieved: ${(finalWordCount / wordCount).toFixed(3)} (target: ${lengthConfig.lengthRatio.toFixed(3)})`);
+    console.log(`[HCC] Processing time: ${elapsedMinutes} minutes (${elapsedMs.toLocaleString()} ms)`);
+    console.log(`[HCC] Parts processed: ${structure.parts.length}`);
+    console.log(`[HCC] ═══════════════════════════════════════════════════════════════`);
+    
     return { success: true, output: finalOutput, documentId };
     
   } catch (error: any) {
+    const elapsedMs = Date.now() - startTime;
+    console.log(`[HCC] Processing FAILED after ${(elapsedMs / 60000).toFixed(1)} minutes: ${error.message}`);
+    
     await db.update(hccDocuments)
       .set({ status: 'failed' })
       .where(eq(hccDocuments.id, documentId));
