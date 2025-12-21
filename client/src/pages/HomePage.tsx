@@ -3917,6 +3917,9 @@ Generated on: ${new Date().toLocaleString()}`;
                           <div className="flex items-center gap-2">
                             <RefreshCw className="w-4 h-4 text-emerald-600" />
                             <span className="font-medium text-emerald-800 dark:text-emerald-200">1. Reconstruction</span>
+                            <Badge variant="outline" className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 border-blue-400">
+                              {(validatorBatchResults.filter(r => r.success)[0]?.output || '').trim().split(/\s+/).filter(w => w).length.toLocaleString()} words
+                            </Badge>
                           </div>
                           <Button
                             onClick={() => {
@@ -4485,10 +4488,15 @@ Generated on: ${new Date().toLocaleString()}`;
                           {modeLabels[result.mode] || result.mode.toUpperCase()}
                         </Badge>
                         {result.success ? (
-                          <Badge variant="outline" className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 border-green-400">
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                            Success
-                          </Badge>
+                          <>
+                            <Badge variant="outline" className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 border-green-400">
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                              Success
+                            </Badge>
+                            <Badge variant="outline" className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 border-blue-400">
+                              {(result.output || '').trim().split(/\s+/).filter(w => w).length.toLocaleString()} words
+                            </Badge>
+                          </>
                         ) : (
                           <Badge variant="outline" className="bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 border-red-400">
                             <AlertCircle className="w-3 h-3 mr-1" />
