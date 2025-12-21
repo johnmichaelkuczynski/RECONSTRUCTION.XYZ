@@ -775,3 +775,260 @@ export interface LengthEnforcementConfig {
   lengthRatio: number;
   lengthMode: 'heavy_compression' | 'moderate_compression' | 'maintain' | 'moderate_expansion' | 'heavy_expansion';
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FULL PIPELINE CROSS-CHUNK COHERENCE (FPCC) ARCHITECTURE TABLES
+// 4-Stage Pipeline: Reconstruction → Objections → Responses → Bullet-proof
+// With Vertical Coherence (VC) per stage and Horizontal Coherence (HC) across stages
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Pipeline job tracking - orchestrates the 4-stage pipeline
+export const pipelineJobs = pgTable("pipeline_jobs", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  
+  // Original input
+  originalText: text("original_text").notNull(),
+  originalWordCount: integer("original_word_count").notNull(),
+  
+  // User parameters
+  customInstructions: text("custom_instructions"),
+  targetAudience: text("target_audience"),
+  objective: text("objective"),
+  
+  // Stage outputs
+  reconstructionOutput: text("reconstruction_output"),
+  objectionsOutput: text("objections_output"),
+  responsesOutput: text("responses_output"),
+  bulletproofOutput: text("bulletproof_output"),
+  
+  // Skeletons (JSONB for flexibility)
+  skeleton1: jsonb("skeleton_1"), // Reconstruction skeleton
+  skeleton2: jsonb("skeleton_2"), // Objections skeleton
+  skeleton3: jsonb("skeleton_3"), // Responses skeleton
+  skeleton4: jsonb("skeleton_4"), // Bullet-proof skeleton
+  
+  // Progress tracking
+  currentStage: integer("current_stage").default(1), // 1-4
+  stageStatus: text("stage_status").default("pending"), // pending, skeleton_extraction, chunk_processing, stitching, complete
+  totalStages: integer("total_stages").default(4),
+  
+  // Stage word counts
+  reconstructionWords: integer("reconstruction_words"),
+  objectionsWords: integer("objections_words"),
+  responsesWords: integer("responses_words"),
+  bulletproofWords: integer("bulletproof_words"),
+  
+  // HC check results
+  hcCheckResults: jsonb("hc_check_results"),
+  hcViolations: jsonb("hc_violations"), // Array of violation objects
+  hcRepairAttempts: integer("hc_repair_attempts").default(0),
+  
+  // Timing
+  stage1StartTime: timestamp("stage1_start_time"),
+  stage1EndTime: timestamp("stage1_end_time"),
+  stage2StartTime: timestamp("stage2_start_time"),
+  stage2EndTime: timestamp("stage2_end_time"),
+  stage3StartTime: timestamp("stage3_start_time"),
+  stage3EndTime: timestamp("stage3_end_time"),
+  stage4StartTime: timestamp("stage4_start_time"),
+  stage4EndTime: timestamp("stage4_end_time"),
+  hcCheckTime: timestamp("hc_check_time"),
+  
+  // Final status
+  status: text("status").default("pending"), // pending, running, paused, complete, completed_with_warnings, failed
+  errorMessage: text("error_message"),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertPipelineJobSchema = createInsertSchema(pipelineJobs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPipelineJob = z.infer<typeof insertPipelineJobSchema>;
+export type PipelineJob = typeof pipelineJobs.$inferSelect;
+
+// Stage-specific chunk tracking
+export const pipelineChunks = pgTable("pipeline_chunks", {
+  id: serial("id").primaryKey(),
+  jobId: integer("job_id").references(() => pipelineJobs.id).notNull(),
+  stage: integer("stage").notNull(), // 1-4
+  chunkIndex: integer("chunk_index").notNull(),
+  
+  chunkInputText: text("chunk_input_text"),
+  chunkOutputText: text("chunk_output_text"),
+  chunkDelta: jsonb("chunk_delta"), // Stage-specific delta information
+  
+  targetWords: integer("target_words"),
+  actualWords: integer("actual_words"),
+  minWords: integer("min_words"),
+  maxWords: integer("max_words"),
+  
+  status: text("status").default("pending"), // pending, processing, completed, retrying, failed
+  retryCount: integer("retry_count").default(0),
+  errorMessage: text("error_message"),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPipelineChunkSchema = createInsertSchema(pipelineChunks).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPipelineChunk = z.infer<typeof insertPipelineChunkSchema>;
+export type PipelineChunk = typeof pipelineChunks.$inferSelect;
+
+// Objection tracking (for Stage 2-4 coherence)
+export const pipelineObjections = pgTable("pipeline_objections", {
+  id: serial("id").primaryKey(),
+  jobId: integer("job_id").references(() => pipelineJobs.id).notNull(),
+  objectionIndex: integer("objection_index").notNull(), // 1-25
+  
+  // Stage 2: Objection details
+  claimTargeted: text("claim_targeted"), // Exact quote or paraphrase from reconstruction
+  claimLocation: text("claim_location"), // Section/paragraph reference
+  objectionType: text("objection_type"), // logical, empirical, conceptual, methodological, practical
+  objectionText: text("objection_text"), // The objection itself
+  severity: text("severity"), // fatal, serious, moderate, minor
+  
+  // Stage 2: Initial response
+  initialResponse: text("initial_response"),
+  
+  // Stage 3: Enhanced response
+  enhancedResponse: text("enhanced_response"),
+  enhancementNotes: text("enhancement_notes"), // What was improved
+  
+  // Stage 4: Integration tracking
+  integratedInSection: text("integrated_in_section"), // Where it appears in bullet-proof
+  integrationStrategy: text("integration_strategy"), // preemptive, inline, footnote, structural
+  integrationVerified: boolean("integration_verified").default(false),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPipelineObjectionSchema = createInsertSchema(pipelineObjections).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPipelineObjection = z.infer<typeof insertPipelineObjectionSchema>;
+export type PipelineObjection = typeof pipelineObjections.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PIPELINE SKELETON TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Stage 1: Reconstruction skeleton (extends GlobalSkeleton)
+export interface PipelineSkeleton1 extends GlobalSkeleton {
+  // Inherits: outline, thesis, keyTerms, commitmentLedger, entities
+  // Additional for pipeline tracking:
+  documentWordCount: number;
+  reconstructionWordCount: number;
+}
+
+// Stage 2: Objections skeleton
+export interface PipelineSkeleton2 {
+  claimsToTarget: { claimIndex: number; claim: string; location: string }[];
+  claimLocations: { [claimIndex: number]: string };
+  objectionTypes: {
+    logical: number[];
+    empirical: number[];
+    conceptual: number[];
+    methodological: number[];
+    practical: number[];
+  };
+  severityDistribution: {
+    fatal: number[];
+    serious: number[];
+    moderate: number[];
+    minor: number[];
+  };
+  inheritedCommitments: { type: 'asserts' | 'rejects' | 'assumes'; claim: string }[];
+  objectionSummaries: { index: number; summary: string }[];
+  responseSummaries: { index: number; summary: string }[];
+}
+
+// Stage 3: Responses skeleton
+export interface PipelineSkeleton3 {
+  objectionsToAddress: { index: number; summary: string }[];
+  initialResponses: { index: number; summary: string }[];
+  responseGaps: { index: number; gap: string }[];
+  enhancementStrategy: {
+    index: number;
+    strategy: 'additional_evidence' | 'deeper_analysis' | 'practical_examples' | 'concession_rebuttal';
+    notes: string;
+  }[];
+  enhancedResponseSummaries: { index: number; summary: string }[];
+  newCommitments: { type: 'asserts' | 'rejects' | 'assumes'; claim: string }[];
+  concessionsMade: { objectionIndex: number; concession: string }[];
+  inheritedSkeleton1: Partial<PipelineSkeleton1>;
+  inheritedSkeleton2: Partial<PipelineSkeleton2>;
+}
+
+// Stage 4: Bullet-proof skeleton
+export interface PipelineSkeleton4 {
+  originalStructure: { sectionIndex: number; sectionTitle: string; wordCount: number }[];
+  integrationMap: { sectionIndex: number; responseIndices: number[] }[];
+  integrationStrategy: {
+    responseIndex: number;
+    strategy: 'preemptive' | 'inline' | 'footnote' | 'structural';
+    targetSection: number;
+  }[];
+  concessionsToIncorporate: { objectionIndex: number; concession: string }[];
+  strengtheningAdditions: { responseIndex: number; addition: string }[];
+  commitmentReconciliation: {
+    originalCommitment: string;
+    status: 'preserved' | 'revised' | 'defended';
+    notes: string;
+  }[];
+  lengthTarget: { min: number; max: number; target: number };
+  keyTerms: { term: string; definition: string }[];
+  inheritedSkeletons: {
+    skeleton1: Partial<PipelineSkeleton1>;
+    skeleton2: Partial<PipelineSkeleton2>;
+    skeleton3: Partial<PipelineSkeleton3>;
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HORIZONTAL COHERENCE (HC) CHECK TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface HCViolation {
+  type: 'commitment_missing' | 'objection_not_addressed' | 'response_not_integrated' | 'terminology_drift' | 'contradiction';
+  severity: 'error' | 'warning';
+  description: string;
+  details: {
+    commitment?: string;
+    objectionIndex?: number;
+    responseIndex?: number;
+    term?: string;
+    originalDefinition?: string;
+    newDefinition?: string;
+    location?: string;
+  };
+}
+
+export interface HCCheckResult {
+  passed: boolean;
+  violations: HCViolation[];
+  summary: {
+    total: number;
+    errors: number;
+    warnings: number;
+    commitmentsMissing: number;
+    objectionsNotAddressed: number;
+    responsesNotIntegrated: number;
+    terminologyDrifts: number;
+  };
+  repairPlan?: {
+    sectionsToRevise: number[];
+    violationsToFix: number[];
+    instructions: string;
+  };
+}
