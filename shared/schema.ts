@@ -601,3 +601,152 @@ export interface StitchResult {
   redundancies: { chunks: number[]; description: string }[];
   repairPlan: { chunkIndex: number; repairAction: string }[];
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HIERARCHICAL CROSS-CHUNK COHERENCE (HCC) ARCHITECTURE TABLES
+// For processing book-length documents (100,000+ words)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// HCC Document - top-level book/document
+export const hccDocuments = pgTable("hcc_documents", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  title: text("title"),
+  originalText: text("original_text").notNull(),
+  wordCount: integer("word_count").notNull(),
+  structureMap: jsonb("structure_map"), // detected/imposed hierarchy
+  bookSkeleton: jsonb("book_skeleton"), // ~2000 tokens max
+  finalOutput: text("final_output"),
+  targetMinWords: integer("target_min_words"),
+  targetMaxWords: integer("target_max_words"),
+  lengthRatio: text("length_ratio"), // numeric stored as text for precision
+  lengthMode: text("length_mode"), // heavy_compression, moderate_compression, maintain, moderate_expansion, heavy_expansion
+  status: text("status").default("pending"), // pending, structure_detected, skeletons_extracted, processing, stitching, complete, failed
+  customInstructions: text("custom_instructions"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertHccDocumentSchema = createInsertSchema(hccDocuments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertHccDocument = z.infer<typeof insertHccDocumentSchema>;
+export type HccDocument = typeof hccDocuments.$inferSelect;
+
+// HCC Parts (or virtual parts ~25,000 words each)
+export const hccParts = pgTable("hcc_parts", {
+  id: serial("id").primaryKey(),
+  documentId: integer("document_id").references(() => hccDocuments.id).notNull(),
+  partIndex: integer("part_index").notNull(),
+  partTitle: text("part_title"),
+  originalText: text("original_text").notNull(),
+  wordCount: integer("word_count").notNull(),
+  partSkeleton: jsonb("part_skeleton"), // ~1000 tokens
+  compressedBookSkeleton: jsonb("compressed_book_skeleton"), // inherited, ~500 tokens
+  partOutput: text("part_output"),
+  partDelta: jsonb("part_delta"), // net contribution to argument
+  status: text("status").default("pending"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertHccPartSchema = createInsertSchema(hccParts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertHccPart = z.infer<typeof insertHccPartSchema>;
+export type HccPart = typeof hccParts.$inferSelect;
+
+// HCC Chapters (or virtual chapters ~5,000 words each)
+export const hccChapters = pgTable("hcc_chapters", {
+  id: serial("id").primaryKey(),
+  partId: integer("part_id").references(() => hccParts.id).notNull(),
+  documentId: integer("document_id").references(() => hccDocuments.id).notNull(),
+  chapterIndex: integer("chapter_index").notNull(),
+  chapterTitle: text("chapter_title"),
+  originalText: text("original_text").notNull(),
+  wordCount: integer("word_count").notNull(),
+  chapterSkeleton: jsonb("chapter_skeleton"), // ~700 tokens
+  compressedPartSkeleton: jsonb("compressed_part_skeleton"), // inherited, ~300 tokens
+  chapterOutput: text("chapter_output"),
+  chapterDelta: jsonb("chapter_delta"), // net contribution to part
+  status: text("status").default("pending"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertHccChapterSchema = createInsertSchema(hccChapters).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertHccChapter = z.infer<typeof insertHccChapterSchema>;
+export type HccChapter = typeof hccChapters.$inferSelect;
+
+// HCC Chunks (with length enforcement)
+export const hccChunks = pgTable("hcc_chunks", {
+  id: serial("id").primaryKey(),
+  chapterId: integer("chapter_id").references(() => hccChapters.id).notNull(),
+  documentId: integer("document_id").references(() => hccDocuments.id).notNull(),
+  chunkIndex: integer("chunk_index").notNull(),
+  chunkInputText: text("chunk_input_text").notNull(),
+  chunkInputWords: integer("chunk_input_words").notNull(),
+  chunkOutputText: text("chunk_output_text"),
+  chunkOutputWords: integer("chunk_output_words"),
+  targetWords: integer("target_words"), // calculated per-chunk target
+  minWords: integer("min_words"), // target * 0.85
+  maxWords: integer("max_words"), // target * 1.15
+  chunkDelta: jsonb("chunk_delta"),
+  conflictsDetected: jsonb("conflicts_detected"),
+  status: text("status").default("pending"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertHccChunkSchema = createInsertSchema(hccChunks).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertHccChunk = z.infer<typeof insertHccChunkSchema>;
+export type HccChunk = typeof hccChunks.$inferSelect;
+
+// HCC Processing Types
+export interface HccBookSkeleton {
+  masterThesis: string;
+  majorDivisions: { title: string; summary: string }[];
+  globalTerms: { term: string; definition: string }[];
+  coreCommitments: { type: 'asserts' | 'rejects' | 'assumes'; claim: string }[];
+  crossReferences: { from: string; to: string; relationship: string }[];
+}
+
+export interface HccPartSkeleton {
+  partThesis: string;
+  chapterSummaries: { title: string; summary: string }[];
+  partSpecificTerms: { term: string; definition: string }[];
+  inheritedCommitments: { type: 'asserts' | 'rejects' | 'assumes'; claim: string }[];
+}
+
+export interface HccChapterSkeleton {
+  chapterThesis: string;
+  sectionOutline: string[];
+  chapterTerms: { term: string; definition: string }[];
+  inheritedContext: string; // compressed part skeleton
+}
+
+export interface HccDelta {
+  netContribution: string;
+  newCommitments: { type: 'asserts' | 'rejects' | 'assumes'; claim: string }[];
+  conflictsResolved: string[];
+  conflictsFlagged: string[];
+  crossReferences: { to: string; type: string }[];
+}
+
+export interface LengthEnforcementConfig {
+  targetMinWords: number;
+  targetMaxWords: number;
+  targetMidWords: number;
+  lengthRatio: number;
+  lengthMode: 'heavy_compression' | 'moderate_compression' | 'maintain' | 'moderate_expansion' | 'heavy_expansion';
+}
