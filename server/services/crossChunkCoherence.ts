@@ -9,7 +9,7 @@ import {
 
 const anthropic = new Anthropic();
 
-const MAX_INPUT_WORDS = 5000;
+const MAX_INPUT_WORDS = 20000;
 const TARGET_CHUNK_SIZE = 800;
 
 interface ChunkBoundary {
