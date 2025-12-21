@@ -20,6 +20,169 @@ const MAX_CHUNK_OUTPUT_WORDS = 600;
 const CHUNK_DELAY_MS = 2000;
 const MAX_CHUNK_RETRIES = 2;
 
+// Length mode types
+type LengthMode = 'heavy_compression' | 'moderate_compression' | 'maintain' | 'moderate_expansion' | 'heavy_expansion';
+
+interface LengthConfig {
+  targetMin: number;
+  targetMax: number;
+  targetMid: number;
+  lengthRatio: number;
+  lengthMode: LengthMode;
+  chunkTargetWords: number;
+}
+
+// Parse target length from custom instructions
+export function parseTargetLength(customInstructions: string | null | undefined): { targetMin: number; targetMax: number } | null {
+  if (!customInstructions) return null;
+  
+  const text = customInstructions.toLowerCase();
+  
+  // "X-Y words" pattern
+  const rangeMatch = text.match(/(\d{2,6})\s*[-–—to]\s*(\d{2,6})\s*words?/i);
+  if (rangeMatch) {
+    return {
+      targetMin: parseInt(rangeMatch[1]),
+      targetMax: parseInt(rangeMatch[2])
+    };
+  }
+  
+  // "at least X words" pattern
+  const atLeastMatch = text.match(/at\s+least\s+(\d{2,6})\s*words?/i);
+  if (atLeastMatch) {
+    const min = parseInt(atLeastMatch[1]);
+    return { targetMin: min, targetMax: Math.round(min * 1.3) };
+  }
+  
+  // "no more than X words" or "maximum X words" pattern
+  const maxMatch = text.match(/(?:no\s+more\s+than|maximum|max|under)\s+(\d{2,6})\s*words?/i);
+  if (maxMatch) {
+    const max = parseInt(maxMatch[1]);
+    return { targetMin: Math.round(max * 0.7), targetMax: max };
+  }
+  
+  // "approximately X words" or "around X words" pattern
+  const approxMatch = text.match(/(?:approximately|approx|about|around|roughly|~)\s*(\d{2,6})\s*words?/i);
+  if (approxMatch) {
+    const target = parseInt(approxMatch[1]);
+    return { targetMin: Math.round(target * 0.9), targetMax: Math.round(target * 1.1) };
+  }
+  
+  // Plain "X words" pattern
+  const plainMatch = text.match(/(\d{2,6})\s*words?/i);
+  if (plainMatch) {
+    const target = parseInt(plainMatch[1]);
+    return { targetMin: Math.round(target * 0.9), targetMax: Math.round(target * 1.1) };
+  }
+  
+  // Check for expand/compress keywords without numbers
+  if (text.match(/\b(expand|enrich|elaborate|develop|longer)\b/i)) {
+    return null; // Signal to use expansion ratio
+  }
+  if (text.match(/\b(compress|summarize|condense|shorten|brief)\b/i)) {
+    return null; // Signal to use compression ratio
+  }
+  
+  return null;
+}
+
+// Determine length mode based on ratio
+function getLengthMode(ratio: number): LengthMode {
+  if (ratio < 0.5) return 'heavy_compression';
+  if (ratio < 0.8) return 'moderate_compression';
+  if (ratio < 1.2) return 'maintain';
+  if (ratio < 1.8) return 'moderate_expansion';
+  return 'heavy_expansion';
+}
+
+// Calculate length configuration
+export function calculateLengthConfig(
+  totalInputWords: number,
+  targetMin: number | null,
+  targetMax: number | null,
+  customInstructions: string | null | undefined
+): LengthConfig {
+  // Default: maintain length (ratio 1.0)
+  let actualMin = targetMin ?? totalInputWords;
+  let actualMax = targetMax ?? totalInputWords;
+  
+  // Check for expand/compress keywords if no explicit numbers
+  if (targetMin === null && targetMax === null && customInstructions) {
+    const text = customInstructions.toLowerCase();
+    if (text.match(/\b(expand|enrich|elaborate|develop|longer)\b/i)) {
+      actualMin = Math.round(totalInputWords * 1.3);
+      actualMax = Math.round(totalInputWords * 1.5);
+    } else if (text.match(/\b(compress|summarize|condense|shorten|brief)\b/i)) {
+      actualMin = Math.round(totalInputWords * 0.3);
+      actualMax = Math.round(totalInputWords * 0.5);
+    }
+  }
+  
+  const targetMid = Math.floor((actualMin + actualMax) / 2);
+  const lengthRatio = targetMid / totalInputWords;
+  const lengthMode = getLengthMode(lengthRatio);
+  const numChunks = Math.ceil(totalInputWords / TARGET_CHUNK_SIZE);
+  const chunkTargetWords = Math.ceil(targetMid / numChunks);
+  
+  return {
+    targetMin: actualMin,
+    targetMax: actualMax,
+    targetMid,
+    lengthRatio,
+    lengthMode,
+    chunkTargetWords
+  };
+}
+
+// Length guidance templates for different modes
+function getLengthGuidanceTemplate(mode: LengthMode): string {
+  switch (mode) {
+    case 'heavy_compression':
+      return `LENGTH MODE: HEAVY COMPRESSION
+You must significantly compress this chunk while preserving core arguments.
+- Remove examples, keep only the most critical one
+- Remove repetition and redundancy
+- Convert detailed explanations to concise statements
+- Preserve thesis statements and key claims verbatim
+- Remove transitional phrases and rhetorical flourishes`;
+
+    case 'moderate_compression':
+      return `LENGTH MODE: MODERATE COMPRESSION
+You must compress this chunk while preserving argument structure.
+- Keep the strongest 1-2 examples, remove weaker ones
+- Tighten prose without losing meaning
+- Preserve all key claims and their primary support
+- Remove redundancy but keep necessary emphasis`;
+
+    case 'maintain':
+      return `LENGTH MODE: MAINTAIN LENGTH
+Your output should be approximately the same length as input.
+- Improve clarity and coherence without changing length significantly
+- Replace weak examples with stronger ones of similar length
+- Restructure sentences for better flow
+- Do not add or remove substantial content`;
+
+    case 'moderate_expansion':
+      return `LENGTH MODE: MODERATE EXPANSION
+You must expand this chunk while maintaining focus.
+- Add 1-2 supporting examples or evidence for key claims
+- Elaborate on implications of major points
+- Add transitional sentences to improve flow
+- Expand terse statements into fuller explanations
+- Do NOT add tangential content or padding`;
+
+    case 'heavy_expansion':
+      return `LENGTH MODE: HEAVY EXPANSION
+You must significantly expand this chunk with substantive additions.
+- Add 2-3 concrete examples (historical, empirical, or hypothetical)
+- Elaborate on each major claim with supporting analysis
+- Add relevant context and background
+- Develop implications and consequences of arguments
+- Add appropriate qualifications and nuances
+- Do NOT add filler or padding—all additions must be substantive`;
+  }
+}
+
 async function callWithFallback(
   prompt: string,
   maxTokens: number,
