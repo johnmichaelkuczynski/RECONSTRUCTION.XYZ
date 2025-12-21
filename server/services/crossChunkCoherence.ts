@@ -32,47 +32,76 @@ interface LengthConfig {
   chunkTargetWords: number;
 }
 
+// Helper to parse numbers with commas and shorthand (1.5k, 2k, etc.)
+function parseWordCount(numStr: string): number {
+  if (!numStr) return NaN;
+  
+  // Remove commas: "1,500" -> "1500"
+  let cleaned = numStr.replace(/,/g, '').trim();
+  
+  // Handle shorthand like "1.5k" or "2k"
+  const kMatch = cleaned.match(/^(\d+(?:\.\d+)?)\s*k$/i);
+  if (kMatch) {
+    const value = parseFloat(kMatch[1]);
+    return isNaN(value) ? NaN : Math.round(value * 1000);
+  }
+  
+  const result = parseInt(cleaned, 10);
+  return isNaN(result) ? NaN : result;
+}
+
 // Parse target length from custom instructions
 export function parseTargetLength(customInstructions: string | null | undefined): { targetMin: number; targetMax: number } | null {
   if (!customInstructions) return null;
   
   const text = customInstructions.toLowerCase();
   
-  // "X-Y words" pattern
-  const rangeMatch = text.match(/(\d{2,6})\s*[-–—to]\s*(\d{2,6})\s*words?/i);
+  // "X-Y words" or "X to Y words" pattern (supports commas and shorthand)
+  // Matches: "1200-1600 words", "1,200 to 1,600 words", "1.5k-2k words"
+  const rangeMatch = text.match(/([\d,]+(?:\.\d+)?k?)\s*(?:-|–|—|\bto\b)\s*([\d,]+(?:\.\d+)?k?)\s*words?/i);
   if (rangeMatch) {
     return {
-      targetMin: parseInt(rangeMatch[1]),
-      targetMax: parseInt(rangeMatch[2])
+      targetMin: parseWordCount(rangeMatch[1]),
+      targetMax: parseWordCount(rangeMatch[2])
     };
   }
   
   // "at least X words" pattern
-  const atLeastMatch = text.match(/at\s+least\s+(\d{2,6})\s*words?/i);
+  const atLeastMatch = text.match(/at\s+least\s+([\d,]+(?:\.\d+)?k?)\s*words?/i);
   if (atLeastMatch) {
-    const min = parseInt(atLeastMatch[1]);
+    const min = parseWordCount(atLeastMatch[1]);
     return { targetMin: min, targetMax: Math.round(min * 1.3) };
   }
   
   // "no more than X words" or "maximum X words" pattern
-  const maxMatch = text.match(/(?:no\s+more\s+than|maximum|max|under)\s+(\d{2,6})\s*words?/i);
+  const maxMatch = text.match(/(?:no\s+more\s+than|maximum|max|under)\s+([\d,]+(?:\.\d+)?k?)\s*words?/i);
   if (maxMatch) {
-    const max = parseInt(maxMatch[1]);
+    const max = parseWordCount(maxMatch[1]);
     return { targetMin: Math.round(max * 0.7), targetMax: max };
   }
   
   // "approximately X words" or "around X words" pattern
-  const approxMatch = text.match(/(?:approximately|approx|about|around|roughly|~)\s*(\d{2,6})\s*words?/i);
+  const approxMatch = text.match(/(?:approximately|approx|about|around|roughly|~)\s*([\d,]+(?:\.\d+)?k?)\s*words?/i);
   if (approxMatch) {
-    const target = parseInt(approxMatch[1]);
+    const target = parseWordCount(approxMatch[1]);
     return { targetMin: Math.round(target * 0.9), targetMax: Math.round(target * 1.1) };
   }
   
-  // Plain "X words" pattern
-  const plainMatch = text.match(/(\d{2,6})\s*words?/i);
+  // Plain "X words" pattern (supports "2k words", "1500 words", "1,500 words")
+  const plainMatch = text.match(/([\d,]+(?:\.\d+)?k?)\s*words?/i);
   if (plainMatch) {
-    const target = parseInt(plainMatch[1]);
-    return { targetMin: Math.round(target * 0.9), targetMax: Math.round(target * 1.1) };
+    const target = parseWordCount(plainMatch[1]);
+    // Only accept reasonable word counts (50+) and valid numbers
+    if (!isNaN(target) && target >= 50) {
+      return { targetMin: Math.round(target * 0.9), targetMax: Math.round(target * 1.1) };
+    }
+  }
+  
+  // "X+ words" pattern (e.g., "2000+ words")
+  const plusMatch = text.match(/([\d,]+(?:\.\d+)?k?)\+\s*words?/i);
+  if (plusMatch) {
+    const min = parseWordCount(plusMatch[1]);
+    return { targetMin: min, targetMax: Math.round(min * 1.3) };
   }
   
   // Check for expand/compress keywords without numbers
