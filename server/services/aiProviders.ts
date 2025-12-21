@@ -49,13 +49,10 @@ const PRESET_TEXT: Record<string,string> = {
   "Hedge once": "Use exactly one hedge: probably/roughly/more or less.",
   "Drop intensifiers": "Remove 'very/clearly/obviously/significantly'.",
   "Low-heat voice": "Prefer plain verbs; avoid showy synonyms.",
-  "One aside": "Allow one short parenthetical or em-dash aside; strictly factual.",
   "Concrete benchmark": "Replace one vague scale with a testable one (e.g., 'enough to X').",
   "Swap generic example": "If the source has an example, make it slightly more specific; else skip.",
   "Metric nudge": "Replace 'more/better' with a minimal, source-safe comparator (e.g., 'more than last case').",
-  "Asymmetric emphasis": "Linger on the main claim; compress secondary points sharply.",
   "Cull repeats": "Delete duplicated sentences/ideas; keep the strongest instance.",
-  "Topic snap": "Allow one abrupt focus change; no recap.",
   "No lists": "Output as continuous prose; remove bullets/numbering.",
   "No meta": "No prefaces/apologies/phrases like 'as requested'.",
   "Exact nouns": "Replace ambiguous pronouns with exact nouns.",
@@ -137,7 +134,74 @@ export interface RewriteParams {
   mixingMode?: 'style' | 'content' | 'both';
 }
 
+// Provider priority order for failover (most preferred first)
+const PROVIDER_PRIORITY = ['anthropic', 'openai', 'deepseek', 'grok'] as const;
+
+// Check if a provider is configured (has API key)
+function isProviderConfigured(provider: string): boolean {
+  switch (provider) {
+    case 'openai': return !!process.env.OPENAI_API_KEY;
+    case 'anthropic': return !!process.env.ANTHROPIC_API_KEY;
+    case 'deepseek': return !!process.env.DEEPSEEK_API_KEY;
+    case 'grok': return !!process.env.GROK_API_KEY;
+    case 'perplexity': return !!process.env.PERPLEXITY_API_KEY;
+    default: return false;
+  }
+}
+
+// Get configured providers in priority order
+function getConfiguredProviders(): string[] {
+  return PROVIDER_PRIORITY.filter(p => isProviderConfigured(p));
+}
+
 export class AIProviderService {
+  // Automatic failover: tries providers in sequence until one succeeds
+  async rewriteWithFailover(params: RewriteParams, preferredProvider?: string): Promise<string> {
+    const configuredProviders = getConfiguredProviders();
+    
+    if (configuredProviders.length === 0) {
+      throw new Error('No AI providers are configured. Please add API keys.');
+    }
+    
+    // Build provider order: preferred first (if configured), then others
+    let providerOrder: string[];
+    if (preferredProvider && isProviderConfigured(preferredProvider)) {
+      providerOrder = [preferredProvider, ...configuredProviders.filter(p => p !== preferredProvider)];
+    } else {
+      providerOrder = configuredProviders;
+    }
+    
+    let lastError: Error | null = null;
+    
+    for (const provider of providerOrder) {
+      try {
+        console.log(`🔄 Trying provider: ${provider}`);
+        const result = await this.rewriteSingle(provider, params);
+        console.log(`✅ Success with provider: ${provider}`);
+        return result;
+      } catch (error: any) {
+        console.warn(`⚠️ Provider ${provider} failed: ${error.message}`);
+        lastError = error;
+        // Continue to next provider
+      }
+    }
+    
+    // All providers failed
+    throw new Error(`All AI providers failed. Last error: ${lastError?.message}`);
+  }
+  
+  // Single provider call (internal use)
+  private async rewriteSingle(provider: string, params: RewriteParams): Promise<string> {
+    switch (provider) {
+      case 'openai': return await this.rewriteWithOpenAI(params);
+      case 'anthropic': return await this.rewriteWithAnthropic(params);
+      case 'deepseek': return await this.rewriteWithDeepSeek(params);
+      case 'grok': return await this.rewriteWithGrok(params);
+      case 'perplexity': return await this.rewriteWithPerplexity(params);
+      default: throw new Error(`Unknown provider: ${provider}`);
+    }
+  }
+
   async rewriteWithOpenAI(params: RewriteParams): Promise<string> {
     console.log("🔥 CALLING OPENAI API - Input length:", params.inputText?.length || 0);
     const prompt = buildRewritePrompt({
@@ -190,8 +254,10 @@ export class AIProviderService {
         temperature: 0.7,
       });
 
-      console.log("🔥 Anthropic response received, length:", response.content[0].text?.length || 0);
-      return this.cleanMarkup(response.content[0].text || "");
+      const textBlock = response.content[0];
+      const text = textBlock.type === 'text' ? textBlock.text : '';
+      console.log("🔥 Anthropic response received, length:", text?.length || 0);
+      return this.cleanMarkup(text || "");
     } catch (error: any) {
       console.error("🔥 ANTHROPIC API ERROR:", error);
       throw new Error(`Anthropic API error: ${error.message}`);
@@ -231,7 +297,7 @@ export class AIProviderService {
 
       const data = await response.json();
       return this.cleanMarkup(data.choices[0].message.content || "");
-    } catch (error) {
+    } catch (error: any) {
       throw new Error(`Perplexity API error: ${error.message}`);
     }
   }
@@ -269,26 +335,54 @@ export class AIProviderService {
 
       const data = await response.json();
       return this.cleanMarkup(data.choices[0].message.content || "");
-    } catch (error) {
+    } catch (error: any) {
       throw new Error(`DeepSeek API error: ${error.message}`);
     }
   }
 
+  async rewriteWithGrok(params: RewriteParams): Promise<string> {
+    const prompt = buildRewritePrompt({
+      inputText: params.inputText,
+      styleText: params.styleText,
+      contentMixText: params.contentMixText,
+      selectedPresets: params.selectedPresets,
+      customInstructions: params.customInstructions,
+    });
+    
+    try {
+      const response = await fetch('https://api.x.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.GROK_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: "grok-3-latest",
+          messages: [
+            { role: "user", content: prompt }
+          ],
+          temperature: 0.7,
+          max_tokens: 4000,
+          stream: false,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Grok API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return this.cleanMarkup(data.choices[0].message.content || "");
+    } catch (error: any) {
+      throw new Error(`Grok API error: ${error.message}`);
+    }
+  }
+
+  // Main rewrite method - uses automatic failover
   async rewrite(provider: string, params: RewriteParams): Promise<string> {
     console.log(`🔥 REWRITE REQUEST - Provider: ${provider}, Input length: ${params.inputText?.length || 0}`);
-    
-    switch (provider) {
-      case 'openai':
-        return await this.rewriteWithOpenAI(params);
-      case 'anthropic':
-        return await this.rewriteWithAnthropic(params);
-      case 'perplexity':
-        return await this.rewriteWithPerplexity(params);
-      case 'deepseek':
-        return await this.rewriteWithDeepSeek(params);
-      default:
-        throw new Error(`Unsupported provider: ${provider}`);
-    }
+    // Use failover system - preferred provider first, then auto-cascade to others
+    return await this.rewriteWithFailover(params, provider);
   }
 
   private cleanMarkup(text: string): string {
