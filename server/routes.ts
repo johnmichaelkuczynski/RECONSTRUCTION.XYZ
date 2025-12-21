@@ -13,6 +13,8 @@ import { type RewriteRequest, type RewriteResponse } from "@shared/schema";
 import { extractTextFromFile } from "./api/documentParser";
 import { sendSimpleEmail } from "./api/simpleEmailService";
 import { upload as speechUpload, processSpeechToText } from "./api/simpleSpeechToText";
+// HCC Service for large document processing
+import { processHccDocument, parseTargetLength, calculateLengthConfig, countWords } from "./services/hccService";
 
 
 // Configure multer for file uploads
@@ -2614,6 +2616,40 @@ Structural understanding is always understanding of relationships. Observational
       if (mode === "reconstruction") {
         // Count input words for reference
         const inputWordCount = text.trim().split(/\s+/).length;
+        
+        // For very large documents (>20,000 words), use HCC processing
+        if (inputWordCount > 20000) {
+          console.log(`[HCC] Processing large document: ${inputWordCount} words`);
+          try {
+            const hccResult = await processHccDocument(text, customInstructions);
+            if (hccResult.success) {
+              const parameterHeader = `═══════════════════════════════════════════════════
+ANALYSIS PARAMETERS (HIERARCHICAL PROCESSING)
+═══════════════════════════════════════════════════
+Mode: Reconstruction (HCC - Hierarchical Cross-Chunk Coherence)
+Input Words: ${inputWordCount.toLocaleString()}
+Aggressiveness: ${(fidelityLevel || 'aggressive').charAt(0).toUpperCase() + (fidelityLevel || 'aggressive').slice(1)}
+${customInstructions ? `Custom Instructions: ${customInstructions}` : ''}
+═══════════════════════════════════════════════════
+
+`;
+              return res.json({
+                success: true,
+                output: parameterHeader + hccResult.output,
+                mode: mode,
+                hccDocumentId: hccResult.documentId
+              });
+            } else {
+              throw new Error(hccResult.error || 'HCC processing failed');
+            }
+          } catch (hccError: any) {
+            console.error('[HCC] Error:', hccError);
+            return res.status(500).json({
+              success: false,
+              message: `Large document processing failed: ${hccError.message}`
+            });
+          }
+        }
         
         if (fidelityLevel === 'conservative') {
           systemPrompt = `You are a RECONSTRUCTOR. You diagnose what's wrong with an argument and fix THAT SPECIFIC THING.
