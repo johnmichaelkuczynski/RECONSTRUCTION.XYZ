@@ -16,6 +16,14 @@ import { upload as speechUpload, processSpeechToText } from "./api/simpleSpeechT
 // HCC Service for large document processing
 import { processHccDocument, parseTargetLength, calculateLengthConfig, countWords } from "./services/hccService";
 import { crossChunkReconstruct } from "./services/crossChunkCoherence";
+// DB-Enforced Reconstruction with SSE streaming
+import { 
+  shouldUseDBEnforced, 
+  runFullReconstruction, 
+  abortSession, 
+  getPartialOutput,
+  type ProcessingProgress 
+} from "./services/dbEnforcedReconstruction";
 
 
 // Configure multer for file uploads
@@ -2593,6 +2601,103 @@ Structural understanding is always understanding of relationships. Observational
     } catch (error: any) {
       console.error('Style presets error:', error);
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // SSE Streaming Reconstruction endpoint for long documents (>= 1000 words)
+  app.post("/api/reconstruction/stream", async (req: Request, res: Response) => {
+    try {
+      const { text, customInstructions, audienceParameters, rigorLevel } = req.body;
+      
+      if (!text) {
+        return res.status(400).json({ success: false, message: "Text is required" });
+      }
+      
+      const wordCount = text.trim().split(/\s+/).length;
+      if (wordCount < 1000) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Document too short for streaming (${wordCount} words). Use standard endpoint for documents < 1000 words.`
+        });
+      }
+      
+      console.log(`[SSE] Starting streaming reconstruction for ${wordCount} word document`);
+      
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders();
+      
+      const sendEvent = (event: string, data: any) => {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      };
+      
+      try {
+        const result = await runFullReconstruction(
+          text,
+          customInstructions,
+          audienceParameters,
+          rigorLevel,
+          (progress) => {
+            sendEvent('progress', progress);
+          }
+        );
+        
+        if (result.wasAborted) {
+          sendEvent('aborted', {
+            sessionId: result.sessionId,
+            partialOutput: result.reconstructedText,
+            chunksProcessed: result.chunksProcessed
+          });
+        } else {
+          sendEvent('complete', {
+            success: true,
+            sessionId: result.sessionId,
+            output: result.reconstructedText,
+            wordCount: result.wordCount,
+            chunksProcessed: result.chunksProcessed,
+            stitchResult: result.stitchResult
+          });
+        }
+      } catch (error: any) {
+        sendEvent('error', { message: error.message });
+      }
+      
+      res.end();
+      
+    } catch (error: any) {
+      console.error('[SSE] Stream error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, message: error.message });
+      } else {
+        res.write(`event: error\ndata: ${JSON.stringify({ message: error.message })}\n\n`);
+        res.end();
+      }
+    }
+  });
+  
+  // Abort streaming reconstruction session
+  app.post("/api/reconstruction/abort/:sessionId", async (req: Request, res: Response) => {
+    try {
+      const sessionId = parseInt(req.params.sessionId);
+      if (isNaN(sessionId)) {
+        return res.status(400).json({ success: false, message: "Invalid session ID" });
+      }
+      
+      await abortSession(sessionId);
+      const partialOutput = await getPartialOutput(sessionId);
+      
+      res.json({
+        success: true,
+        sessionId,
+        partialOutput,
+        wordCount: partialOutput.trim().split(/\s+/).length
+      });
+    } catch (error: any) {
+      console.error('[Abort] Error:', error);
+      res.status(500).json({ success: false, message: error.message });
     }
   });
 

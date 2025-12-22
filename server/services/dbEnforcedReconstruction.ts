@@ -21,7 +21,7 @@ function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(w => w.length > 0).length;
 }
 
-interface ProcessingProgress {
+export interface ProcessingProgress {
   sessionId: number;
   stage: 'skeleton' | 'chunking' | 'stitching' | 'repair' | 'complete' | 'aborted';
   currentChunk: number;
