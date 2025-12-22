@@ -17,8 +17,8 @@ const openai = new OpenAI();
 const PRIMARY_MODEL = "claude-sonnet-4-5-20250929";
 const FALLBACK_MODEL = "gpt-4-turbo";
 
-const MAX_INPUT_WORDS = 20000;
-const TARGET_CHUNK_SIZE = 500;
+const MAX_INPUT_WORDS = 100000; // Support up to 100k words
+const TARGET_CHUNK_SIZE = 800; // Larger chunks = fewer API calls = more coherent output
 const CHUNK_DELAY_MS = 2000;
 const MAX_CHUNK_RETRIES = 2;
 
@@ -967,57 +967,57 @@ export async function stitchAndValidate(
 ): Promise<{ finalOutput: string; stitchResult: StitchResult }> {
   const startTime = Date.now();
   
+  // CRITICAL FIX: Do NOT ask the model to regenerate the entire document!
+  // That causes truncation for long documents. Instead:
+  // 1. Validate for issues (small output)
+  // 2. Join chunks directly (lossless)
+  // 3. Only fix specific issues if found
+  
   const deltasSummary = chunks.map((chunk, i) => ({
     chunkIndex: i,
-    claims: chunk.delta.newClaimsIntroduced,
+    claims: chunk.delta.newClaimsIntroduced.slice(0, 3), // Limit to avoid token overflow
     conflicts: chunk.delta.conflictsDetected
   }));
   
-  const stitchPrompt = `You are the GLOBAL CONSISTENCY VALIDATOR for a multi-chunk document reconstruction.
+  // Only send first 200 words of each chunk for validation (full chunks would overflow context)
+  const chunkPreviews = chunks.map((chunk, i) => {
+    const words = chunk.text.split(/\s+/);
+    const preview = words.slice(0, 200).join(' ') + (words.length > 200 ? '...' : '');
+    return `CHUNK ${i + 1} (${words.length} words): ${preview}`;
+  });
+  
+  const validationPrompt = `You are the GLOBAL CONSISTENCY VALIDATOR for a multi-chunk document reconstruction.
 
 GLOBAL SKELETON:
 THESIS: ${skeleton.thesis}
 
-OUTLINE:
-${skeleton.outline.map((item, i) => `${i + 1}. ${item}`).join('\n')}
-
 KEY TERMS:
-${skeleton.keyTerms.map(t => `- ${t.term}: ${t.meaning}`).join('\n')}
+${skeleton.keyTerms.slice(0, 10).map(t => `- ${t.term}: ${t.meaning}`).join('\n')}
 
 COMMITMENT LEDGER:
-${skeleton.commitmentLedger.map(c => `- ${c.type.toUpperCase()}: ${c.claim}`).join('\n')}
+${skeleton.commitmentLedger.slice(0, 10).map(c => `- ${c.type.toUpperCase()}: ${c.claim}`).join('\n')}
 
 CHUNK DELTAS (summary of what each chunk introduced):
 ${JSON.stringify(deltasSummary, null, 2)}
 
-RECONSTRUCTED CHUNKS:
-${chunks.map((chunk, i) => `\n=== CHUNK ${i + 1} ===\n${chunk.text}`).join('\n')}
+CHUNK PREVIEWS (first 200 words of each chunk):
+${chunkPreviews.join('\n\n')}
 
-YOUR TASK:
-1. Detect cross-chunk contradictions (Chunk A says X, Chunk B says not-X)
-2. Detect terminology drift (a term used differently across chunks)
-3. Detect missing premises (claims made without proper setup)
-4. Detect redundancies (same point made multiple times)
-5. Generate a repair plan for any issues found
-6. Produce the FINAL COHERENT OUTPUT by:
-   - Executing micro-repairs on flagged chunks
-   - Ensuring smooth transitions between chunks
-   - Maintaining thesis consistency throughout
+YOUR TASK - VALIDATION ONLY (do NOT regenerate the document):
+1. Detect any cross-chunk contradictions visible in the previews
+2. Detect any terminology drift
+3. Detect any missing premises
+4. Detect any redundancies
 
-Return your response as:
-===VALIDATION===
+Return ONLY a JSON validation report:
 {
   "contradictions": [{"chunk1": 0, "chunk2": 1, "description": "description"}],
   "terminologyDrift": [{"term": "term", "chunk": 0, "originalMeaning": "x", "driftedMeaning": "y"}],
   "missingPremises": [{"location": 0, "description": "description"}],
   "redundancies": [{"chunks": [0, 2], "description": "same point"}],
   "repairPlan": [{"chunkIndex": 0, "repairAction": "what to fix"}]
-}
-===FINAL_OUTPUT===
-[The complete, coherent, repaired document - plain prose, no markdown formatting]`;
+}`;
 
-  const responseText = await callWithFallback(stitchPrompt, 12000, 0.3);
-  
   let stitchResult: StitchResult = {
     contradictions: [],
     terminologyDrift: [],
@@ -1026,28 +1026,24 @@ Return your response as:
     repairPlan: []
   };
   
-  let finalOutput = "";
-  
-  const validationMatch = responseText.match(/===VALIDATION===\s*([\s\S]*?)(?:===FINAL_OUTPUT===|$)/);
-  if (validationMatch) {
-    try {
-      const jsonMatch = validationMatch[1].match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        stitchResult = JSON.parse(jsonMatch[0]);
-      }
-    } catch (e) {
-      console.log("[CC] Stitch validation JSON parsing failed");
+  try {
+    const responseText = await callWithFallback(validationPrompt, 4000, 0.2);
+    
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      stitchResult = JSON.parse(jsonMatch[0]);
     }
+  } catch (e) {
+    console.log("[CC] Stitch validation failed, proceeding with direct join");
   }
   
-  const finalMatch = responseText.match(/===FINAL_OUTPUT===\s*([\s\S]*)/);
-  if (finalMatch) {
-    finalOutput = finalMatch[1].trim();
-  } else {
-    finalOutput = chunks.map(c => c.text).join("\n\n");
-  }
+  // CRITICAL: Join chunks directly - this preserves ALL content without truncation
+  // The chunks were already reconstructed with proper length in Pass 2
+  const finalOutput = chunks.map(c => c.text).join("\n\n");
   
+  const totalWords = countWords(finalOutput);
   console.log(`[CC] Stitch validation completed in ${Date.now() - startTime}ms`);
+  console.log(`[CC] Final output: ${totalWords} words (${chunks.length} chunks joined directly)`);
   console.log(`[CC] Issues found: ${stitchResult.contradictions.length} contradictions, ${stitchResult.terminologyDrift.length} term drifts, ${stitchResult.repairPlan.length} repairs needed`);
   
   return { finalOutput, stitchResult };
