@@ -1069,3 +1069,227 @@ export async function crossChunkReconstruct(
     chunksProcessed: chunkBoundaries.length
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST-PROCESSING: CONTENT ADDITIONS
+// Generates new content requested by user (e.g., concluding chapter)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function generateConcludingChapter(
+  processedOutput: string,
+  skeleton: GlobalSkeleton
+): Promise<string> {
+  const startTime = Date.now();
+  
+  if (!skeleton.chapters || skeleton.chapters.length === 0) {
+    console.log('[CC] No chapters found, skipping concluding chapter generation');
+    return '';
+  }
+  
+  const chapterCount = skeleton.chapters.length;
+  const instruction = skeleton.userInstructions?.contentAdditions.find(a => a.type === 'concluding_chapter');
+  const includeFutureResearch = instruction?.additional?.includes('future research') ?? true;
+  
+  // Calculate target length: ~125 words per chapter summary + 500 for intro/future research
+  const targetWords = chapterCount * 125 + (includeFutureResearch ? 500 : 200);
+  
+  const prompt = `You are writing a concluding chapter for an academic work.
+
+THE DOCUMENT HAS ${chapterCount} CHAPTERS:
+${skeleton.chapters.map(c => `${c.index}. "${c.title}" — ${c.mainThesis}`).join('\n')}
+
+DOCUMENT THESIS: ${skeleton.thesis}
+
+${instruction?.requirement ? `USER REQUIREMENT: ${instruction.requirement}` : ''}
+${instruction?.additional ? `ADDITIONAL: ${instruction.additional}` : ''}
+
+YOUR TASK:
+Write a concluding chapter that:
+1. Has a title: "Conclusion: Synthesis and Future Directions"
+2. Opens with a paragraph stating the work's overall thesis and contribution
+3. Contains ONE PARAGRAPH summarizing EACH of the ${chapterCount} chapters (100-150 words each)
+4. ${includeFutureResearch ? 'Ends with 2-3 paragraphs on future research directions identifying open questions' : 'Ends with a brief closing statement'}
+5. Maintains the academic tone of the document
+
+STRUCTURE:
+- Title: "Conclusion: Synthesis and Future Directions"
+- Opening paragraph: State the work's overall thesis and contribution
+- ${chapterCount} summary paragraphs (one per chapter, ~100-150 words each)
+${includeFutureResearch ? '- Future research section: 2-3 paragraphs identifying open questions and research directions' : '- Brief closing statement'}
+
+TARGET LENGTH: Approximately ${targetWords} words
+
+KEY TERMS TO USE (as defined in the document):
+${skeleton.keyTerms.slice(0, 10).map(t => `- ${t.term}: ${t.meaning}`).join('\n')}
+
+Write the concluding chapter now:`;
+
+  const responseText = await callWithFallback(prompt, 6000, 0.3);
+  
+  console.log(`[CC] Generated concluding chapter (${countWords(responseText)} words) in ${Date.now() - startTime}ms`);
+  return responseText;
+}
+
+export async function generateRequestedAdditions(
+  processedOutput: string,
+  skeleton: GlobalSkeleton
+): Promise<string> {
+  const additions = skeleton.userInstructions?.contentAdditions || [];
+  
+  if (additions.length === 0) {
+    console.log('[CC] No content additions requested');
+    return processedOutput;
+  }
+  
+  let result = processedOutput;
+  
+  for (const addition of additions) {
+    if (addition.type === 'concluding_chapter') {
+      console.log('[CC] Generating requested concluding chapter...');
+      const concludingChapter = await generateConcludingChapter(result, skeleton);
+      if (concludingChapter) {
+        result = result.trim() + '\n\n' + concludingChapter;
+        console.log(`[CC] Added concluding chapter. New total: ${countWords(result)} words`);
+      }
+    }
+    // Add more content addition types here as needed
+  }
+  
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FINAL VALIDATION
+// Verifies user instructions were actually followed
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface FinalValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  wordCount: number;
+  targetMet: boolean;
+  chaptersPreserved: boolean;
+  additionsIncluded: boolean;
+}
+
+export function validateFinalOutput(
+  output: string,
+  skeleton: GlobalSkeleton
+): FinalValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  
+  const wordCount = countWords(output);
+  const instructions = skeleton.userInstructions;
+  
+  // CHECK 1: Word count target
+  let targetMet = true;
+  if (instructions?.lengthTarget) {
+    const target = instructions.lengthTarget;
+    const constraint = instructions.lengthConstraint;
+    
+    if (constraint === 'no_less_than' && wordCount < target) {
+      errors.push(`Word count ${wordCount} is below minimum ${target}`);
+      targetMet = false;
+    } else if (constraint === 'no_more_than' && wordCount > target) {
+      errors.push(`Word count ${wordCount} exceeds maximum ${target}`);
+      targetMet = false;
+    } else if (constraint === 'approximately' && (wordCount < target * 0.85 || wordCount > target * 1.15)) {
+      warnings.push(`Word count ${wordCount} is outside ±15% of target ${target}`);
+    } else if (constraint === 'exactly' && Math.abs(wordCount - target) > target * 0.05) {
+      errors.push(`Word count ${wordCount} differs from exact target ${target}`);
+      targetMet = false;
+    }
+  }
+  
+  // CHECK 2: Required additions present
+  let additionsIncluded = true;
+  const mustAdd = instructions?.mustAdd || [];
+  
+  for (const required of mustAdd) {
+    if (required.includes('concluding chapter') || required.includes('conclusion')) {
+      const hasConclusion = /\b(conclusion|synthesis|summary|final chapter)\b/i.test(output);
+      if (!hasConclusion) {
+        errors.push('Missing required concluding chapter');
+        additionsIncluded = false;
+      }
+    }
+    
+    if (required.includes('future research')) {
+      const hasFutureResearch = /\b(future research|future directions|further study|open questions)\b/i.test(output);
+      if (!hasFutureResearch) {
+        errors.push('Missing required future research section');
+        additionsIncluded = false;
+      }
+    }
+    
+    if (required.includes('introduction')) {
+      const hasIntro = /\b(introduction|overview|preface)\b/i.test(output.slice(0, 2000));
+      if (!hasIntro) {
+        warnings.push('Introduction section may be missing');
+      }
+    }
+  }
+  
+  // CHECK 3: Chapter count preserved
+  let chaptersPreserved = true;
+  if (skeleton.chapters && skeleton.chapters.length > 1) {
+    const expectedCount = skeleton.chapters.length;
+    // Count chapter-like headings in output
+    const chapterMatches = output.match(/^#{1,3}\s+.+$|^(?:Chapter|Essay|Section)\s+\d+|^\d+\.\s+[A-Z]/gm);
+    const foundChapters = chapterMatches ? chapterMatches.length : 0;
+    
+    if (foundChapters < expectedCount * 0.7) {
+      warnings.push(`Only ${foundChapters} of ${expectedCount} expected chapters found in output`);
+      chaptersPreserved = false;
+    }
+  }
+  
+  // CHECK 4: Truncation detection
+  const truncationCheck = detectTruncation(output);
+  if (truncationCheck.truncated) {
+    errors.push(`Output appears truncated: ${truncationCheck.reason}. Last chars: "${truncationCheck.lastChars}"`);
+  }
+  
+  // CHECK 5: Structural completeness
+  if (output.trim().endsWith('References') || output.trim().match(/References\s*$/)) {
+    warnings.push('Output ends with References heading - may be missing content after references');
+  }
+  
+  const valid = errors.length === 0;
+  
+  if (errors.length > 0) {
+    console.log('[CC] FINAL VALIDATION FAILED:', errors);
+  } else if (warnings.length > 0) {
+    console.log('[CC] Validation passed with warnings:', warnings);
+  } else {
+    console.log('[CC] Final validation passed');
+  }
+  
+  return {
+    valid,
+    errors,
+    warnings,
+    wordCount,
+    targetMet,
+    chaptersPreserved,
+    additionsIncluded
+  };
+}
+
+// Helper function to count chapters in output
+function countChaptersInOutput(output: string): number {
+  const chapterPatterns = [
+    /^#{1,3}\s+.+$/gm,
+    /^(?:Chapter|Essay|Section)\s+\d+/gim,
+    /^\d+\.\s+[A-Z][^.]+$/gm
+  ];
+  
+  let count = 0;
+  for (const pattern of chapterPatterns) {
+    const matches = output.match(pattern);
+    if (matches) count = Math.max(count, matches.length);
+  }
+  return count;
+}
