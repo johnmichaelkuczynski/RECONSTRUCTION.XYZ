@@ -5,7 +5,10 @@ import {
   ChunkDelta, 
   StitchResult,
   ReconstructionDocument,
-  ReconstructionChunk
+  ReconstructionChunk,
+  UserInstructions,
+  ContentAddition,
+  ChapterInfo
 } from "@shared/schema";
 
 const anthropic = new Anthropic();
@@ -178,6 +181,280 @@ export function calculateLengthConfig(
   };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// USER INSTRUCTIONS PARSING
+// Captures length targets, content additions (e.g., concluding chapter), constraints
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function parseUserInstructions(customInstructions: string | null | undefined): UserInstructions {
+  const result: UserInstructions = {
+    contentAdditions: [],
+    mustAdd: [],
+    mustPreserve: [],
+    rawInstructions: customInstructions || undefined
+  };
+  
+  if (!customInstructions) return result;
+  
+  const text = customInstructions.toLowerCase();
+  
+  // Parse length target and constraint
+  const noLessMatch = text.match(/(?:no\s+less\s+than|at\s+least|minimum)\s*([\d,]+(?:\.\d+)?k?)\s*words?/i);
+  if (noLessMatch) {
+    result.lengthTarget = parseWordCount(noLessMatch[1]);
+    result.lengthConstraint = 'no_less_than';
+  }
+  
+  const noMoreMatch = text.match(/(?:no\s+more\s+than|maximum|max|at\s+most)\s*([\d,]+(?:\.\d+)?k?)\s*words?/i);
+  if (noMoreMatch && !result.lengthTarget) {
+    result.lengthTarget = parseWordCount(noMoreMatch[1]);
+    result.lengthConstraint = 'no_more_than';
+  }
+  
+  const approxMatch = text.match(/(?:approximately|approx|about|around|roughly|~)\s*([\d,]+(?:\.\d+)?k?)\s*words?/i);
+  if (approxMatch && !result.lengthTarget) {
+    result.lengthTarget = parseWordCount(approxMatch[1]);
+    result.lengthConstraint = 'approximately';
+  }
+  
+  // Plain target without constraint modifier
+  if (!result.lengthTarget) {
+    const plainMatch = text.match(/(?:reduce|shorten|cut|trim|compress)\s*(?:to|down\s*to)?\s*([\d,]+(?:\.\d+)?k?)\s*words?/i);
+    if (plainMatch) {
+      result.lengthTarget = parseWordCount(plainMatch[1]);
+      result.lengthConstraint = 'approximately';
+    }
+  }
+  
+  // Parse content additions - CONCLUDING CHAPTER
+  const conclusionPatterns = [
+    /write\s+(?:a\s+)?conclud(?:ing|e)\s+chapter/i,
+    /add\s+(?:a\s+)?conclusion/i,
+    /include\s+(?:a\s+)?summary\s+chapter/i,
+    /write\s+(?:a\s+)?final\s+chapter/i,
+    /add\s+(?:a\s+)?concluding\s+section/i
+  ];
+  
+  for (const pattern of conclusionPatterns) {
+    if (pattern.test(customInstructions)) {
+      const addition: ContentAddition = {
+        type: 'concluding_chapter',
+        requirement: 'Write a concluding chapter'
+      };
+      
+      // Check for specific requirements
+      if (/summariz(?:e|es|ing)\s+(?:each|the|all)\s+(?:preceding\s+)?chapter/i.test(customInstructions)) {
+        addition.requirement = 'Summarize each preceding chapter';
+      }
+      
+      if (/future\s+(?:research|directions?|study|work)/i.test(customInstructions)) {
+        addition.additional = 'Include a section on future research directions';
+      }
+      
+      result.contentAdditions.push(addition);
+      result.mustAdd.push('concluding chapter');
+      
+      if (addition.additional) {
+        result.mustAdd.push('future research section');
+      }
+      break;
+    }
+  }
+  
+  // Parse content additions - INTRODUCTION
+  const introPatterns = [
+    /write\s+(?:a\s+)?(?:new\s+)?introduction/i,
+    /add\s+(?:a\s+)?(?:new\s+)?intro(?:duction)?/i
+  ];
+  
+  for (const pattern of introPatterns) {
+    if (pattern.test(customInstructions)) {
+      result.contentAdditions.push({
+        type: 'introduction',
+        requirement: 'Write an introduction'
+      });
+      result.mustAdd.push('introduction');
+      break;
+    }
+  }
+  
+  // Parse content additions - SUMMARY
+  const summaryPatterns = [
+    /write\s+(?:a\s+)?(?:executive\s+)?summary/i,
+    /add\s+(?:a\s+)?(?:brief\s+)?summary/i
+  ];
+  
+  for (const pattern of summaryPatterns) {
+    if (pattern.test(customInstructions) && !result.contentAdditions.some(a => a.type === 'concluding_chapter')) {
+      result.contentAdditions.push({
+        type: 'summary',
+        requirement: 'Write a summary section'
+      });
+      result.mustAdd.push('summary section');
+      break;
+    }
+  }
+  
+  // Parse preservation requirements
+  if (/preserve\s+(?:all\s+)?(?:the\s+)?(?:original\s+)?(?:chapter|argument|structure)/i.test(customInstructions)) {
+    result.mustPreserve.push('original chapter structure');
+  }
+  
+  if (/(?:keep|maintain|preserve)\s+(?:all\s+)?(?:the\s+)?academic\s+(?:tone|style)/i.test(customInstructions)) {
+    result.mustPreserve.push('academic tone');
+  }
+  
+  console.log(`[CC] Parsed user instructions:`, {
+    lengthTarget: result.lengthTarget,
+    lengthConstraint: result.lengthConstraint,
+    contentAdditions: result.contentAdditions.length,
+    mustAdd: result.mustAdd,
+    mustPreserve: result.mustPreserve
+  });
+  
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CHAPTER EXTRACTION
+// Detects chapters/essays in multi-chapter documents
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function extractChapters(text: string): Promise<ChapterInfo[]> {
+  const startTime = Date.now();
+  
+  const chapterPrompt = `You are analyzing a document to identify its chapters, essays, or major sections.
+
+DOCUMENT (first 30000 chars):
+${text.slice(0, 30000)}
+
+Extract the chapter structure as JSON:
+{
+  "chapters": [
+    {
+      "index": 1,
+      "title": "Chapter title or first heading",
+      "mainThesis": "One sentence summary of the chapter's main argument",
+      "approximateStartPosition": "First few words of the chapter"
+    }
+  ]
+}
+
+RULES:
+1. Identify ALL distinct chapters, essays, or major sections
+2. A chapter is typically marked by: numbered headings, "Chapter X", "Essay X", or clear thematic breaks
+3. If the document has no clear chapters, create sections based on major thematic shifts
+4. The title should be the actual heading if present, or a descriptive title if not
+5. The mainThesis should capture what that specific chapter argues or discusses
+6. Include introduction and conclusion sections if present
+7. Do NOT skip any chapters - count them all
+
+Return ONLY valid JSON, no explanation.`;
+
+  const responseText = await callWithFallback(chapterPrompt, 4000, 0.2);
+  
+  let chapters: ChapterInfo[] = [];
+  try {
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(parsed.chapters)) {
+        // Convert to ChapterInfo format with word positions
+        let currentWordPos = 0;
+        const words = text.split(/\s+/);
+        
+        chapters = parsed.chapters.map((ch: any, idx: number) => {
+          // Find approximate start position in word count
+          const startMarker = ch.approximateStartPosition?.toLowerCase() || '';
+          let startWord = currentWordPos;
+          
+          if (startMarker) {
+            // Search for the start marker in the text
+            const searchText = text.toLowerCase();
+            const markerPos = searchText.indexOf(startMarker);
+            if (markerPos >= 0) {
+              startWord = text.slice(0, markerPos).split(/\s+/).length;
+            }
+          }
+          
+          // Estimate end position based on next chapter or document end
+          const isLast = idx === parsed.chapters.length - 1;
+          const totalWords = words.length;
+          const estimatedEndWord = isLast ? totalWords : Math.floor(totalWords * ((idx + 1) / parsed.chapters.length));
+          
+          currentWordPos = estimatedEndWord;
+          
+          return {
+            index: ch.index || idx + 1,
+            title: ch.title || `Section ${idx + 1}`,
+            mainThesis: ch.mainThesis || '',
+            startWord,
+            endWord: estimatedEndWord,
+            status: 'pending' as const
+          };
+        });
+      }
+    }
+  } catch (e) {
+    console.error('[CC] Chapter extraction failed:', e);
+    chapters = [{
+      index: 1,
+      title: 'Document',
+      mainThesis: 'Could not extract chapter structure',
+      startWord: 0,
+      endWord: text.split(/\s+/).length,
+      status: 'pending'
+    }];
+  }
+  
+  console.log(`[CC] Extracted ${chapters.length} chapters in ${Date.now() - startTime}ms`);
+  return chapters;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TRUNCATION DETECTION
+// Detects if output was cut off mid-sentence
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function detectTruncation(text: string): { truncated: boolean; reason?: string; lastChars?: string } {
+  const trimmed = text.trim();
+  if (!trimmed) return { truncated: true, reason: 'Empty output' };
+  
+  const truncationIndicators = [
+    { pattern: /[a-z]$/, reason: 'Ends with incomplete word' },
+    { pattern: /[\(\[\{\"\']\s*$/, reason: 'Ends with opening punctuation' },
+    { pattern: /\b(and|or|but|the|a|an|of|in|to|for|with|by|from)\s*$/i, reason: 'Ends with conjunction/preposition' },
+    { pattern: /\*\s*$/, reason: 'Ends with asterisk (markdown)' },
+    { pattern: /\(\d{4}\)\.\s*\*[^*]*$/, reason: 'Reference list cut off' },
+    { pattern: /\d+\.\s*$/, reason: 'Numbered list item with no content' },
+    { pattern: /:\s*$/, reason: 'Ends with colon expecting content' }
+  ];
+  
+  for (const { pattern, reason } of truncationIndicators) {
+    if (pattern.test(trimmed)) {
+      return {
+        truncated: true,
+        reason,
+        lastChars: trimmed.slice(-50)
+      };
+    }
+  }
+  
+  // Check for sentence completion
+  if (!/[.!?\"\')\]]\s*$/.test(trimmed)) {
+    const sentences = trimmed.match(/[.!?]["']?\s/g);
+    if (!sentences || sentences.length < 2) {
+      return {
+        truncated: true,
+        reason: 'Does not end with sentence-ending punctuation',
+        lastChars: trimmed.slice(-50)
+      };
+    }
+  }
+  
+  return { truncated: false };
+}
+
 // Length guidance templates for different modes
 function getLengthGuidanceTemplate(mode: LengthMode): string {
   switch (mode) {
@@ -332,9 +609,14 @@ export function smartChunk(text: string): ChunkBoundary[] {
 export async function extractGlobalSkeleton(
   text: string,
   audienceParameters?: string,
-  rigorLevel?: string
+  rigorLevel?: string,
+  customInstructions?: string
 ): Promise<GlobalSkeleton> {
   const startTime = Date.now();
+  const wordCount = countWords(text);
+  
+  // Parse user instructions first
+  const userInstructions = parseUserInstructions(customInstructions);
   
   const skeletonPrompt = `You are a document structure analyst. Extract the GLOBAL SKELETON of this document in a FAST, LIGHTWEIGHT pass.
 
@@ -381,6 +663,15 @@ Return ONLY valid JSON, no explanation.`;
   
   skeleton.audienceParameters = audienceParameters;
   skeleton.rigorLevel = rigorLevel;
+  skeleton.userInstructions = userInstructions;
+  
+  // Extract chapters for multi-chapter documents (>5000 words)
+  if (wordCount > 5000 || userInstructions.contentAdditions.some(a => a.type === 'concluding_chapter')) {
+    console.log(`[CC] Extracting chapters for ${wordCount}-word document...`);
+    skeleton.chapters = await extractChapters(text);
+    skeleton.chapterCount = skeleton.chapters.length;
+    console.log(`[CC] Found ${skeleton.chapterCount} chapters`);
+  }
   
   console.log(`[CC] Skeleton extraction completed in ${Date.now() - startTime}ms`);
   return skeleton;
