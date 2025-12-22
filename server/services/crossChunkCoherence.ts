@@ -504,40 +504,101 @@ You must significantly expand this chunk with substantive additions.
   }
 }
 
+// Maximum tokens Claude supports for output
+const CLAUDE_MAX_OUTPUT_TOKENS = 64000; // Claude 3.5 Sonnet supports up to 64k output tokens
+const GPT_MAX_OUTPUT_TOKENS = 16384; // GPT-4 Turbo supports 16k output
+
 async function callWithFallback(
   prompt: string,
   maxTokens: number,
-  temperature: number
+  temperature: number,
+  retryOnTruncation: boolean = true
 ): Promise<string> {
-  try {
-    const message = await anthropic.messages.create({
-      model: PRIMARY_MODEL,
-      max_tokens: maxTokens,
-      temperature,
-      messages: [{ role: "user", content: prompt }]
-    });
-    return message.content[0].type === 'text' ? message.content[0].text : '';
-  } catch (error: any) {
-    const status = error?.status || error?.response?.status;
-    const isRetryable = status === 404 || status === 429 || status === 503 || status === 529;
-    
-    if (isRetryable) {
-      console.log(`[CC] Claude model error (${status}), falling back to GPT-4 Turbo`);
-      try {
-        const completion = await openai.chat.completions.create({
-          model: FALLBACK_MODEL,
-          max_tokens: maxTokens,
-          temperature,
-          messages: [{ role: "user", content: prompt }]
-        });
-        return completion.choices[0]?.message?.content || '';
-      } catch (fallbackError: any) {
-        console.error(`[CC] Fallback to GPT-4 also failed:`, fallbackError?.message);
-        throw fallbackError;
+  const MAX_TRUNCATION_RETRIES = 3;
+  let currentMaxTokens = maxTokens;
+  
+  for (let attempt = 0; attempt <= MAX_TRUNCATION_RETRIES; attempt++) {
+    try {
+      const message = await anthropic.messages.create({
+        model: PRIMARY_MODEL,
+        max_tokens: Math.min(currentMaxTokens, CLAUDE_MAX_OUTPUT_TOKENS),
+        temperature,
+        messages: [{ role: "user", content: prompt }]
+      });
+      
+      const text = message.content[0].type === 'text' ? message.content[0].text : '';
+      const stopReason = message.stop_reason;
+      
+      // Check if truncated due to max_tokens
+      if (stopReason === 'max_tokens') {
+        if (retryOnTruncation && attempt < MAX_TRUNCATION_RETRIES) {
+          // Double the token limit for next attempt (no hard cap below model max)
+          const nextTokens = Math.min(currentMaxTokens * 2, CLAUDE_MAX_OUTPUT_TOKENS);
+          if (nextTokens > currentMaxTokens) {
+            console.log(`[CC] Output truncated (hit max_tokens: ${currentMaxTokens}). Increasing to ${nextTokens} and retrying...`);
+            currentMaxTokens = nextTokens;
+            continue;
+          }
+        }
+        // We've hit the model's maximum - this is a hard failure
+        console.error(`[CC] CRITICAL: Output truncated even at max tokens (${currentMaxTokens}). Content too long for model.`);
+        throw new Error(`Output truncated at maximum token limit (${currentMaxTokens}). Document may be too long.`);
       }
+      
+      // Check for text-based truncation indicators
+      const textTruncated = isOutputTruncated(text);
+      if (textTruncated && retryOnTruncation && attempt < MAX_TRUNCATION_RETRIES) {
+        const nextTokens = Math.min(currentMaxTokens * 1.5, CLAUDE_MAX_OUTPUT_TOKENS);
+        console.log(`[CC] Output appears truncated (text analysis). Increasing to ${nextTokens} and retrying...`);
+        currentMaxTokens = nextTokens;
+        continue;
+      }
+      
+      return text;
+    } catch (error: any) {
+      // Don't catch our own truncation errors
+      if (error?.message?.includes('Output truncated at maximum')) {
+        throw error;
+      }
+      
+      const status = error?.status || error?.response?.status;
+      const isRetryable = status === 404 || status === 429 || status === 503 || status === 529;
+      
+      if (isRetryable) {
+        console.log(`[CC] Claude model error (${status}), falling back to GPT-4 Turbo`);
+        try {
+          const completion = await openai.chat.completions.create({
+            model: FALLBACK_MODEL,
+            max_tokens: Math.min(currentMaxTokens, GPT_MAX_OUTPUT_TOKENS),
+            temperature,
+            messages: [{ role: "user", content: prompt }]
+          });
+          const text = completion.choices[0]?.message?.content || '';
+          const finishReason = completion.choices[0]?.finish_reason;
+          
+          if (finishReason === 'length') {
+            if (retryOnTruncation && attempt < MAX_TRUNCATION_RETRIES) {
+              const nextTokens = Math.min(currentMaxTokens * 2, GPT_MAX_OUTPUT_TOKENS);
+              if (nextTokens > currentMaxTokens) {
+                console.log(`[CC] GPT output truncated. Increasing to ${nextTokens} and retrying...`);
+                currentMaxTokens = nextTokens;
+                continue;
+              }
+            }
+            throw new Error(`Output truncated at GPT maximum (${currentMaxTokens}). Document may be too long.`);
+          }
+          
+          return text;
+        } catch (fallbackError: any) {
+          console.error(`[CC] Fallback to GPT-4 also failed:`, fallbackError?.message);
+          throw fallbackError;
+        }
+      }
+      throw error;
     }
-    throw error;
   }
+  
+  throw new Error('[CC] Failed to get complete output after multiple retries');
 }
 
 interface ChunkBoundary {
@@ -685,12 +746,39 @@ function isOutputTruncated(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return true;
   
+  // Check for obvious truncation patterns
+  // Ellipsis at end (model often adds ... when truncating)
+  if (trimmed.endsWith('...') || trimmed.endsWith('…')) {
+    console.log('[CC] Truncation detected: ends with ellipsis');
+    return true;
+  }
+  
+  // Em dash at end without punctuation (mid-thought cutoff)
+  if (trimmed.endsWith('—') || trimmed.endsWith('–')) {
+    console.log('[CC] Truncation detected: ends with dash');
+    return true;
+  }
+  
+  // Ends with comma (mid-sentence)
+  if (trimmed.endsWith(',')) {
+    console.log('[CC] Truncation detected: ends with comma');
+    return true;
+  }
+  
+  // Ends with "and", "or", "the", "a", "to", etc. (mid-sentence articles/conjunctions)
+  const midSentenceEndings = /\s(and|or|the|a|an|to|of|in|for|with|that|which|who|is|are|was|were|be|been|being)$/i;
+  if (midSentenceEndings.test(trimmed)) {
+    console.log('[CC] Truncation detected: ends with article/conjunction');
+    return true;
+  }
+  
   const lastChar = trimmed[trimmed.length - 1];
-  const validEndings = ['.', '!', '?', '"', "'", ')', ']', '—', ':'];
+  const validEndings = ['.', '!', '?', '"', "'", ')', ']', ':'];
   
   if (!validEndings.includes(lastChar)) {
     const sentences = trimmed.match(/[.!?]["']?\s/g);
     if (!sentences || sentences.length < 2) {
+      console.log('[CC] Truncation detected: no valid ending and few sentences');
       return true;
     }
   }
@@ -961,6 +1049,11 @@ export interface CCReconstructionResult {
   skeleton?: GlobalSkeleton;
   stitchResult?: StitchResult;
   chunksProcessed?: number;
+  validation?: {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+  };
 }
 
 export async function crossChunkReconstruct(
@@ -1064,7 +1157,7 @@ export async function crossChunkReconstruct(
           mainThesis: 'Generated concluding chapter summarizing all preceding chapters',
           startWord: countWords(finalOutput),
           endWord: countWords(augmentedOutput),
-          status: 'generated'
+          status: 'processed'
         });
         skeleton.chapterCount = skeleton.chapters.length;
       }
