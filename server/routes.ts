@@ -15,6 +15,7 @@ import { sendSimpleEmail } from "./api/simpleEmailService";
 import { upload as speechUpload, processSpeechToText } from "./api/simpleSpeechToText";
 // HCC Service for large document processing
 import { processHccDocument, parseTargetLength, calculateLengthConfig, countWords } from "./services/hccService";
+import { crossChunkReconstruct } from "./services/crossChunkCoherence";
 
 
 // Configure multer for file uploads
@@ -2617,36 +2618,51 @@ Structural understanding is always understanding of relationships. Observational
         // Count input words for reference
         const inputWordCount = text.trim().split(/\s+/).length;
         
-        // For very large documents (>20,000 words), use HCC processing
-        if (inputWordCount > 20000) {
-          console.log(`[HCC] Processing large document: ${inputWordCount} words`);
+        // For documents >= 1200 words, use Cross-Chunk Coherence processing
+        // This is the ONLY path for long documents - ensures proper chunking and no truncation
+        if (inputWordCount >= 1200) {
+          console.log(`[CC] Processing document with Cross-Chunk Coherence: ${inputWordCount} words`);
           try {
-            const hccResult = await processHccDocument(text, customInstructions);
-            if (hccResult.success) {
-              const parameterHeader = `═══════════════════════════════════════════════════
-ANALYSIS PARAMETERS (HIERARCHICAL PROCESSING)
+            const ccResult = await crossChunkReconstruct(
+              text,
+              targetDomain, // audienceParameters
+              rigorLevel,
+              customInstructions
+            );
+            
+            const parameterHeader = `═══════════════════════════════════════════════════
+ANALYSIS PARAMETERS
 ═══════════════════════════════════════════════════
-Mode: Reconstruction (HCC - Hierarchical Cross-Chunk Coherence)
-Input Words: ${inputWordCount.toLocaleString()}
-Aggressiveness: ${(fidelityLevel || 'aggressive').charAt(0).toUpperCase() + (fidelityLevel || 'aggressive').slice(1)}
+Mode: Reconstruction
+Model: ${llmProvider === 'zhi5' ? 'ZHI 5' : llmProvider?.toUpperCase() || 'ZHI 5'} - Default
+Aggressiveness: ${(fidelityLevel || 'Aggressive').charAt(0).toUpperCase() + (fidelityLevel || 'Aggressive').slice(1)}
+Math Framework: ${mathFramework || 'variational-inference'}
+Rigor Level: ${rigorLevel || 'semi-formal'}
+Constraint Type: ${constraintType || 'pure-swap'}
+Truth Mapping: ${truthMapping || 'false-to-true'}
+Math Truth Mapping: ${mathTruthMapping || 'make-true'}
 ${customInstructions ? `Custom Instructions: ${customInstructions}` : ''}
 ═══════════════════════════════════════════════════
 
 `;
-              return res.json({
-                success: true,
-                output: parameterHeader + hccResult.output,
-                mode: mode,
-                hccDocumentId: hccResult.documentId
-              });
-            } else {
-              throw new Error(hccResult.error || 'HCC processing failed');
-            }
-          } catch (hccError: any) {
-            console.error('[HCC] Error:', hccError);
+            const outputWordCount = ccResult.reconstructedText.trim().split(/\s+/).length;
+            console.log(`[CC] Reconstruction complete: ${inputWordCount} → ${outputWordCount} words`);
+            
+            return res.json({
+              success: true,
+              output: parameterHeader + ccResult.reconstructedText,
+              mode: mode,
+              inputWordCount,
+              outputWordCount,
+              changes: ccResult.changes,
+              chunksProcessed: ccResult.chunksProcessed,
+              validation: ccResult.validation
+            });
+          } catch (ccError: any) {
+            console.error('[CC] Error:', ccError);
             return res.status(500).json({
               success: false,
-              message: `Large document processing failed: ${hccError.message}`
+              message: `Cross-chunk reconstruction failed: ${ccError.message}`
             });
           }
         }
