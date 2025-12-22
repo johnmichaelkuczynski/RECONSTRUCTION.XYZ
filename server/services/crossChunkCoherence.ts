@@ -621,8 +621,16 @@ export function smartChunk(text: string): ChunkBoundary[] {
     }];
   }
   
+  // Try paragraph-based chunking first
   const paragraphs = text.split(/\n\s*\n/);
   const chunks: ChunkBoundary[] = [];
+  
+  // If document has no paragraph breaks (only 1 "paragraph"), use sentence-based chunking
+  if (paragraphs.length <= 1 || paragraphs.filter(p => p.trim()).length <= 1) {
+    console.log(`[CC] Document has no paragraph breaks, using sentence-based chunking`);
+    return sentenceBasedChunk(text, totalWords);
+  }
+  
   let currentChunk = "";
   let currentWordCount = 0;
   let currentStart = 0;
@@ -664,6 +672,92 @@ export function smartChunk(text: string): ChunkBoundary[] {
     });
   }
   
+  // If paragraph chunking still produced only 1 chunk (paragraphs too large), fall back to sentence chunking
+  if (chunks.length === 1 && totalWords > TARGET_CHUNK_SIZE) {
+    console.log(`[CC] Paragraph chunking produced only 1 chunk for ${totalWords} words, falling back to sentence-based chunking`);
+    return sentenceBasedChunk(text, totalWords);
+  }
+  
+  return chunks;
+}
+
+// Sentence-based chunking fallback for documents without paragraph structure
+function sentenceBasedChunk(text: string, totalWords: number): ChunkBoundary[] {
+  // Split on sentence boundaries (. ! ? followed by space or newline)
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const chunks: ChunkBoundary[] = [];
+  let currentChunk = "";
+  let currentWordCount = 0;
+  let currentStart = 0;
+  let charPosition = 0;
+  
+  for (let i = 0; i < sentences.length; i++) {
+    const sentence = sentences[i];
+    if (!sentence.trim()) {
+      charPosition += sentence.length + 1;
+      continue;
+    }
+    
+    const sentenceWords = sentence.trim().split(/\s+/).length;
+    
+    if (currentWordCount + sentenceWords > TARGET_CHUNK_SIZE && currentWordCount > 0) {
+      chunks.push({
+        start: currentStart,
+        end: charPosition,
+        text: currentChunk.trim(),
+        wordCount: currentWordCount
+      });
+      currentChunk = sentence;
+      currentWordCount = sentenceWords;
+      currentStart = charPosition;
+    } else {
+      currentChunk += (currentChunk ? " " : "") + sentence;
+      currentWordCount += sentenceWords;
+    }
+    
+    charPosition += sentence.length + 1;
+  }
+  
+  if (currentChunk.trim()) {
+    chunks.push({
+      start: currentStart,
+      end: text.length,
+      text: currentChunk.trim(),
+      wordCount: currentWordCount
+    });
+  }
+  
+  // If we still only have 1 chunk (very long sentences), force word-based splitting
+  if (chunks.length === 1 && totalWords > TARGET_CHUNK_SIZE) {
+    console.log(`[CC] Sentence chunking still produced 1 chunk, using word-based splitting`);
+    return wordBasedChunk(text, totalWords);
+  }
+  
+  return chunks;
+}
+
+// Force word-based chunking as last resort
+function wordBasedChunk(text: string, totalWords: number): ChunkBoundary[] {
+  const words = text.trim().split(/\s+/);
+  const chunks: ChunkBoundary[] = [];
+  const numChunks = Math.ceil(totalWords / TARGET_CHUNK_SIZE);
+  const wordsPerChunk = Math.ceil(totalWords / numChunks);
+  
+  for (let i = 0; i < numChunks; i++) {
+    const startWord = i * wordsPerChunk;
+    const endWord = Math.min(startWord + wordsPerChunk, totalWords);
+    const chunkWords = words.slice(startWord, endWord);
+    const chunkText = chunkWords.join(' ');
+    
+    chunks.push({
+      start: startWord,
+      end: endWord,
+      text: chunkText,
+      wordCount: chunkWords.length
+    });
+  }
+  
+  console.log(`[CC] Word-based chunking created ${chunks.length} chunks of ~${wordsPerChunk} words each`);
   return chunks;
 }
 
