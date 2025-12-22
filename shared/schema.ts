@@ -599,6 +599,33 @@ export const insertReconstructionRunSchema = createInsertSchema(reconstructionRu
 export type InsertReconstructionRun = z.infer<typeof insertReconstructionRunSchema>;
 export type ReconstructionRun = typeof reconstructionRuns.$inferSelect;
 
+// Chapter tracking for multi-chapter documents
+export interface ChapterInfo {
+  index: number;
+  title: string;
+  mainThesis: string;
+  startWord: number;
+  endWord: number;
+  status: 'pending' | 'processed' | 'verified';
+}
+
+// Content addition request parsed from user instructions
+export interface ContentAddition {
+  type: 'concluding_chapter' | 'introduction' | 'summary' | 'custom';
+  requirement: string;
+  additional?: string;
+}
+
+// User instructions parsed from custom instructions
+export interface UserInstructions {
+  lengthTarget?: number;
+  lengthConstraint?: 'no_less_than' | 'no_more_than' | 'approximately' | 'exactly';
+  contentAdditions: ContentAddition[];
+  mustAdd: string[];
+  mustPreserve: string[];
+  rawInstructions?: string;
+}
+
 // Global Skeleton type for Pass 1 extraction
 export interface GlobalSkeleton {
   outline: string[];           // 8-20 numbered claims/sections
@@ -608,6 +635,13 @@ export interface GlobalSkeleton {
   entities: { name: string; type: string; role: string }[];  // People, orgs, variables
   audienceParameters?: string;
   rigorLevel?: string;
+  
+  // User instructions capture (length, content additions, constraints)
+  userInstructions?: UserInstructions;
+  
+  // Chapter tracking for multi-chapter documents
+  chapters?: ChapterInfo[];
+  chapterCount?: number;
 }
 
 // Chunk Delta type for Pass 2 tracking
