@@ -1000,8 +1000,8 @@ export async function crossChunkReconstruct(
   console.log(`[CC] Starting 3-pass reconstruction for ${wordCount} word document`);
   console.log(`[CC] Length config: target=${lengthConfig.targetMin}-${lengthConfig.targetMax} words, ratio=${lengthConfig.lengthRatio.toFixed(2)}, mode=${lengthConfig.lengthMode}`);
   
-  console.log("[CC] Pass 1: Extracting global skeleton...");
-  const skeleton = await extractGlobalSkeleton(text, audienceParameters, rigorLevel);
+  console.log("[CC] Pass 1: Extracting global skeleton (with user instruction parsing)...");
+  const skeleton = await extractGlobalSkeleton(text, audienceParameters, rigorLevel, customInstructions);
   
   console.log("[CC] Chunking document...");
   const chunkBoundaries = smartChunk(text);
@@ -1041,22 +1041,73 @@ export async function crossChunkReconstruct(
   console.log("[CC] Pass 3: Global consistency stitch...");
   const { finalOutput, stitchResult } = await stitchAndValidate(skeleton, processedChunks);
   
-  const totalTime = Date.now() - totalStartTime;
-  console.log(`[CC] Complete 3-pass reconstruction finished in ${totalTime}ms`);
+  // PASS 4: POST-PROCESSING - Apply requested content additions
+  console.log("[CC] Pass 4: Processing content additions...");
+  let augmentedOutput = finalOutput;
   
-  const finalWordCount = countWords(finalOutput);
+  if (skeleton.userInstructions?.contentAdditions && skeleton.userInstructions.contentAdditions.length > 0) {
+    console.log(`[CC] Found ${skeleton.userInstructions.contentAdditions.length} content additions to process`);
+    augmentedOutput = await generateRequestedAdditions(finalOutput, skeleton);
+    console.log(`[CC] Post-processing complete. Words: ${countWords(finalOutput)} → ${countWords(augmentedOutput)}`);
+    
+    // Update chapter statuses after post-processing
+    if (skeleton.chapters) {
+      for (const chapter of skeleton.chapters) {
+        chapter.status = 'processed';
+      }
+      // Mark if concluding chapter was added
+      const hasConclusion = skeleton.userInstructions.contentAdditions.some(a => a.type === 'concluding_chapter');
+      if (hasConclusion) {
+        skeleton.chapters.push({
+          index: skeleton.chapters.length + 1,
+          title: 'Conclusion: Synthesis and Future Directions',
+          mainThesis: 'Generated concluding chapter summarizing all preceding chapters',
+          startWord: countWords(finalOutput),
+          endWord: countWords(augmentedOutput),
+          status: 'generated'
+        });
+        skeleton.chapterCount = skeleton.chapters.length;
+      }
+    }
+  } else {
+    console.log("[CC] No content additions requested");
+  }
+  
+  // PASS 5: FINAL VALIDATION - Verify user instructions were followed
+  console.log("[CC] Pass 5: Final validation...");
+  const validation = validateFinalOutput(augmentedOutput, skeleton);
+  
+  if (!validation.valid) {
+    const errorMessage = `Reconstruction failed validation: ${validation.errors.join("; ")}`;
+    console.error("[CC] VALIDATION FAILED - THROWING ERROR:", validation.errors);
+    
+    // Throw an error for critical failures - system must not return non-compliant output
+    throw new Error(errorMessage);
+  }
+  
+  if (validation.warnings.length > 0) {
+    console.log("[CC] Validation passed with warnings:", validation.warnings);
+  }
+  
+  const totalTime = Date.now() - totalStartTime;
+  console.log(`[CC] Complete 5-pass reconstruction finished in ${totalTime}ms`);
+  
+  const finalWordCount = countWords(augmentedOutput);
   
   const changesDescription = [
-    `Processed ${chunkBoundaries.length} chunks through 3-pass CC system (${lengthConfig.lengthMode} mode).`,
+    `Processed ${chunkBoundaries.length} chunks through 5-pass CC system (${lengthConfig.lengthMode} mode).`,
     `Input: ${wordCount} words → Output: ${finalWordCount} words (target: ${lengthConfig.targetMin}-${lengthConfig.targetMax}).`,
     `Skeleton: ${skeleton.outline.length} outline items, ${skeleton.keyTerms.length} key terms, ${skeleton.commitmentLedger.length} commitments.`,
+    skeleton.chapterCount ? `Document has ${skeleton.chapterCount} chapters tracked.` : "",
     stitchResult.contradictions.length > 0 ? `Resolved ${stitchResult.contradictions.length} cross-chunk contradictions.` : "No contradictions detected.",
     stitchResult.terminologyDrift.length > 0 ? `Fixed ${stitchResult.terminologyDrift.length} terminology drift issues.` : "Terminology consistent across chunks.",
-    stitchResult.repairPlan.length > 0 ? `Applied ${stitchResult.repairPlan.length} repairs.` : "No repairs needed."
-  ].join(" ");
+    stitchResult.repairPlan.length > 0 ? `Applied ${stitchResult.repairPlan.length} repairs.` : "No repairs needed.",
+    skeleton.userInstructions?.contentAdditions?.length ? `Added ${skeleton.userInstructions.contentAdditions.length} requested section(s).` : "",
+    validation.valid ? "Validation passed." : `Validation issues: ${validation.errors.join("; ")}`
+  ].filter(s => s).join(" ");
   
   return {
-    reconstructedText: finalOutput,
+    reconstructedText: augmentedOutput,
     changes: changesDescription,
     wasReconstructed: true,
     adjacentMaterialAdded: processedChunks
@@ -1066,7 +1117,8 @@ export async function crossChunkReconstruct(
     originalLimitationsIdentified: `Original document (${wordCount} words) processed with ${lengthConfig.lengthMode} mode (ratio: ${lengthConfig.lengthRatio.toFixed(2)})`,
     skeleton,
     stitchResult,
-    chunksProcessed: chunkBoundaries.length
+    chunksProcessed: chunkBoundaries.length,
+    validation
   };
 }
 
