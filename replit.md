@@ -35,6 +35,15 @@ The application employs a monorepo structure, separating client and server compo
     - **Conservative Reconstruction**: "Charitable Interpretation" mode for generating coherent essays articulating a text's unified argument.
 
 ## Recent Changes (December 2024)
+- **Database-Enforced SSE Streaming Reconstruction**: New parallel reconstruction system for documents >= 1000 words with:
+  - **3-Pass DB-Backed Architecture**: Each pass persists state to PostgreSQL for durability and abort recovery
+  - **Pass 1 - Skeleton Extraction**: Global structure (thesis, outline, key terms, commitments) stored in `reconstructionDocuments`
+  - **Pass 2 - Chunk Processing**: 1000-word chunks with 15-second rate-limiting delays, skeleton retrieved from DB for each chunk, outputs stored in `reconstructionChunks`
+  - **Pass 3 - Stitch Validation**: Delta comparison detecting contradictions and term drift, results in `stitchResults` table
+  - **SSE Streaming**: Real-time progress via Server-Sent Events at `/api/reconstruction/stream`
+  - **Abort Capability**: Session can be aborted via `/api/reconstruction/abort/:sessionId`, marking `abortedAt` in DB and returning partial output
+  - **Progressive Preview**: New `StreamingReconstruction` component displays chunks as they complete with copy/download
+  - **Coexists with legacy system**: Original `crossChunkCoherence` (WebSocket) still available for Coherence Meter
 - **TextStats Component with AI Detection**: Added automatic word/character counts and GPTZero-powered AI detection to all input and output areas:
   - Displays word count and character count below each text area
   - "Check AI" button runs GPTZero detection showing color-coded results (red >70% AI, yellow 40-70%, green <40% AI)
