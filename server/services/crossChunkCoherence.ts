@@ -903,7 +903,10 @@ Format your response as:
 ===DELTA===
 [Your JSON delta report here]`;
 
-    const responseText = await callWithFallback(reconstructPrompt, 4000, 0.5);
+    // Token budget: target words * 2 (tokens per word) + buffer for JSON delta
+    // This ensures the model has enough room to produce the requested word count
+    const tokenBudget = Math.max(6000, Math.ceil(targetForAttempt * 2.5) + 500);
+    const responseText = await callWithFallback(reconstructPrompt, tokenBudget, 0.5);
     
     const reconstructionMatch = responseText.match(/===RECONSTRUCTION===\s*([\s\S]*?)(?:===DELTA===|$)/);
     if (reconstructionMatch) {
@@ -937,7 +940,17 @@ Format your response as:
       console.log(`[CC] Chunk ${chunkIndex + 1} validation failed (truncated: ${isTruncated}, short: ${isTooShort}, got ${outputWordCount} words). Retrying...`);
       await delay(1000);
     } else {
-      console.log(`[CC] Chunk ${chunkIndex + 1} max retries reached. Proceeding with ${outputWordCount} words.`);
+      // After all retries, check if output is catastrophically short (< 50% of target)
+      const finalOutputWords = countWords(outputText);
+      const catastrophicThreshold = targetWords * 0.5;
+      
+      if (finalOutputWords < catastrophicThreshold) {
+        const errorMsg = `Chunk ${chunkIndex + 1} failed: produced ${finalOutputWords} words, target was ${targetWords} (min acceptable: ${catastrophicThreshold})`;
+        console.error(`[CC] CATASTROPHIC FAILURE: ${errorMsg}`);
+        throw new Error(errorMsg);
+      }
+      
+      console.log(`[CC] Chunk ${chunkIndex + 1} max retries reached. Proceeding with ${finalOutputWords} words (target was ${targetWords}).`);
     }
   }
   
