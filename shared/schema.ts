@@ -533,6 +533,7 @@ export const reconstructionDocuments = pgTable("reconstruction_documents", {
   rigorLevel: text("rigor_level"),
   customInstructions: text("custom_instructions"),
   errorMessage: text("error_message"), // For failed jobs
+  abortedAt: timestamp("aborted_at"), // When user aborted generation
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -598,6 +599,28 @@ export const insertReconstructionRunSchema = createInsertSchema(reconstructionRu
 
 export type InsertReconstructionRun = z.infer<typeof insertReconstructionRunSchema>;
 export type ReconstructionRun = typeof reconstructionRuns.$inferSelect;
+
+// Stitch results for Pass 3 global coherence validation
+export const stitchResults = pgTable("stitch_results", {
+  id: serial("id").primaryKey(),
+  documentId: integer("document_id").references(() => reconstructionDocuments.id).notNull(),
+  conflicts: jsonb("conflicts"), // Cross-chunk contradictions
+  termDrift: jsonb("term_drift"), // Terminology inconsistencies
+  missingPremises: jsonb("missing_premises"), // Claims without setup
+  redundancies: jsonb("redundancies"), // Repeated points
+  repairPlan: jsonb("repair_plan"), // Fixes to apply
+  coherenceScore: text("coherence_score"), // 'pass' or 'needs_repair'
+  finalValidation: jsonb("final_validation"), // Full validation result
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertStitchResultSchema = createInsertSchema(stitchResults).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertStitchResult = z.infer<typeof insertStitchResultSchema>;
+export type StitchResultRecord = typeof stitchResults.$inferSelect;
 
 // Chapter tracking for multi-chapter documents
 export interface ChapterInfo {
